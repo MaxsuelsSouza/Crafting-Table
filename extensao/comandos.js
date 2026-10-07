@@ -25,7 +25,7 @@ function matar(pid) {
 }
 
 const estilo = `
-  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 12px 14px; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-foreground); padding: 12px 14px; }
   /* Padrão de botões da Crafting Table: principal azul sólido; o resto só texto/ícone com fundo no hover. */
   button { font: inherit; font-size: 12px; cursor: pointer; border: none; border-radius: 6px; padding: 5px 12px; font-weight: 600;
     background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -38,7 +38,7 @@ const estilo = `
   .linha { display: flex; align-items: center; gap: 8px; }
   .procs { margin: 6px 0 2px 8px; padding-left: 8px; border-left: 2px solid var(--vscode-widget-border, #444); font-size: 12px; }
   .proc { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-  .proc .pid { font-family: var(--vscode-editor-font-family); color: var(--vscode-textLink-foreground); min-width: 52px; }
+  .proc .pid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-textLink-foreground); min-width: 52px; }
   .proc .args { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
   .proc button, .procs .todos { background: none; color: #e5484d; padding: 2px 6px; font-weight: 500; }
   .proc button:hover, .procs .todos:hover { background: color-mix(in srgb, #e5484d 12%, transparent); }
@@ -63,7 +63,8 @@ const pagina = (nonce, corpo) => `<!doctype html><html><head>
   const vscode = acquireVsCodeApi();
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-acao]');
-    if (el) vscode.postMessage({ acao: el.dataset.acao, id: el.dataset.id, pid: Number(el.dataset.pid) });
+    // dono: a parte da página que tem o botão, quando duas telas dividem a mesma página (grupo.js, JUNTAS)
+    if (el) vscode.postMessage({ acao: el.dataset.acao, id: el.dataset.id, pid: Number(el.dataset.pid), dono: el.closest('[data-dono]')?.dataset.dono });
   });
 </script></body></html>`;
 
@@ -101,7 +102,7 @@ const estiloBotoes = `<style>
   .vivo { font-size: 10px; font-weight: 500; color: #4fb477; }
   .vivo::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4fb477; margin-right: 4px; vertical-align: 1px; animation: pulso 1.6s infinite; }
   @keyframes pulso { 50% { opacity: .3; } }
-  .cmd { display: inline-block; max-width: 100%; margin-top: 4px; padding: 1px 6px; border-radius: var(--r-md); font-family: var(--vscode-editor-font-family); font-size: 11px;
+  .cmd { display: inline-block; max-width: 100%; margin-top: 4px; padding: 1px 6px; border-radius: var(--r-md); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
     background: var(--surface-2); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   .pastinha { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mini { flex: none; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border);
@@ -127,7 +128,7 @@ const tela = (botoes, procs = {}) => `${estiloBotoes}
   <div class="barras">
     <span class="dica">${botoes.filter((b) => terminalDe(b)).length ? `${botoes.filter((b) => terminalDe(b)).length} rodando` : ''}</span>
     <span class="espaco"></span>
-    <button class="primario" data-acao="adicionar">＋ Botão</button>
+    <button class="primario" data-acao="adicionar">＋ Adicionar</button>
   </div>
   ${botoes.length ? `<ul class="cmds">${botoes.map((b) => {
     const rodando = Boolean(terminalDe(b));
@@ -154,7 +155,7 @@ const tela = (botoes, procs = {}) => `${estiloBotoes}
         <button class="todos" data-acao="matarTodos" data-id="${b.id}">Matar todos (${procs[b.id].length})</button>`
         : '<p class="vazio">Nenhum processo rodando.</p>'}</div>` : ''}
     </li>`;
-  }).join('')}</ul>` : `<div class="folha"><div class="centro"><div class="icone">▶</div>Nenhum botão ainda.<br>Crie um com nome, comando e pasta.<br><code>Metro · yarn start · ~/wms-mobile</code></div></div>`}`;
+  }).join('')}</ul>` : `<div class="folha"><div class="centro"><div class="icone">▶</div>Nenhum comando ainda.<br>Clique em <b>Adicionar</b>: nome, comando e pasta.<br><code>Metro · yarn start · ~/wms-mobile</code></div></div>`}`;
 
 async function perguntar(atual = {}) {
   const nome = await vscode.window.showInputBox({ title: 'Nome do botão', value: atual.nome, placeHolder: 'Metro', ignoreFocusOut: true });
@@ -236,7 +237,7 @@ exports.provider = (ctx) => {
   return vscode.Disposable.from(
     vscode.window.onDidOpenTerminal(render),
     vscode.window.onDidCloseTerminal(render),
-    vscode.window.registerWebviewViewProvider('claudeAbas.comandos', {
+    require('./grupo').registrar('claudeAbas.comandos.lista', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };

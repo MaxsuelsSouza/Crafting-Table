@@ -18,6 +18,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from documentos import pasta_da_conversa
+
 RAIZ = Path.home() / ".claude" / "documentos"
 FILHO = "CRAFTING_DECISOES_FILHO"  # marca a chamada ao Haiku: ela não pode disparar este hook de novo
 
@@ -27,7 +29,7 @@ def agora():
 
 
 def gravar(sid, decisao):
-    pasta = RAIZ / sid
+    pasta = Path(pasta_da_conversa(sid))
     pasta.mkdir(parents=True, exist_ok=True)
     arq = pasta / ".decisoes.json"
     with open(pasta / ".decisoes.lock", "w") as trava:  # duas mensagens seguidas não se atropelam
@@ -53,7 +55,7 @@ def pergunta(dados):
     for q in perguntas:
         texto = q.get("question", "")
         escolha = respostas.get(texto)
-        if not escolha:
+        if not escolha or escolha == "Tirar dúvida":  # vai para a aba Dúvidas (sdd-state duvida), não é decisão
             continue
         opcoes = [o.get("label", "") for o in q.get("options", [])]
         nota = (anotacoes.get(texto) or {}).get("notes", "")

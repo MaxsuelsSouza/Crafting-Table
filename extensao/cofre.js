@@ -39,7 +39,7 @@ const estiloCofre = ESTILO_NOTAS + `<style>
   .off .cadeado { color: var(--text-dim); background: var(--surface-2); }
   .cadeado svg { width: 16px; height: 16px; }
   .corpo { flex: 1; min-width: 0; }
-  .corpo .nome { font-family: var(--vscode-editor-font-family); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .corpo .nome { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .corpo .valor { font-size: 11px; letter-spacing: .15em; color: var(--text-dim); margin-top: 2px; }
   .chave { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; background: none; padding: 0 6px; border-radius: var(--r-md);
     font-weight: 500; font-size: 11px; color: var(--text-dim); }
@@ -154,7 +154,7 @@ exports.provider = (ctx) => {
 
   return vscode.Disposable.from(
     { dispose: () => { servidor.close(); try { fs.unlinkSync(SOCKET); } catch {} } },
-    vscode.window.registerWebviewViewProvider('claudeAbas.cofre', {
+    require('./grupo').registrar('claudeAbas.cofre', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };

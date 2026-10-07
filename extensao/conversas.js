@@ -11,10 +11,18 @@ const sessao = require('./sessao');
 // O Claude guarda o histórico em ~/.claude/projects/<cwd com não-alfanuméricos trocados por ->/<id>.jsonl.
 const CLAUDE = path.join(os.homedir(), '.claude');
 const projeto = () => path.join(CLAUDE, 'projects', sessao.workspace().replace(/[^a-zA-Z0-9]/g, '-'));
+// Histórico de uma conversa: no projeto atual ou em qualquer outro (conversa de ticket aberta em outro repositório).
+function historico(sid) {
+  const aqui = path.join(projeto(), `${sid}.jsonl`);
+  if (fs.existsSync(aqui)) return aqui;
+  let dirs = [];
+  try { dirs = fs.readdirSync(path.join(CLAUDE, 'projects')); } catch {}
+  return dirs.map((d) => path.join(CLAUDE, 'projects', d, `${sid}.jsonl`)).find((f) => fs.existsSync(f)) || aqui;
+}
 
 // Tudo o que é da conversa: histórico, subagentes, documentos/notas/evidências, backups de edição, env.
 const rastros = (sid) => [
-  path.join(projeto(), `${sid}.jsonl`), path.join(projeto(), sid),
+  historico(sid), path.join(path.dirname(historico(sid)), sid),
   path.join(sessao.RAIZ, sid), path.join(CLAUDE, 'file-history', sid), path.join(CLAUDE, 'session-env', sid)
 ].filter((p) => fs.existsSync(p));
 
@@ -35,11 +43,14 @@ function titulo(arquivo) {
 const contar = (dir) => { try { return fs.readdirSync(dir).filter((n) => !n.startsWith('.') && n !== 'evidencias').length; } catch { return 0; } };
 
 function listar() {
-  let nomes;
-  try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return []; }
+  let nomes = [];
+  // Com um ticket aberto no painel: só as conversas dele, de qualquer projeto.
+  const doTicket = sessao.foco() && require('./tickets').ler(sessao.foco())?.conversas;
+  if (doTicket) nomes = doTicket.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))));
+  else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return []; }
   return nomes.map((n) => {
     const sid = n.slice(0, -6);
-    const arq = path.join(projeto(), n);
+    const arq = historico(sid);
     const docs = path.join(sessao.RAIZ, sid);
     return {
       sid, titulo: titulo(arq), mtime: fs.statSync(arq).mtimeMs,
@@ -189,7 +200,7 @@ exports.provider = () => {
 
   return vscode.Disposable.from(
     sessao.onDidChange(() => render()),
-    vscode.window.registerWebviewViewProvider('claudeAbas.conversas', {
+    require('./grupo').registrar('claudeAbas.conversas', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };
@@ -201,4 +212,4 @@ exports.provider = () => {
   );
 };
 
-exports._teste = { listar, rastros, titulo, projeto };
+exports._teste = { listar, rastros, titulo, projeto, historico };

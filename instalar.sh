@@ -25,7 +25,7 @@ claude plugin install sdd@crafting-local >/dev/null 2>&1 || claude plugin update
 
 echo "4/5 Hooks do Claude Code (~/.claude/hooks + ~/.claude/settings.json)"
 mkdir -p "$HOME/.claude/hooks"
-for h in documentos decisoes crafting-testes; do ln -sfn "$REPO/hooks/$h.py" "$HOME/.claude/hooks/$h.py"; done
+for h in documentos decisoes crafting-testes notificacoes; do ln -sfn "$REPO/hooks/$h.py" "$HOME/.claude/hooks/$h.py"; done
 python3 - <<'EOF'
 import json, shutil, time
 from pathlib import Path
@@ -41,6 +41,8 @@ QUERO = [  # evento, matcher, hook
     ("PostToolUse", "Write", {"type": "command", "command": cmd("documentos"), "timeout": 10}),
     ("PostToolUse", "Bash", {"type": "command", "command": cmd("crafting-testes"), "timeout": 30}),
     ("PostToolUse", "AskUserQuestion", {"type": "command", "command": cmd("decisoes"), "timeout": 15}),
+    ("Stop", None, {"type": "command", "command": cmd("notificacoes"), "timeout": 10}),
+    ("Notification", None, {"type": "command", "command": cmd("notificacoes"), "timeout": 10}),
     ("PreToolUse", "Bash", {"type": "command", "command": cmd("crafting-testes"), "timeout": 1000,
                             "statusMessage": "Crafting Table: conferindo o ambiente de testes"}),
 ]

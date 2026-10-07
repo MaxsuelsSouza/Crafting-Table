@@ -9,34 +9,21 @@ exports.activate = (ctx) => {
   }
   ctx.subscriptions.push(
     require('./sessao').iniciar(),
-    require('./notas').provider(),
-    require('./ticket').provider(ctx),
+    require('./painel').provider(ctx), // Tickets: lista e o ticket aberto (seção principal do grupo)
     require('./comandos').provider(ctx),
     require('./evidencias').provider(ctx),
     require('./emulador').provider(),
-    require('./documentos').provider(),
     require('./cofre').provider(ctx),
     require('./conversas').provider(),
-    require('./refinamentos').provider(),
     require('./testes').iniciar(),
+    require('./musica').provider(ctx), // YouTube Music: barra de status (controle principal)
+    require('./espelho').provider(), // YouTube Music: espelho na barra de atividades
+    require('./grupo').provider(ctx), // Tickets: painel + Comandos, Emulador, Evidências, Cofre e Conversas dentro do ticket
     ...Object.entries({
       abrirClaude: 'craftingTable',
-      abrirNotas: 'claudeAbas-notas',
-      abrirTicket: 'claudeAbas-ticket',
-      abrirComandos: 'claudeAbas-comandos',
-      abrirEvidencias: 'claudeAbas-evidencias',
-      abrirDocumentos: 'claudeAbas-documentos',
-      abrirCofre: 'claudeAbas-cofre',
-      abrirConversas: 'claudeAbas-conversas',
-      abrirRefinamentos: 'claudeAbas-refinamentos'
+      abrirTickets: 'claudeAbas-tickets'
     }).map(([cmd, container]) => vscode.commands.registerCommand(`claudeAbas.${cmd}`,
       () => vscode.commands.executeCommand(`workbench.view.extension.${container}`))),
-    vscode.commands.registerCommand('claudeAbas.abrirEmulador', () => {
-      vscode.commands.executeCommand('workbench.view.extension.claudeAbas-emuladores');
-      require('./emulador').focarAbertos();
-    }),
-    vscode.commands.registerCommand('claudeAbas.atualEmulador', require('./emulador').focarAbertos),
-    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./teams').abrir),
-    ...['Claude', 'Notas', 'Ticket', 'Comandos', 'Evidencias', 'Documentos', 'Cofre', 'Conversas', 'Refinamentos'].map((t) => vscode.commands.registerCommand(`claudeAbas.atual${t}`, () => {}))
+    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./teams').abrir)
   );
 };

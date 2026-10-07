@@ -1,6 +1,6 @@
 {
   "name": "sdd",
-  "version": "0.1.6",
+  "version": "0.1.13",
   "description": "Spec Driven Development em 7 passos (constituição → spec → clarificação → plano → tarefas → análise → implementação), com portões de revisão humana e retomada de onde parou. Integra com a aba Constituição dos Refinamentos da Crafting Table.",
   "author": { "name": "Crafting Table" },
   "keywords": ["sdd", "spec-driven", "especificacao", "refinamento"]

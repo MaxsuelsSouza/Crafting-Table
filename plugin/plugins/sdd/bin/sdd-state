@@ -2,17 +2,19 @@
 // Estado de uma spec SDD (Spec Driven Development): specs/<feature>/sdd-state.json no repositório.
 // É a memória da spec, independente da conversa: status de cada passo, perguntas, achados, hashes e aprovações.
 //
-// Todos os comandos recebem --ref <pasta do refinamento> (~/.claude/refinamentos/<id>), cujo meta.json aponta
+// Todos os comandos recebem --ref <pasta do refinamento> (~/.claude/refinamentos/<id>, meta.json) ou do ticket
+// (~/.claude/tickets/<CHAVE>, .ticket.json), cujo arquivo aponta
 // spec.repo e spec.dir.
-//   init      --ref R --repo REPO [--titulo T] [--ticket K]  cria specs/NNN-slug/ e o estado (idempotente)
+//   init      --ref R --repo REPO [--titulo T] [--ticket K]  cria <CHAVE>-slug/ (ticket) ou specs/NNN-slug/ e o estado (idempotente)
 //   status    --ref R                                       resumo de retomada (5 linhas) — roda o check antes
 //   check     --ref R                                       recalcula hashes e aplica a cascata
 //   iniciar   N --ref R                                     passo N → em_andamento (exige anteriores aprovados)
 //   concluir  N --ref R [--versao X] [--resumo '{json}']    passo N → aguardando_revisao (exige o arquivo)
 //   ajuste    N --ref R [--motivo M]                        aguardando_revisao → em_andamento
-//   pergunta  add --texto T [--rf RF03] | responder Qnn --resposta X | descartar Qnn      (--ref R)
+//   pergunta  add --texto T [--rf RF03] [--opcoes '["A","B"]'] [--contexto C] | responder Qnn --resposta X | descartar Qnn      (--ref R)
 //   achado    add --severidade bloqueante|aviso --tipo T --descricao D [--refs t05,RF02]
 //             | resolver Ann | aceitar Ann --justificativa J                             (--ref R)
+//   duvida    add --texto T [--contexto C] --ref R              grava em <ref>/.duvidas.json (aba Dúvidas do ticket)
 //   tarefa    tNN --status pendente|em_andamento|feita [--commit SHA] --ref R
 //   aprovar   N --ref R --por NOME [--editorial]   SÓ PELA EXTENSÃO (hook do plugin bloqueia o Claude)
 //   aguardar  N --ref R [--intervalo 2] [--horas 12]      espera o humano aprovar/pedir ajuste (rodar em segundo plano)
@@ -55,11 +57,17 @@ function gravarJson(f, d) {
   fs.writeFileSync(tmp, JSON.stringify(d, null, 2) + '\n');
   fs.renameSync(tmp, f);
 }
+// Sino do ticket (rodapé na Crafting Table): mesma linha que o hook notificacoes.py grava.
+const notificar = (tipo, texto) => {
+  try { fs.appendFileSync(path.join(refDir(), '.notificacoes.jsonl'), JSON.stringify({ em: agora(), tipo, texto }) + '\n'); } catch {}
+};
 const refDir = () => {
   if (!opt.ref) falhar('informe --ref <pasta do refinamento>');
   return path.resolve(String(opt.ref).replace(/^~(?=\/|$)/, os.homedir()));
 };
-const metaArq = () => path.join(refDir(), 'meta.json');
+// Pasta de refinamento (meta.json) ou de ticket da Crafting Table (.ticket.json): os dois têm titulo e spec no topo.
+const metaArq = () => (fs.existsSync(path.join(refDir(), 'meta.json')) || !fs.existsSync(path.join(refDir(), '.ticket.json'))
+  ? path.join(refDir(), 'meta.json') : path.join(refDir(), '.ticket.json'));
 function locais() {
   const meta = lerJson(metaArq(), null);
   if (!meta) falhar(`refinamento não encontrado em ${refDir()}`);
@@ -109,7 +117,7 @@ function contar(L, p) {
 
 function novoEstado(L, meta, feature) {
   return {
-    schema: 1, feature, titulo: meta.titulo, refinamento: refDir(), ticket: meta.ticket || '',
+    schema: 1, feature, titulo: meta.titulo, refinamento: refDir(), ticket: meta.ticket || meta.link || '',
     repo: L.repo, dir: path.relative(L.repo, L.dir), criadoEm: agora(), atualizadoEm: agora(),
     proximoPasso: 0, proximaAcao: PROXIMA_ACAO[0],
     passos: PASSOS.map((p) => ({ n: p.n, nome: p.nome, titulo: p.titulo, arquivo: p.raizRepo ? p.arquivo : path.join(path.relative(L.repo, L.dir), p.arquivo),
@@ -166,10 +174,11 @@ const comandos = {
     if (!fs.existsSync(repo)) falhar(`repositório não existe: ${repo}`);
     const slug = String(opt.titulo || meta.titulo || 'feature').normalize('NFD').replace(/[̀-ͯ]/g, '')
       .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'feature';
-    const specs = path.join(repo, 'specs');
+    // Ticket da Crafting Table: <repo de specs>/<CHAVE>-<slug>/. Refinamento antigo: <repo>/specs/NNN-<slug>/.
+    const specs = meta.chave ? repo : path.join(repo, 'specs');
     fs.mkdirSync(specs, { recursive: true });
     const nums = fs.readdirSync(specs).map((n) => Number(n.match(/^(\d{3})-/)?.[1])).filter(Boolean);
-    const feature = `${String(Math.max(0, ...nums) + 1).padStart(3, '0')}-${slug}`;
+    const feature = meta.chave ? `${meta.chave}-${slug}` : `${String(Math.max(0, ...nums) + 1).padStart(3, '0')}-${slug}`;
     const dir = path.join(specs, feature);
     fs.mkdirSync(dir, { recursive: true });
     meta.spec = { repo, dir: path.relative(repo, dir) };
@@ -222,6 +231,7 @@ const comandos = {
     p.baseadoEm = Object.fromEntries(e.passos.slice(0, n).map((x) => [x.n, x.hashAprovado || x.hash]));
     p.resumo = { ...resumo, ...contar(L, p) }; p.motivoDesatualizado = null;
     hist(e, 'aguardando_revisao', { passo: n, versao: p.versao }); apontar(e); salvar(L, e);
+    notificar('sdd', `Passo ${n} ${p.titulo} pronto para sua revisão (aba Spec)`);
     console.log(`passo ${n} ${p.titulo} v${p.versao}: aguardando revisão humana (aprovar só pela aba Constituição)`);
   },
   ajuste() {
@@ -256,7 +266,11 @@ const comandos = {
     if (sub === 'add') {
       if (!opt.texto) falhar('--texto obrigatório');
       const id = 'Q' + String(e.perguntas.length + 1).padStart(2, '0');
-      e.perguntas.push({ id, pergunta: String(opt.texto), ref: opt.rf ? String(opt.rf).split(',') : [], status: 'aberta', resposta: null, em: agora() });
+      let opcoes = [];
+      if (opt.opcoes) { try { opcoes = JSON.parse(opt.opcoes).map(String); } catch { falhar('--opcoes precisa ser JSON: ["A","B"]'); } }
+      e.perguntas.push({ id, pergunta: String(opt.texto), ref: opt.rf ? String(opt.rf).split(',') : [], opcoes, contexto: opt.contexto ? String(opt.contexto) : '',
+        passo: e.proximoPasso, status: 'aberta', resposta: null, em: agora() });
+      notificar('pergunta', `${id}: ${String(opt.texto).slice(0, 120)}`);
       salvar(L, e); console.log(id); return;
     }
     const q = e.perguntas.find((x) => x.id === pos[1]) || falhar(`pergunta ${pos[1]} não existe`);
@@ -278,6 +292,15 @@ const comandos = {
     else if (sub === 'aceitar') { if (!opt.justificativa) falhar('aceitar exige --justificativa'); a.status = 'aceito'; a.justificativa = String(opt.justificativa); }
     else falhar('use: achado add | resolver Ann | aceitar Ann --justificativa J');
     salvar(L, e); console.log(`${a.id}: ${a.status}`);
+  },
+  // Dúvida para levar ao time (aba Dúvidas da Crafting Table): mora na pasta do ticket, não depende da spec.
+  duvida() {
+    if (pos[0] !== 'add' || !opt.texto) falhar('use: duvida add --texto T [--contexto C] --ref R');
+    const arq = path.join(refDir(), '.duvidas.json');
+    const l = lerJson(arq, []);
+    const id = 'D' + String(l.length + 1).padStart(2, '0');
+    l.push({ id, texto: String(opt.texto), contexto: opt.contexto ? String(opt.contexto) : '', em: agora(), enviadaEm: null });
+    gravarJson(arq, l); notificar('duvida', `Dúvida ${id} registrada: ${l.at(-1).texto.slice(0, 120)}`); console.log(id);
   },
   tarefa() {
     const L = locais(); const e = carregar(L); const id = pos[0];
@@ -319,7 +342,7 @@ const comandos = {
 };
 
 if (!comandos[cmd]) {
-  console.error('uso: sdd-state <init|status|check|iniciar|concluir|aguardar|ajuste|pergunta|achado|tarefa|aprovar|json> --ref <pasta do refinamento>');
+  console.error('uso: sdd-state <init|status|check|iniciar|concluir|aguardar|ajuste|pergunta|achado|duvida|tarefa|aprovar|json> --ref <pasta do refinamento>');
   process.exit(2);
 }
 comandos[cmd]();

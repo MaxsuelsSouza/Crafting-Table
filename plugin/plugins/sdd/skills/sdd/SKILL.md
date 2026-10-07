@@ -23,12 +23,30 @@ que alimenta o próximo. Você conduz; **o humano aprova** — sempre pela aba *
 5. **Contexto explícito**: nada de regra só na conversa. Toda decisão vai para o arquivo do passo.
 6. **Sem commit automático.** Deixe os arquivos prontos; quem commita é o humano (exceção: passo 6, ver abaixo).
 7. Um pedido do humano de "mudar o comportamento" exige **atualizar a spec antes do código**.
+8. **Tirar dúvida (ticket em modo refinamento)**: toda pergunta com `AskUserQuestion` leva, como última opção,
+   `Tirar dúvida` (descrição: "Não sei responder agora: levar a dúvida para o time/PO"). Use no máximo 3 opções
+   próprias. Escolhida → `sdd-state duvida add --ref <pasta> --texto '<pergunta>' --contexto '<passo N, opções
+   oferecidas e por que importa>'`; no passo 2 registre também com `pergunta add` (ela fica `aberta`). Diga
+   "Registrada como Dnn na aba Dúvidas" e siga com o que não depende dela.
+
+## Modo segundo plano (mensagem com `[segundo plano]`)
+
+A extensão Crafting Table roda você com `claude -p`, uma execução por etapa; o humano acompanha pela aba Spec e
+responde por botões. Nessas execuções:
+- **Não existe `AskUserQuestion`** e não há chat: nunca escreva "sigo?" nem espere resposta.
+- **Pergunta** = `sdd-state pergunta add --ref <pasta> --texto '<pergunta>' --opcoes '["opção 1","opção 2"]'
+  --contexto '<por que importa, 1 linha>'` (até 4 opções, a recomendada primeiro, terminando com "(Recomendado)").
+  Pode registrar várias; depois **termine a execução** dizendo quantas registrou. A próxima execução traz as
+  respostas (ou "Tirar dúvida": siga sem ela e registre o ponto como em aberto no arquivo do passo).
+- Trabalhe **só o passo atual**. Ao terminar: `concluir N` e **termine a execução** (não comece o passo seguinte:
+  a extensão abre uma execução nova quando o humano aprovar).
+- Prefira as ferramentas Read/Glob/Grep a comandos de shell para ler arquivos; um comando por chamada de Bash.
 
 ## Protocolo de início (`/sdd:iniciar <pasta> [repo]`)
 
-1. Leia `<pasta>/meta.json` (título, ticket). Se o repositório não veio no argumento nem em `meta.spec.repo`,
+1. Leia `<pasta>/.ticket.json` (ticket: titulo, link) ou `<pasta>/meta.json` (refinamento antigo). Se o repositório não veio no argumento nem em `meta.spec.repo`,
    **pergunte** em qual repositório a spec vai morar (ex.: `novo-wms-backend`, `wms-mobile`).
-2. `sdd-state init --ref <pasta> --repo <repo>` → cria `specs/NNN-<slug>/` e o estado.
+2. `sdd-state init --ref <pasta> --repo <repo>` → cria `<CHAVE>-<slug>/` na raiz do repositório de specs (ticket) ou `specs/NNN-<slug>/` (refinamento antigo) e o estado.
 3. Siga para o **protocolo de retomada**.
 
 ## Protocolo de retomada (`/sdd:continuar <pasta>` — inclusive em conversa nova)
@@ -37,6 +55,10 @@ que alimenta o próximo. Você conduz; **o humano aprova** — sempre pela aba *
 2. Leia **só** o arquivo do passo atual e o do passo anterior; o resto, sob demanda.
 3. Se o passo 2 (clarificação) ou o 6 estiverem em andamento: `sdd-state json --ref <pasta>` para ver perguntas e tarefas.
 4. Mostre ao humano o resumo do `status` (as 5 linhas) e pergunte **"sigo?"**. Não comece sem resposta.
+   **Exceção — ticket em modo refinamento** (`<pasta>/.ticket.json` com `refinamento.estado`): quem decide é o botão
+   do ticket, não o chat. `aguardando_inicio` ou `pausado` → **não pergunte**: diga "Spec iniciada em `<dir>` (<CHAVE>).
+   Clique em **Dar início** no ticket." (ou "▶ no ticket para retomar") e termine a resposta — o hook acorda você.
+   `rodando` → siga sem perguntar.
 5. **Não repita perguntas**: perguntas `respondida`/`descartada` e a seção "Clarificações" da spec são fatos.
    Antes de perguntar algo, confira se uma Qnn já cobre o tema — se cobre, cite "Q04 já respondeu: …".
 6. Passo `desatualizado`: **reconcilie**, não refaça do zero — compare com o que mudou no passo de origem
@@ -59,7 +81,17 @@ Leis universais e imutáveis do repositório. **Mais importante que dizer o que 
 
 - Se `constitution.md` existe: valide contra as seções abaixo; proponha só o que falta. Se está completa, `concluir 0`.
 - Se não existe mas há `.specify/memory/constitution.md` (spec-kit): proponha importar.
-- Se existir um modelo em `${CLAUDE_PLUGIN_ROOT}/modelos/<nome-do-repositório>.md`, use-o como base.
+- Repositório de specs do WMS (`WMS/specs`, sem `constitution.md`): a base é **só**
+  `${CLAUDE_PLUGIN_ROOT}/modelos/constituicao-wms-mapeamento.md` (levantamento do código de `novo-wms-backend` e
+  `wms-mobile`, com evidência). **Nada da wiki**: ela tem informação desatualizada. Monte o `constitution.md` assim:
+  1. Esqueleto comum (seção 1 do mapeamento) + princípios do backend (seção 2) + do mobile (seção 3), cada regra
+     com a evidência entre parênteses; a seção 4 (diferenças) vira regras parametrizadas por repositório.
+  2. Cada conflito marcado "decidir antes de ratificar": **uma pergunta por vez** (`AskUserQuestion`, opções do
+     próprio mapeamento + `Tirar dúvida`). Resposta → vira regra. Tirar dúvida → `duvida add` e o conflito fica na
+     seção final **"Em aberto"** (não vira regra).
+  3. A seção 0 do mapeamento (urgente, fora da constituição) **não entra**: avise o humano dela uma vez.
+  4. Pergunte se quer **acrescentar** regras próprias; depois `concluir 0`.
+- Outros repositórios do WMS que já têm `constitution.md`: valide contra as seções abaixo e proponha só o que falta.
 - Senão: entreviste (uma pergunta por vez) **lendo o repositório antes** (pastas, testes existentes, padrão de commits)
   para propor respostas, não perguntar no escuro.
 

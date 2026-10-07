@@ -46,11 +46,11 @@ function listar(dir) {
 const adb = (args) => new Promise((resolve) => execFile(ADB, args, { timeout: 30000 }, (err, out, errOut) => resolve({ ok: !err, msg: String(errOut || err?.message || '') })));
 
 const estilo = `
-  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); margin: 0; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-foreground); margin: 0; }
   button { font: inherit; cursor: pointer; }
   .topo { display: flex; align-items: center; gap: 8px; }
   .titulo { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ticket { flex: none; font-family: var(--vscode-editor-font-family); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  .ticket { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
     color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 14%, transparent); }
   .pasta { font-size: 10.5px; color: var(--vscode-descriptionForeground); margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acoes { display: flex; align-items: center; gap: 4px; margin: 14px 0 4px; }
@@ -62,7 +62,7 @@ const estilo = `
   .gravando { color: #e5484d; font-weight: 600; background: color-mix(in srgb, #e5484d 12%, transparent); }
   .gravando::before { animation: pulso 1.1s infinite; }
   @keyframes pulso { 50% { opacity: .2; } }
-  #relogio { font-family: var(--vscode-editor-font-family); margin-left: 6px; font-weight: 500; }
+  #relogio { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-left: 6px; font-weight: 500; }
   .icone { padding: 5px 7px; color: var(--vscode-descriptionForeground); display: flex; }
   .icone:hover { color: var(--vscode-foreground); }
   .icone svg { width: 15px; height: 15px; }
@@ -95,7 +95,7 @@ const estilo = `
 
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const estiloEvid = `<style>
-  .ticket { font-family: var(--vscode-editor-font-family); font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 9px;
+  .ticket { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 9px;
     color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
   .fb-btn.gravar::before, .fb-btn.gravando::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--perigo); }
   .fb-btn.gravando { color: var(--perigo); font-weight: 600; background: color-mix(in srgb, var(--perigo) 12%, transparent); }
@@ -133,7 +133,7 @@ exports.provider = (ctx) => {
   const render = async () => {
     if (!view) return;
     ticket = await ticketAtual();
-    const sid = sessao.conversaAtual();
+    const sid = sessao.atual(); // ticket aberto no painel ou, sem ele, a conversa atual
     if (!sid) {
       view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), view.webview.cspSource,
         ESTILO_NOTAS + '<div class="topo"><span class="rotulo">Evidências</span></div><div class="folha"><div class="centro"><div class="icone">💬</div>Nenhuma conversa detectada ainda neste projeto.<br>Envie uma mensagem no Claude.</div></div>');
@@ -151,7 +151,7 @@ exports.provider = (ctx) => {
     }
     const arquivos = listar(dir);
     const extras = fontesDaSkill(sid).map((f) => ({ ...f, arquivos: listar(f.dir) })).filter((f) => f.arquivos.length);
-    const raizes = [sessao.RAIZ, ...extras.map((f) => f.dir)];
+    const raizes = [sessao.RAIZ, sessao.TICKETS, ...extras.map((f) => f.dir)];
     if (JSON.stringify(raizes) !== JSON.stringify(raizesAtuais)) {
       raizesAtuais = raizes;
       view.webview.options = { enableScripts: true, localResourceRoots: raizes.map((r) => vscode.Uri.file(r)) };
@@ -263,7 +263,7 @@ exports.provider = (ctx) => {
 
   return vscode.Disposable.from(
     { dispose: () => { observador?.dispose(); gravacao?.proc.kill(); } },
-    vscode.window.registerWebviewViewProvider('claudeAbas.evidencias', {
+    require('./grupo').registrar('claudeAbas.evidencias', {
       resolveWebviewView(v) {
         view = v;
         view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));

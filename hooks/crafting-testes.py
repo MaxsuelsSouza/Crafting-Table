@@ -21,6 +21,8 @@ import time
 import uuid
 from pathlib import Path
 
+from documentos import pasta_da_conversa
+
 RAIZ = Path.home() / ".claude" / "documentos"
 PEDIDOS = RAIZ / ".pedidos"
 VIVO = RAIZ / ".crafting-ativo"
@@ -150,7 +152,7 @@ def preparar(dados, cmd):
     backend, mobile, camadas = Path(res["backend"]), res.get("mobile") or "", set(res.get("camadas") or [])
 
     sid = dados.get("session_id")
-    pasta = RAIZ / sid if sid else None
+    pasta = Path(pasta_da_conversa(sid)) if sid else None
     if pasta:
         pasta.mkdir(parents=True, exist_ok=True)
         (pasta / ".ticket").write_text(json.dumps({"chave": chave, "backend": str(backend), "mobile": mobile}))

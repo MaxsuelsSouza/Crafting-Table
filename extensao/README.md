@@ -1,78 +1,70 @@
 # Crafting Table
 
-Bancada de trabalho ao lado do Claude Code. O ícone da mesa na barra lateral abre o chat do Claude (o chat oficial é movido para dentro do contêiner da Crafting Table na primeira execução), e os botões no cabeçalho trocam para as outras ferramentas. O botão da tela aberta fica laranja.
+Bancada de trabalho ao lado do Claude Code, com o **ticket do Jira no centro**: documentos, notas, evidências, conversas, TODO, decisões e dúvidas ficam presos ao ticket. A extensão oficial do Claude Code não é modificada.
 
-```
-✳  🌐  📄  📖  ▶  📷  🔒  ☰  📱  👥
-Claude · Ticket · Documentos · Notas · Comandos · Evidências · Cofre · Conversas · Emuladores · Teams
-```
+Barra lateral: **✳ Claude** (o chat oficial, movido para o contêiner da Crafting Table na primeira execução) · **🎫 Tickets** · **YouTube Music**.
 
-A extensão oficial do Claude Code não é modificada. As abas vivem ao lado dela.
+## Tickets
+
+- **＋ Novo ticket**: cole o link (`.../browse/WMS-123`). A lista mostra chave, título e a coluna do board.
+- **Sem ticket**: documentos e notas da conversa atual do Claude que não pertence a nenhum ticket.
+- **Excluir** move a pasta para `~/.claude/tickets/_arquivados/` (nada é apagado; as conversas continuam).
+- Tudo do ticket mora em `~/.claude/tickets/<CHAVE>/` (`.ticket.json`, documentos, `.notas.html`, `.todo.json`, `.handoff-*.md`, `.decisoes.json`, `.duvidas.json`, `.notificacoes.jsonl`, `evidencias/`).
+- Conversa nova aberta pelo ticket é vinculada a ele na primeira mensagem e ganha o título `CHAVE · título`.
+
+### Ticket aberto
+
+**Cabeçalho fixo**: ← voltar · título · ▶/⏸ (modo refinamento) · ✦ conversa do Claude do ticket · 🎫 abrir no Jira · pills de status do board e do refinamento · ⟳ atualizar do Jira.
+
+**Menu**: Docs · Spec · Ticket · Análise · TODO · Decisões · Dúvidas | Comandos · Evidências · Cofre · Conversas.
+
+| Aba | O que mostra |
+|---|---|
+| Docs | Documentos do ticket, anexos do Jira ainda não baixados (**↓ Baixar**) e as Notas (editor com fonte, tamanho, cores, alinhamento, busca e @) |
+| Spec | Os 7 passos do plugin `sdd` (ver abaixo) |
+| Ticket | Descrição, subtarefas, comentários e horas, direto do Jira |
+| Análise | `.handoff-backend.md` / `.handoff-mobile.md`, com prévia, edição e @ |
+| TODO | Quadro do Atelier (A fazer / Fazendo / Feito), em lista ou quadro |
+| Decisões | Perguntas do Claude respondidas e mensagens suas classificadas como decisão (hook `decisoes.py`) |
+| Dúvidas | O que você marcou como **Tirar dúvida**; **Enviar para os comentários do ticket** mostra a prévia e comenta no Jira |
+
+**Rodapé**: 🔔 notificações do ticket com contador de não lidas (o Claude terminou, pediu permissão, passo da spec pronto, dúvida registrada). Abrir marca como lidas.
+
+Na primeira vez que fala com o Jira, pede o e-mail e o API token; os dois ficam no cofre de senhas do VS Code.
+
+### Modo refinamento e Spec (plugin `sdd`)
+
+- **▶** abre uma conversa nova; o hook do plugin a vincula ao ticket e o Claude cria a spec no repositório de specs (`craftingTable.specsDir`, padrão `~/specs`, uma pasta `<CHAVE>-<slug>/` por ticket) sozinho. Spec pronta → **Dar início**: o Claude segue os passos e continua sozinho a cada aprovação. **⏸** pausa depois da etapa atual. Se o Claude não começar em 25 s, aparece **Abrir com o comando**.
+- Passos: `0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano → 4 Tarefas → 5 Análise (Portão 2) → 6 Implementação`, em `<specs>/constitution.md` e `<specs>/<CHAVE>-<slug>/`.
+- Cores: cinza pendente, azul Claude trabalhando, amarelo aguardando revisão, verde aprovado, laranja desatualizado (**Reconciliar**).
+- **Só você aprova**, pela aba Spec, depois de abrir o arquivo. Um hook do plugin impede o Claude de aprovar ou editar o estado.
+- No modo refinamento toda pergunta do Claude tem a opção **Tirar dúvida**: ela vai para a aba Dúvidas em vez de virar decisão.
 
 ## Mencionar no Claude (@)
 
-O `@` do chat do Claude só lista arquivos do projeto aberto, e outra extensão não consegue acrescentar itens a ele. Por isso cada item das abas tem um botão **@**, que cola a referência na conversa atual (sem enviar) para você completar a frase:
+O `@` do chat do Claude só lista arquivos do projeto aberto. Cada item das abas tem um botão **@**, que abre a conversa do ticket no editor e cola a referência (sem enviar):
 
-| Aba | O que o @ cola |
+| Onde | O que o @ cola |
 |---|---|
-| Documentos, Evidências | `@/caminho/do/arquivo`, que o Claude Code lê |
-| Notas | `@/caminho/da/nota` e o trecho selecionado, se houver |
-| Ticket | `WMS-123 (link do Jira)` |
+| Documentos, Evidências, Análise | `@/caminho/do/arquivo` |
+| Notas | `@/caminho/da/nota` e o trecho selecionado |
 | Comandos | nome, comando, pasta, situação e PIDs |
 | Emuladores | AVD, serial, PID e os caminhos do `emulator` e do `adb` |
 | Cofre | `$NOME` e como usar pelo `cofre` (nunca o valor) |
 
-## Abas
+## Seções de fora do ticket
 
-### ✳ Claude
-O chat oficial do Claude Code, sem alterações.
-
-### 📖 Notas
-Bloco de notas **por conversa** do Claude, com salvamento automático em `~/.claude/documentos/<id-da-conversa>/.notas.html`. Conversa nova = nota em branco.
-- **T** título, **1.** lista numerada, **•** lista com marcador (`Ctrl+Alt+1`, `Ctrl+Shift+7`, `Ctrl+Shift+8`)
-- **🔍** busca na nota (`Ctrl+F`; Enter = próxima, Shift+Enter = anterior)
-- **✳ Claude** cola o texto selecionado (ou a nota inteira) na conversa atual do Claude, sem enviar
-
-### 🌐 Ticket
-Lista de tickets do Jira.
-- **+ Adicionar ticket**: cole o link (`.../browse/WMS-123` ou `?selectedIssue=WMS-123`)
-- Clique abre o ticket: status, tipo, prioridade, responsável, descrição e subtarefas
-- **✳ Adicionar ao Claude** cola `Leia esse ticket <link>` na conversa atual do Claude
-- **🔍** filtra a lista por chave ou título
-- Na primeira vez, pede o e-mail e o API token do Jira. Os dois ficam no cofre de senhas do VS Code.
-
-### 🧭 Refinamentos
-Um refinamento por atividade, **técnico** ou **funcional**, cada um com a sua conversa do Claude.
-- **＋ Refinamento**: título, tipo e link do ticket (opcional). Abre uma **conversa nova** no Claude já com o pedido escrito; ao enviar a primeira mensagem, ela é vinculada ao refinamento e recebe o mesmo título.
-- Lista com **@** (mencionar), **✎** (editar) e **✕** (excluir: notas, TODO e handoffs vão para a lixeira; a conversa fica).
-- Dentro: **✳ Abrir conversa** e o menu **Docs · Ticket · Backend · Mobile · Notas · TODO**:
-  - Docs: documentos da conversa vinculada
-  - Ticket: link, abrir no Jira, mencionar, trocar
-  - Backend / Mobile: `handoff-backend.md` e `handoff-mobile.md` (o que foi analisado em cada repositório), com prévia, edição e @
-  - Notas: post-it do refinamento
-  - TODO: o quadro do Atelier (A fazer / Fazendo / Feito), em lista ou quadro, com arrastar
-  - Decisões: histórico (mais recente primeiro) com data e título; clique abre o resumo. Gravado pelo hook `~/.claude/hooks/decisoes.py`: perguntas do Claude respondidas (exato) e mensagens suas que o Haiku classifica como decisão (em segundo plano)
-- Tudo fica em `~/.claude/refinamentos/<id>/`.
-- **Tipo Spec** (plugin `sdd`, instalado como `sdd@crafting-local` a partir de `~/.claude/plugins-locais/crafting`): ao criar, escolhe o repositório. **▶ Iniciar/Continuar spec** cola `/sdd:iniciar` ou `/sdd:continuar` na conversa do refinamento. A aba **Constituição** mostra os 7 passos (0 Constituição → 6 Implementação): cinza = pendente, azul pulsando = Claude trabalhando, amarelo = aguardando revisão (**Aprovar** só depois de abrir o arquivo; portões 1 e 2 travam com pergunta aberta ou achado bloqueante), verde = aprovado, laranja = desatualizado (**Reconciliar**). Os arquivos ficam em `<repo>/constitution.md` e `<repo>/specs/NNN-<feature>/` (spec.md, plan.md, tasks.md, analise.md, sdd-state.json). Aprovar é só humano: o hook do plugin bloqueia o Claude de aprovar ou editar o estado.
-
-### 📄 Documentos
-Documentos que o Claude criou **na conversa ativa**. Uma conversa nova começa com a aba vazia.
-- Pasta por conversa: `~/.claude/documentos/<id-da-conversa>/`
-- O Claude é avisado no início de cada conversa de que deve salvar documentos nessa pasta
-- Todo `.md/.html/.pdf/.docx/.xlsx/.pptx/.csv/.txt` que ele criar em outro lugar ganha um atalho na pasta
-- Clique abre o documento; **✕** tira o atalho (o original continua) ou manda o arquivo para a lixeira
-
-Funciona com hooks do Claude Code (veja *Instalação*). Trocar para uma conversa antiga só atualiza a aba depois da próxima mensagem nela.
+Abertas pelo menu, com o mesmo cabeçalho e rodapé do ticket.
 
 ### ▶ Comandos
 Botões configuráveis para subir backend, Metro, `yarn start` etc.
-- **+ Novo botão**: nome, comando e pasta
+- **＋ Adicionar**: nome, comando e pasta
 - **▶** roda num terminal com o nome do botão; **■** para
 - **⋯** lista os processos que o botão iniciou, com PID, e permite matar um ou todos
 - **✎** edita, **✕** remove
 
 ### 📷 Evidências
-Prints e vídeos do emulador **por conversa** do Claude, em `~/.claude/documentos/<id-da-conversa>/evidencias/`. O ticket da branch atual só entra no nome dos arquivos.
+Prints e vídeos do emulador **por ticket**, em `<pasta do ticket>/evidencias/` (sem ticket: `~/.claude/documentos/<id-da-conversa>/evidencias/`). O ticket da branch atual só entra no nome dos arquivos.
 - **📷 Print** salva a tela do emulador
 - **⏺ Gravar / ⏹ Parar** grava a tela (o Android limita a 3 min)
 - Galeria atualiza sozinha; clique abre, **✕** manda para a lixeira
@@ -95,7 +87,7 @@ Conversas do Claude Code deste projeto, da mais recente para a mais antiga, com 
 - A conversa aberta agora (🟢) não pode ser excluída
 - Documentos que eram atalhos para arquivos do repositório: some o atalho, o original fica
 
-### 📱 Emuladores
+### 📱 Emuladores (dentro de Comandos)
 Todos os AVDs da máquina.
 - Clicar no **📱** do cabeçalho traz o emulador aberto para frente
 - **▶** liga com janela, **■** desliga, **🧹** wipe data (apaga os dados e liga do zero)
@@ -123,7 +115,8 @@ Peças de fora do VS Code:
 
 | Peça | Para quê | Onde |
 |---|---|---|
-| Hooks do Claude Code | abas Documentos, Notas e Evidências (conversa ativa) | `~/.claude/settings.json` + `~/.claude/hooks/documentos.py` |
+| Hooks do Claude Code | pasta da conversa/ticket, Decisões e Notificações | `~/.claude/settings.json` + `~/.claude/hooks/documentos.py`, `decisoes.py`, `notificacoes.py` |
+| Plugin `sdd` | Spec e modo refinamento | `sdd@crafting-local` |
 | Hook da skill de testes | integração com `testes-funcionais` | `~/.claude/settings.json` (PreToolUse/PostToolUse Bash) + `~/.claude/hooks/crafting-testes.py` |
 | Extensão do GNOME `claude-abas-janelas@local` | trazer o emulador para frente no Wayland | `~/.local/share/gnome-shell/extensions/` (vale depois de sair e entrar na sessão) |
 | Android SDK | Evidências e Emuladores | `$ANDROID_HOME` ou `~/Android/Sdk` |
@@ -137,6 +130,6 @@ Bibliotecas: `@grpc/grpc-js` e `@grpc/proto-loader` (print do emulador).
 
 ## Limitações conhecidas
 
-- **✳ Adicionar ao Claude** cola pela área de transferência (a extensão do Claude não tem API para escrever na conversa atual). A área de transferência volta ao conteúdo anterior logo depois.
+- O **@** cola pela área de transferência (a extensão do Claude não tem API para escrever na conversa atual). A área de transferência volta ao conteúdo anterior logo depois.
 - A colagem depende de tempo (0,3 s para abrir e 0,3 s para focar a caixa); numa máquina lenta o texto pode não entrar.
 - Vídeos abrem no player do sistema: o VS Code não reproduz mp4.

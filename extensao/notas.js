@@ -1,42 +1,13 @@
-const vscode = require('vscode');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-
-const sessao = require('./sessao');
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-// Uma nota por conversa do Claude: <pasta da conversa>/.notas.html.
+// Editor de notas (aba Docs do ticket): <pasta do ticket ou da conversa>/.notas.html e .notas.json (aparência).
 // HTML em vez de .md: título e listas vêm do editor do próprio navegador (contenteditable).
-const arquivo = (sid) => path.join(sessao.pasta(sid), '.notas.html');
-const carregar = (sid) => { try { return fs.readFileSync(arquivo(sid), 'utf8'); } catch { return ''; } };
-
 // Aparência da nota, copiada do Atelier (makeStickyNoteContent / typography.ts): post-it amarelo, Mono 14.
 const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: '#FEFDE8', alinhamento: 'left' };
-const arquivoEstilo = (sid) => path.join(sessao.pasta(sid), '.notas.json');
-const carregarEstilo = (sid) => { try { return { ...ESTILO_PADRAO, ...JSON.parse(fs.readFileSync(arquivoEstilo(sid), 'utf8')) }; } catch { return { ...ESTILO_PADRAO }; } };
 
-const semConversa = `<!doctype html><html><head><meta charset="utf-8"></head>
-<body style="font-family:var(--vscode-font-family);color:var(--vscode-descriptionForeground);padding:28px 12px;text-align:center;line-height:1.6">
-<div style="font-size:28px;opacity:.6">📝</div>Nenhuma conversa detectada ainda neste projeto.<br>Envie uma mensagem no Claude.</body></html>`;
-
-const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO_PADRAO) => `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>
-  /* Tokens do Atelier (renderer/styles/tokens.css) ligados ao tema do VS Code. */
-  :root { --surface: var(--vscode-editorWidget-background, #232328); --surface-2: var(--vscode-toolbar-hoverBackground, #2a2a30);
-    --border: var(--vscode-widget-border, #3a3a42); --text: var(--vscode-foreground, #ececf0); --text-dim: var(--vscode-descriptionForeground, #9a9aa4);
-    --accent: #007aff; --rope-error: #e74c3c; --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-pill: 999px; --s-1: 4px;
-    --fs-xs: 10px; --fs-sm: 11px; --fs-md: 12px; --dur-fast: 140ms; }
-  html, body { height: 100%; margin: 0; }
-  body { display: flex; flex-direction: column; color: var(--text); font-family: var(--vscode-font-family); }
-  button { font: inherit; }
-  .topo { padding: 10px 12px 8px; display: flex; align-items: baseline; gap: 8px; }
-  .topo .rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); flex: none; }
-  .topo .titulo { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .topo .estado { flex: none; font-size: 10.5px; color: var(--text-dim); }
-  .topo .estado.ok::before { content: '● '; color: #4fb477; }
-
+// Peças do editor (barras de formatação, busca, papel e o script), também usadas na aba Docs do ticket (painel.js).
+// O script fala com a extensão por { tipo: 'salvar' | 'estilo' | 'mencionar' | 'colar', sid } e recebe { tipo: 'colado', texto }.
+const CSS_NOTAS = `<style>
   /* ── Barra de formatação do Atelier (renderer/styles/nodes/format-bar.css) ── */
   .barras { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 12px 10px; }
   .format-bar { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border);
@@ -86,16 +57,13 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
   .fb-clear { border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--text-dim); font-size: var(--fs-sm); padding: 2px 7px; cursor: pointer; }
   .fb-clear:hover { color: var(--text); background: var(--surface-2); }
   .barras .espaco { flex: 1; }
-  #claude { height: 32px; padding: 0 12px; border: none; border-radius: var(--r-md); cursor: pointer; font-size: var(--fs-md); font-weight: 600;
-    background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-  #claude:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
 
   /* ── Papel da nota (post-it do Atelier) ── */
-  .folha { flex: 1; min-height: 0; margin: 0 12px 12px; border-radius: var(--r-lg); display: flex; flex-direction: column;
+  .papel { flex: 1; min-height: 0; margin: 0 12px 12px; border-radius: var(--r-lg); display: flex; flex-direction: column;
     background: var(--papel); color: var(--tinta); box-shadow: 0 4px 16px rgb(0 0 0 / 16%); }
   #ed { flex: 1; overflow: auto; outline: none; padding: 10px 12px; line-height: 1.55; user-select: text;
     font-family: var(--fonte); font-size: var(--tamanho); text-align: var(--alinhamento); }
-  #ed:empty::before { content: 'Escreva suas notas desta conversa…'; color: color-mix(in srgb, currentColor 45%, transparent); }
+  #ed:empty::before { content: attr(data-vazio); color: color-mix(in srgb, currentColor 45%, transparent); }
   #ed h2 { font-size: 1.25em; margin: .8em 0 .35em; padding-bottom: .2em; border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
   #ed h2:first-child { margin-top: 0; }
   #ed ol, #ed ul { margin: .3em 0; padding-left: 1.5em; text-align: left; }
@@ -110,13 +78,8 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
   #busca button:hover { background: var(--surface-2); }
   ::highlight(busca) { background: rgba(255, 196, 0, .45); }
   ::highlight(atual) { background: rgba(255, 140, 0, .75); }
-</style></head><body>
-<div class="topo">
-  <span class="rotulo">Notas</span>
-  <span class="titulo" title="${esc(titulo)}">${esc(titulo)}</span>
-  <span class="estado ok" id="estado">Salvo</span>
-</div>
-<div class="barras">
+</style>`;
+const corpoNotas = (vazio = 'Escreva suas notas desta conversa…') => `<div class="barras">
   <div class="format-bar" id="fb">
     <div class="fb-pop-host">
       <button type="button" class="icon-btn fb-btn fb-wide" data-pop="fonte" title="Fonte"><span id="fonteNome">Mono</span> <span class="fb-caret">▾</span></button>
@@ -166,8 +129,6 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
     <button class="icon-btn fb-btn" id="mencionar" title="Mencionar a nota no Claude (com o trecho selecionado, se houver)">@</button>
     <button class="icon-btn fb-btn" id="lupa" title="Buscar nas notas (Ctrl+F)"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
   </div>
-  <span class="espaco"></span>
-  <button id="claude" title="Adicionar ao Claude (o texto selecionado, ou a nota inteira)">✳ Claude</button>
 </div>
 <div id="busca" hidden>
   <input placeholder="Buscar na nota…" spellcheck="false">
@@ -176,10 +137,11 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
   <button data-ir="1" title="Próximo (Enter)">↓</button>
   <button data-fechar title="Fechar (Esc)">✕</button>
 </div>
-<div class="folha">
-<div id="ed" contenteditable="true" spellcheck="false"></div>
+<div class="papel">
+<div id="ed" contenteditable="true" spellcheck="false" data-vazio="${esc(vazio)}"></div>
 </div>
-<script nonce="${nonce}">
+`;
+const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   const vscode = acquireVsCodeApi();
   const ed = document.getElementById('ed');
   const SID = ${JSON.stringify(sid)};
@@ -211,11 +173,7 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
     vscode.postMessage({ tipo: 'mencionar', sid: SID, html: ed.innerHTML, trecho: String(getSelection()).trim() });
   });
 
-  document.getElementById('claude').addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const sel = String(getSelection()).trim();
-    vscode.postMessage({ tipo: 'claude', texto: sel || ed.innerText.trim() });
-  });
+
 
   // Busca: destaca todas as ocorrências (CSS Custom Highlight, sem mexer no texto salvo).
   const busca = document.getElementById('busca');
@@ -273,6 +231,8 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
 
   botoes.forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); aplicar(b.dataset.cmd); }));
   ed.addEventListener('input', salvar);
+  // Trocar de seção no menu da Conversa troca a página: grava antes o que estava esperando o atraso.
+  addEventListener('crafting:sair', () => { if (estado.textContent === 'Salvando…') { clearTimeout(t); vscode.postMessage({ tipo: 'salvar', html: ed.innerHTML, sid: SID }); } });
   document.addEventListener('selectionchange', marcar);
   ed.addEventListener('keydown', (e) => {
     const k = e.ctrlKey && (e.shiftKey ? { '&': 'insertOrderedList', '7': 'insertOrderedList', '*': 'insertUnorderedList', '8': 'insertUnorderedList' }[e.key]
@@ -301,7 +261,7 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
   const contraste = (fundo) => (luminancia(fundo) > 0.45 ? '#2a2a2a' : '#f0f0f2');
 
   let estiloNota = ${JSON.stringify(estilo).replace(/</g, '\\u003c')};
-  const folha = document.querySelector('.folha');
+  const folha = document.querySelector('.papel');
   const tamanhoSel = document.getElementById('tamanho');
   function aplicarEstilo(gravar) {
     const e = estiloNota, tinta = e.corTexto || contraste(e.corPapel);
@@ -350,40 +310,23 @@ const pagina = (nonce, conteudo, sid, titulo = 'Conversa atual', estilo = ESTILO
   document.querySelectorAll('#alinhar [data-align]').forEach((b) => b.addEventListener('click', () => mudar({ alinhamento: b.dataset.align })));
   aplicarEstilo(false);
 
-  // Colar sempre como texto puro, sem estilo de outro site.
+  // Colar sempre como texto puro, sem estilo de outro site. Ctrl+V pede o texto à extensão (a área de
+  // transferência do VS Code): dentro da view o evento paste nem sempre chega com o conteúdo.
   ed.addEventListener('paste', (e) => {
     e.preventDefault();
     document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
   });
-</script></body></html>`;
+  ed.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      vscode.postMessage({ tipo: 'colar', sid: SID });
+    }
+  });
+  addEventListener('message', (e) => {
+    if (e.data?.tipo !== 'colado' || !e.data.texto) return;
+    ed.focus();
+    document.execCommand('insertText', false, e.data.texto);
+  });
+})();`;
 
-exports.provider = () => vscode.window.registerWebviewViewProvider('claudeAbas.notas', {
-  resolveWebviewView(view) {
-    view.webview.options = { enableScripts: true };
-    const mostrar = (sid) => {
-      let titulo;
-      try { const c = require('./conversas')._teste; titulo = c.titulo(path.join(c.projeto(), `${sid}.jsonl`)); } catch {}
-      view.webview.html = sid ? pagina(crypto.randomBytes(16).toString('hex'), carregar(sid), sid, titulo, carregarEstilo(sid)) : semConversa;
-    };
-    mostrar(sessao.conversaAtual());
-    sessao.onDidChange(mostrar);
-    view.webview.onDidReceiveMessage((m) => {
-      // O sid vem da página: um salvamento atrasado nunca cai na nota de outra conversa.
-      if (m.tipo === 'salvar' && m.sid) {
-        fs.mkdirSync(sessao.pasta(m.sid), { recursive: true });
-        fs.writeFileSync(arquivo(m.sid), m.html);
-      }
-      if (m.tipo === 'estilo' && m.sid) {
-        fs.mkdirSync(sessao.pasta(m.sid), { recursive: true });
-        fs.writeFileSync(arquivoEstilo(m.sid), JSON.stringify(m.estilo));
-      }
-      if (m.tipo === 'mencionar' && m.sid) {
-        // Grava antes: o Claude vai ler o arquivo, não a tela.
-        fs.mkdirSync(sessao.pasta(m.sid), { recursive: true });
-        fs.writeFileSync(arquivo(m.sid), m.html);
-        require('./claude').mencionar(`@${arquivo(m.sid)}${m.trecho ? ` (trecho: "${m.trecho.slice(0, 300)}")` : ''}`);
-      }
-      if (m.tipo === 'claude' && m.texto) require('./claude').enviar(`Leia essas notas:\n\n${m.texto}`);
-    });
-  }
-}, { webviewOptions: { retainContextWhenHidden: true } });
+exports.editor = { CSS_NOTAS, corpoNotas, scriptNotas, ESTILO_PADRAO };

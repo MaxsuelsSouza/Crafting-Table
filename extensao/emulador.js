@@ -118,7 +118,7 @@ const estiloEmu = ESTILO_NOTAS + `<style>
   .ligado .estado .txt { color: var(--ok); }
   .ocupado .estado .txt { color: #e3a43b; }
   @keyframes pulso { 50% { opacity: .3; } }
-  .mono { font-family: var(--vscode-editor-font-family); font-size: 10.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; }
   .cartoes .procs { margin: 8px 0 0 38px; padding: 6px 8px; border-left: none; border-radius: var(--r-md); background: var(--surface-2); }
   .cartoes .proc .pid { min-width: 0; padding: 0 6px; border-radius: 8px; font-size: 10.5px; background: var(--surface); color: var(--accent); }
   .cartoes .procs .todos { font-size: 11px; margin-top: 6px; }
@@ -225,14 +225,15 @@ exports.provider = () => {
 
   return vscode.Disposable.from(
     { dispose: () => clearInterval(timer) },
-    vscode.window.registerWebviewViewProvider('claudeAbas.emuladores', {
+    require('./grupo').registrar('claudeAbas.emuladores', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };
         view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));
         // Emulador liga/desliga por fora (janela fechada, wms-hub): confere a cada 3 s enquanto visível.
         const vigiar = () => { clearInterval(timer); if (view.visible) timer = setInterval(render, 3000); };
-        view.onDidChangeVisibility(() => { vigiar(); render(true); });
+        // Abrir a seção traz para frente os emuladores ligados (como fazia o ícone do celular).
+        view.onDidChangeVisibility(() => { vigiar(); render(true); if (view.visible) exports.focarAbertos(); });
         vigiar();
         render(true);
       }

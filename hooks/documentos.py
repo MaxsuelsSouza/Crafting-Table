@@ -14,15 +14,30 @@ import os
 import sys
 
 RAIZ = os.path.expanduser("~/.claude/documentos")
+TICKETS = os.path.expanduser("~/.claude/tickets")
 CLAUDE = os.path.expanduser("~/.claude") + os.sep
 EXTENSOES = {".md", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt"}
+
+
+def ticket_da(sid):
+    """Chave do ticket a que a conversa foi vinculada pela extensao (tickets/.conversas/<sid>), ou None."""
+    try:
+        return open(os.path.join(TICKETS, ".conversas", sid)).read().strip() or None
+    except OSError:
+        return None
+
+
+def pasta_da_conversa(sid):
+    """Pasta da conversa: a do ticket vinculado, senao documentos/<sid>. Mesmo criterio de sessao.js."""
+    t = ticket_da(sid)
+    return os.path.join(TICKETS, t) if t else os.path.join(RAIZ, sid)
 
 
 def marcar(dados):
     sid, cwd = dados.get("session_id"), dados.get("cwd")
     if not sid or not cwd:
         return None
-    pasta = os.path.join(RAIZ, sid)
+    pasta = pasta_da_conversa(sid)
     os.makedirs(pasta, exist_ok=True)
     os.makedirs(os.path.join(RAIZ, ".atual"), exist_ok=True)
     with open(os.path.join(RAIZ, ".atual", hashlib.sha1(cwd.encode()).hexdigest()[:16]), "w") as f:
@@ -35,7 +50,7 @@ def atalho(dados, pasta):
     arquivo = os.path.realpath(arquivo) if arquivo else ""
     if not arquivo or os.path.splitext(arquivo)[1].lower() not in EXTENSOES:
         return
-    if arquivo.startswith(CLAUDE):  # memória, planos e o próprio ~/.claude/documentos
+    if arquivo.startswith(CLAUDE):  # memória, planos, ~/.claude/documentos e ~/.claude/tickets
         return
     base, ext = os.path.splitext(os.path.basename(arquivo))
     destino, n = os.path.join(pasta, base + ext), 1
@@ -69,7 +84,8 @@ def main():
         return
     if evento == "SessionStart":
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": cofre() +
-            f"Pasta de documentos desta conversa: {pasta}\n"
+            (f"Esta conversa pertence ao ticket {ticket_da(dados['session_id'])}. Pasta de documentos do ticket: {pasta}\n"
+             if ticket_da(dados["session_id"]) else f"Pasta de documentos desta conversa: {pasta}\n") +
             "Salve ali todo documento que você criar para o usuário e que não faça parte do código do repositório "
             "(relatórios, análises, planos, resumos, roteiros de teste, .md/.html/.pdf/.docx/.xlsx/.csv). "
             "O usuário vê essa pasta na aba Documentos do VS Code. "

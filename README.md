@@ -2,40 +2,35 @@
 
 Bancada de trabalho para o **Claude Code no VS Code**. Fica ao lado do chat oficial do Claude, sem modificá-lo, e acrescenta as ferramentas do dia a dia de quem desenvolve com ele: tickets do Jira, notas, documentos e evidências por conversa, botões de comando, emuladores Android, um cofre de senhas e refinamentos com **Spec Driven Development** guiado.
 
-```
-✳  🧭  🌐  📄  📖  ▶  📷  🔒  ☰  📱  👥
-Claude · Refinamentos · Ticket · Documentos · Notas · Comandos · Evidências · Cofre · Conversas · Emuladores · Teams
-```
+Barra lateral: **✳ Claude** · **🎫 Tickets** · **YouTube Music**.
 
 ## O que ela faz
 
-| Aba | Em uma linha |
+O **ticket do Jira é o centro**: abra um ticket e tudo dele fica junto, numa pasta por ticket.
+
+| No ticket | Em uma linha |
 |---|---|
-| ✳ **Claude** | O chat oficial do Claude Code, movido para dentro da Crafting Table. |
-| 🧭 **Refinamentos** | Um refinamento por atividade (técnico, funcional ou **Spec**), cada um com sua conversa, docs, ticket, handoffs backend/mobile, notas, TODO e histórico de decisões. |
-| 🌐 **Ticket** | Lista de tickets do Jira com descrição, subtarefas, comentários e horas. |
-| 📄 **Documentos** | Relatórios e análises que o Claude criou na conversa ativa. |
-| 📖 **Notas** | Bloco de notas por conversa, com títulos, listas e busca. |
-| ▶ **Comandos** | Botões para subir API, Metro etc., com lista e kill de processos. |
-| 📷 **Evidências** | Prints e gravações do emulador por conversa. |
-| 🔒 **Cofre** | Senhas que o Claude **usa sem ver o valor** (a saída volta mascarada). |
-| ☰ **Conversas** | Conversas do projeto; excluir apaga a conversa e tudo dela. |
-| 📱 **Emuladores** | Liga, desliga, wipe e traz para frente os AVDs da máquina. |
+| **Docs** | Documentos que o Claude criou, anexos do Jira para baixar e as notas do ticket. |
+| **Spec** | Os 7 passos do Spec Driven Development (plugin `sdd`), com aprovação só humana. |
+| **Ticket** | Descrição, subtarefas, comentários e horas do Jira. |
+| **Análise** | Handoffs de backend e mobile. |
+| **TODO** | Quadro A fazer / Fazendo / Feito. |
+| **Decisões** | Perguntas respondidas e decisões tomadas no chat. |
+| **Dúvidas** | Perguntas do Claude que você marcou como "Tirar dúvida"; um clique comenta no Jira. |
+| **Comandos · Evidências · Cofre · Conversas** | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |
+| **🔔 Rodapé** | Notificações do ticket: Claude terminou, pediu permissão, passo pronto para revisão. |
 
 Todo item tem um botão **@** que cola a referência na conversa do Claude.
 
-### Spec Driven Development (plugin `sdd`)
+### Modo refinamento (plugin `sdd`)
 
-O tipo de refinamento **Spec** conduz a feature em 7 passos, com revisão humana entre eles:
+**▶** no ticket abre uma conversa nova e o Claude cria a spec sozinho; **Dar início** e ele percorre os passos, continuando sozinho a cada aprovação; **⏸** pausa.
 
 `0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano técnico → 4 Tarefas → 5 Análise (Portão 2) → 6 Implementação`
 
-- Os arquivos ficam no repositório escolhido: `constitution.md` e `specs/NNN-<feature>/` (`spec.md`, `plan.md`, `tasks.md`, `analise.md`, `sdd-state.json`).
-- A aba **Constituição** mostra cada passo: cinza (pendente), azul (Claude trabalhando), amarelo (aguardando revisão), verde (aprovado), laranja (desatualizado).
-- **Só você aprova**: o botão Aprovar libera depois de abrir o arquivo; um hook impede o Claude de aprovar ou editar o estado.
-- Ao aprovar, o Claude **acorda sozinho** na conversa e segue para o próximo passo.
-- Editou um arquivo já aprovado? O passo volta para revisão, os dependentes ficam desatualizados e **Ver mudanças** mostra o diff contra a versão aprovada.
-- Dá para parar em qualquer passo e continuar outro dia: **▶ Continuar spec** retoma de onde parou.
+- Os arquivos ficam num repositório git de specs (`craftingTable.specsDir`): `constitution.md` e uma pasta `<CHAVE>-<slug>/` por ticket.
+- **Só você aprova**, na aba Spec, depois de abrir o arquivo; um hook impede o Claude de aprovar ou editar o estado.
+- Editou um arquivo já aprovado? O passo volta para revisão, os dependentes ficam desatualizados e **Ver mudanças** mostra o diff.
 
 Detalhes de cada aba: [`extensao/README.md`](extensao/README.md).
 
@@ -101,7 +96,9 @@ O script faz, e pode ser rodado de novo sem estragar nada:
        ],
        "PreToolUse": [
          { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/crafting-testes.py 2>/dev/null || true", "timeout": 1000 }] }
-       ]
+       ],
+       "Stop": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/notificacoes.py 2>/dev/null || true", "timeout": 10 }] }],
+       "Notification": [{ "hooks": [{ "type": "command", "command": "python3 ~/.claude/hooks/notificacoes.py 2>/dev/null || true", "timeout": 10 }] }]
      }
    }
    ```
@@ -111,8 +108,8 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 ## Primeiros passos
 
 1. Clique no ícone da **mesa** na barra lateral do VS Code. O chat do Claude aparece ali dentro.
-2. **Ticket**: na primeira vez a aba pede e-mail e API token do Jira ([criar token](https://id.atlassian.com/manage-profile/security/api-tokens)). Ficam no cofre de senhas do VS Code.
-3. **Refinamentos → ＋ Refinamento → tipo Spec**: escolha o repositório e clique em **▶ Iniciar spec**. Envie a mensagem que aparece no chat.
+2. **Tickets → ＋ Novo ticket**: cole o link do Jira. Na primeira vez pede e-mail e API token ([criar token](https://id.atlassian.com/manage-profile/security/api-tokens)), guardados no cofre de senhas do VS Code.
+3. No ticket aberto, **▶** inicia o modo refinamento: o Claude cria a spec em `craftingTable.specsDir` (padrão `~/specs`) e espera **Dar início**.
 4. **Cofre**: crie `NOME_DA_CHAVE`, marque **env ✓**, e o Claude passa a usar `$NOME_DA_CHAVE` sem ver o valor.
 
 ## Problemas comuns
@@ -120,9 +117,10 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 | Sintoma | Solução |
 |---|---|
 | A mesa não aparece na barra lateral | Feche o VS Code inteiro (`Ctrl+Q`) e abra de novo; confira o link com `ls -l ~/.vscode/extensions/claude-abas`. |
-| Aba Documentos/Notas vazia numa conversa antiga | Os hooks só identificam a conversa depois da próxima mensagem nela. |
+| Docs vazio em "Sem ticket" numa conversa antiga | Os hooks só identificam a conversa depois da próxima mensagem nela. |
 | `Plugin sdd não encontrado` | `claude plugin install sdd@crafting-local`. |
-| Aprovar da aba Constituição apagado com aviso "Continuar spec" | O VS Code recarregou e o Claude não está esperando: clique em **▶ Continuar spec**; com a conversa aberta, o Aprovar volta em segundos. |
+| Aprovar da aba Spec apagado | O VS Code recarregou e o Claude não está esperando: clique em **▶** no topo do ticket; com a conversa aberta, o Aprovar volta em segundos. |
+| ▶ não fez o Claude começar | Em 25 s aparece **Abrir com o comando**: ele abre a conversa com o comando escrito, é só enviar. |
 | Mudou o plugin e nada aconteceu | Suba `version` em `plugin/plugins/sdd/.claude-plugin/plugin.json`, rode `claude plugin marketplace update crafting-local && claude plugin update sdd@crafting-local` e abra uma conversa nova. |
 
 ## Estrutura do repositório
@@ -130,7 +128,7 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 ```
 extensao/   extensão do VS Code (id local.claude-abas)
 plugin/     marketplace local "crafting-local" com o plugin sdd (skill, comandos, sdd-state, hooks)
-hooks/      hooks do Claude Code: documentos.py, decisoes.py, crafting-testes.py
+hooks/      hooks do Claude Code: documentos.py, decisoes.py, notificacoes.py, crafting-testes.py
 gnome/      extensão do GNOME para trazer janelas para frente
 instalar.sh instalação em um comando
 ```

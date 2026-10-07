@@ -1,5 +1,4 @@
 const vscode = require('vscode');
-const crypto = require('crypto');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
@@ -43,7 +42,7 @@ async function buscar(secrets, { key, site }) {
   };
   // Filhos pela JQL `parent`: cobre subtarefas de história e histórias de Feature/Épico (o campo `subtasks` só traz as primeiras).
   const [j, filhos] = await Promise.all([
-    jira(`issue/${key}?fields=summary,status,assignee,issuetype,priority,description,timetracking,comment&expand=renderedFields`),
+    jira(`issue/${key}?fields=summary,status,assignee,issuetype,priority,description,timetracking,comment,attachment&expand=renderedFields`),
     jira(`search/jql?jql=${encodeURIComponent(`parent = ${key} ORDER BY created ASC`)}&fields=summary,status,issuetype,assignee&maxResults=100`)
   ]);
   const tt = j.fields.timetracking || {};
@@ -62,63 +61,28 @@ async function buscar(secrets, { key, site }) {
       key: f.key, resumo: f.fields.summary, status: f.fields.status?.name, tipo: f.fields.issuetype?.name,
       responsavel: f.fields.assignee?.displayName
     })),
+    // Anexos: o conteúdo baixa com a mesma autenticação (a URL redireciona para o armazenamento do Jira).
+    anexos: (j.fields.attachment || []).map((a) => ({ id: String(a.id), nome: a.filename, tamanho: a.size, url: a.content, criado: a.created })),
     comentarios: comentarios.map((c, n) => ({
       autor: c.author?.displayName, data: c.created, corpo: renderizados[n]?.body || ''
     })).reverse() // mais recente primeiro
   };
 }
 
-const estilo = `
-  /* Mesmos tokens e peças das Notas (Atelier: tokens.css + format-bar.css). */
-  :root { --surface: var(--vscode-editorWidget-background, #232328); --surface-2: var(--vscode-toolbar-hoverBackground, #2a2a30);
-    --border: var(--vscode-widget-border, #3a3a42); --text: var(--vscode-foreground, #ececf0); --text-dim: var(--vscode-descriptionForeground, #9a9aa4);
-    --accent: #007aff; --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --r-pill: 999px; --fs-xs: 10px; --fs-sm: 11px; --fs-md: 12px; --sombra: 0 4px 16px rgb(0 0 0 / 16%); }
-  body { font-family: var(--vscode-font-family); color: var(--text); padding: 0; margin: 0; }
-  button { font: inherit; cursor: pointer; }
-  .topo { padding: 10px 12px 8px; display: flex; align-items: baseline; gap: 8px; }
-  .topo .rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); flex: none; }
-  .topo .titulo { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .topo .extra { flex: none; font-size: 10.5px; color: var(--text-dim); }
-  .barras { display: flex; align-items: center; gap: 6px; padding: 0 12px 10px; }
-  .format-bar { display: flex; align-items: center; gap: 2px; padding: 4px; background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--r-lg); box-shadow: var(--sombra); white-space: nowrap; }
-  .fb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
-  .fb-btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 24px; height: 24px; padding: 0 7px;
-    border: 0; border-radius: var(--r-md); background: transparent; color: var(--text); font-size: var(--fs-md); line-height: 1; }
-  .fb-btn:hover { background: var(--surface-2); }
-  .fb-btn svg { width: 13px; height: 13px; }
-  .busca { flex: 1; min-width: 0; padding: 4px 8px; gap: 6px; color: var(--text-dim); }
-  .busca:focus-within { border-color: var(--accent); }
-  .busca svg { width: 13px; height: 13px; flex: none; }
-  #filtro { flex: 1; min-width: 0; height: 24px; border: none; outline: none; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-md); }
-  .primario { flex: none; height: 34px; padding: 0 12px; border: none; border-radius: var(--r-md); font-size: var(--fs-md); font-weight: 600;
-    background: var(--vscode-button-background); color: var(--vscode-button-foreground); box-shadow: var(--sombra); }
-  .primario:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
-  .espaco { flex: 1; }
-  .erro { color: var(--vscode-errorForeground); font-size: 12px; margin: 0 12px 8px; }
-  .vazio { color: var(--text-dim); }
-  .centro { text-align: center; margin-top: 24px; line-height: 1.6; font-size: 12.5px; }
-  .centro .icone { font-size: 28px; opacity: .6; }
+// Comentário no ticket (corpo ADF: um parágrafo por linha).
+async function comentar(secrets, { key, site }, texto) {
+  const auth = await credenciais(secrets);
+  if (!auth) throw new Error('Credenciais do Jira não informadas');
+  const content = texto.split('\n').map((l) => (l.trim() ? { type: 'paragraph', content: [{ type: 'text', text: l }] } : { type: 'paragraph' }));
+  const r = await fetch(`${site}/rest/api/3/issue/${key}/comment`, {
+    method: 'POST', headers: { Authorization: auth, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body: { type: 'doc', version: 1, content } })
+  });
+  if (!r.ok) throw new Error(`Jira respondeu ${r.status} ao comentar em ${key}`);
+}
 
-  /* ── Lista: cada ticket é uma folha, como a nota ── */
-  ul { list-style: none; padding: 0; margin: 0; }
-  ul.tickets { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; }
-  ul.tickets li { padding: 9px 10px 10px 12px; border-radius: var(--r-lg); cursor: pointer; background: var(--surface);
-    border: 1px solid var(--border); border-left: 3px solid var(--cor); box-shadow: var(--sombra); transition: border-color 140ms, transform 140ms; }
-  ul.tickets li:hover { border-color: var(--accent); border-left-color: var(--cor); transform: translateY(-1px); }
-  li[hidden], ul.tickets li[hidden] { display: none; }
-  ul.tickets .cab { display: flex; align-items: center; gap: 8px; }
-  ul.tickets .key { font-family: var(--vscode-editor-font-family); font-size: 12px; font-weight: 600; color: var(--accent); }
-  .pill { font-size: 10px; padding: 1px 7px; border-radius: 9px; color: var(--cor); background: color-mix(in srgb, var(--cor) 16%, transparent); white-space: nowrap; }
-  ul.tickets .botoes { margin-left: auto; display: flex; gap: 1px; opacity: 0; transition: opacity 140ms; }
-  ul.tickets li:hover .botoes { opacity: 1; }
-  .x { height: 22px; min-width: 22px; padding: 0 5px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-dim); font-size: 12px; }
-  .x:hover { background: var(--surface-2); color: var(--text); }
-  ul.tickets .titulo { margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: var(--text); opacity: .88;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .st-novo { --cor: #8b949e; } .st-andando { --cor: #e3a43b; } .st-ok { --cor: #4fb477; }
-  #semResultado { margin: 0 12px; }
-
+// Estilo da folha do ticket (aba Ticket do painel).
+const estiloDetalhe = `
   /* ── Detalhe: o conteúdo fica numa folha, como a nota ── */
   .folha { margin: 0 12px 12px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra); }
   .folha h3 { margin: 0 0 8px; font-size: 14px; line-height: 1.35; }
@@ -133,7 +97,7 @@ const estilo = `
   summary { cursor: pointer; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-bottom: 8px; }
   details ul li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r-md); cursor: pointer; }
   details ul li:hover { background: var(--surface-2); }
-  details ul .key { font-family: var(--vscode-editor-font-family); font-size: 11.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
+  details ul .key { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 600; color: var(--accent); white-space: nowrap; }
   details ul .resumo { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
   details ul .status { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
   .descricao { font-size: 12.5px; line-height: 1.55; }
@@ -141,88 +105,21 @@ const estilo = `
   .descricao table { display: block; overflow-x: auto; max-width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
   .descricao th, .descricao td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; min-width: 60px; }
   .descricao th { background: var(--surface-2); font-weight: 600; }
-  .descricao pre, .descricao code { white-space: pre-wrap; word-break: break-word; font-family: var(--vscode-editor-font-family); }
+  .descricao pre, .descricao code { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .descricao .confluence-information-macro, .descricao .panel { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0; }
   .comentario { padding: 8px 0; border-top: 1px solid var(--border); }
   .comentario:first-of-type { border-top: none; padding-top: 0; }
   .comentario .autor { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
 `;
 
-function pagina(nonce, corpo) {
-  return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>${estilo}</style></head><body>${corpo}
-<script nonce="${nonce}">
-  const vscode = acquireVsCodeApi();
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-acao]');
-    if (!el) return;
-    e.stopPropagation();
-    vscode.postMessage({ acao: el.dataset.acao, key: el.dataset.key });
-  });
-  // Filtro da lista por chave/título; o termo sobrevive ao redesenho da tela.
-  const filtro = document.getElementById('filtro');
-  if (filtro) {
-    const filtrar = () => {
-      const termos = filtro.value.toLowerCase().split(/\s+/).filter(Boolean);
-      let visiveis = 0;
-      document.querySelectorAll('li[data-key]').forEach((li) => {
-        li.hidden = !termos.every((t) => li.textContent.toLowerCase().includes(t));
-        if (!li.hidden) visiveis++;
-      });
-      document.getElementById('semResultado').hidden = visiveis > 0;
-      vscode.setState({ filtro: filtro.value });
-    };
-    filtro.value = vscode.getState()?.filtro || '';
-    filtro.addEventListener('input', filtrar);
-    filtrar();
-  }
-</script></body></html>`;
-}
-
-// Cor do status pela categoria do nome (o Jira não manda a categoria na lista salva).
-const corStatus = (st = '') => /conclu|done|fechad|resolv|pronto p\/qa|homolog/i.test(st) ? 'ok'
+const corStatus = (st = '') => /conclu|done|fechad|resolv|pronto p\/ ?qa|homolog/i.test(st) ? 'ok'
   : /andamento|progress|desenv|review|revis|teste|qa/i.test(st) ? 'andando' : 'novo';
-
-const LUPA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
-
-const telaLista = (tickets, erro) => `
-  <div class="topo"><span class="rotulo">Tickets</span><span class="titulo"></span>
-    <span class="extra">${tickets.length ? `${tickets.length} ticket${tickets.length === 1 ? '' : 's'}` : ''}</span></div>
-  <div class="barras">
-    ${tickets.length ? `<div class="format-bar busca">${LUPA}<input id="filtro" type="search" placeholder="Buscar por chave ou título" spellcheck="false"></div>` : '<span class="espaco"></span>'}
-    <button class="primario" data-acao="adicionar" title="Adicionar ticket pelo link do Jira">＋ Ticket</button>
-  </div>
-  ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-  ${tickets.length ? `<ul class="tickets">${tickets.map((t) => `
-    <li data-acao="abrir" data-key="${esc(t.key)}" class="st-${corStatus(t.status)}">
-      <div class="cab">
-        <span class="key">${esc(t.key)}</span>
-        ${t.status ? `<span class="pill">${esc(t.status)}</span>` : ''}
-        <span class="botoes">
-          <button class="x" data-acao="mencionar" data-key="${esc(t.key)}" title="Mencionar no Claude">@</button>
-          <button class="x" data-acao="remover" data-key="${esc(t.key)}" title="Remover da lista">✕</button>
-        </span>
-      </div>
-      <div class="titulo">${esc(t.resumo)}</div>
-    </li>`).join('')}</ul>
-  <p id="semResultado" class="vazio centro" hidden>Nenhum ticket encontrado.</p>`
-  : `<div class="vazio centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do Jira.</div>`}`;
 
 // A descrição vem como HTML do próprio Jira; a CSP acima impede que scripts dela rodem.
 const dataBr = (iso) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
-const telaTicket = (t) => `
-  <div class="topo"><span class="rotulo">Ticket</span><span class="titulo">${esc(t.key)}</span><span class="extra">${esc(t.tipo || '')}</span></div>
-  <div class="barras">
-    <div class="format-bar">
-      <button class="fb-btn" data-acao="voltar" title="Voltar para a lista">← Tickets</button>
-      <span class="fb-sep"></span>
-      <button class="fb-btn" data-acao="navegador" data-key="${esc(t.key)}" title="Abrir no Jira">Jira ↗</button>
-    </div>
-    <span class="espaco"></span>
-    <button class="primario" data-acao="claude" data-key="${esc(t.key)}" title="Colar o link na conversa do Claude">✳ Claude</button>
-  </div>
+// Só o conteúdo do ticket (sem topo e botões): também usado na aba Ticket do painel.
+const folhaTicket = (t) => `
   <div class="folha st-${corStatus(t.status)}">
     <h3>${esc(t.resumo)}</h3>
     <div class="meta"><span class="status">${esc(t.status)}</span><span>${esc(t.prioridade)}</span><span>${esc(t.responsavel)}</span></div>
@@ -244,55 +141,5 @@ const telaTicket = (t) => `
     </details>
   </div>`;
 
-exports.provider = (ctx) => {
-  const lista = () => ctx.globalState.get('tickets', []);
-  const salvar = (l) => ctx.globalState.update('tickets', l);
-  let view;
-  let atual;
-
-  const mostrar = (corpo) => { view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), corpo); };
-
-  // novo = veio do "adicionar"; subtarefa aberta pela tela do ticket não entra na lista
-  const abrir = async (ref, novo) => {
-    mostrar(`<p class="vazio centro">Carregando ${esc(ref.key)}…</p>`);
-    try {
-      const t = atual = await buscar(ctx.secrets, ref);
-      if (novo || lista().some((x) => x.key === t.key))
-        salvar([{ key: t.key, site: t.site, resumo: t.resumo, status: t.status }, ...lista().filter((x) => x.key !== t.key)]);
-      mostrar(telaTicket(t));
-    } catch (e) {
-      mostrar(telaLista(lista(), e.message));
-    }
-  };
-
-  const acoes = {
-    async adicionar() {
-      const link = await vscode.window.showInputBox({ prompt: 'Link do ticket no Jira', placeHolder: 'https://empresa.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
-      if (!link) return;
-      try { await abrir(lerLink(link), true); } catch (e) { mostrar(telaLista(lista(), e.message)); }
-    },
-    abrir: ({ key }) => abrir(lista().find((t) => t.key === key) || { key, site: atual.site }),
-    remover: ({ key }) => { salvar(lista().filter((t) => t.key !== key)); mostrar(telaLista(lista())); },
-    voltar: () => mostrar(telaLista(lista())),
-    mencionar: ({ key }) => {
-      const site = (lista().find((t) => t.key === key) || atual).site;
-      require('./claude').mencionar(`${key} (${site}/browse/${key})`);
-    },
-    claude: ({ key }) => {
-      const site = (lista().find((t) => t.key === key) || atual).site;
-      require('./claude').enviar(`Leia esse ticket ${site}/browse/${key}`);
-    },
-    navegador: ({ key }) => vscode.env.openExternal(vscode.Uri.parse(`${atual.site}/browse/${key}`))
-  };
-
-  return vscode.window.registerWebviewViewProvider('claudeAbas.ticket', {
-    resolveWebviewView(v) {
-      view = v;
-      view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));
-      mostrar(telaLista(lista()));
-    }
-  }, { webviewOptions: { retainContextWhenHidden: true } });
-};
-
+exports.jira = { lerLink, buscar, comentar, credenciais, folhaTicket, corStatus, estiloDetalhe };
 exports._teste = { lerLink, esc };
