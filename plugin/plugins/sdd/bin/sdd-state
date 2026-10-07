@@ -1,0 +1,325 @@
+#!/usr/bin/env node
+// Estado de uma spec SDD (Spec Driven Development): specs/<feature>/sdd-state.json no repositório.
+// É a memória da spec, independente da conversa: status de cada passo, perguntas, achados, hashes e aprovações.
+//
+// Todos os comandos recebem --ref <pasta do refinamento> (~/.claude/refinamentos/<id>), cujo meta.json aponta
+// spec.repo e spec.dir.
+//   init      --ref R --repo REPO [--titulo T] [--ticket K]  cria specs/NNN-slug/ e o estado (idempotente)
+//   status    --ref R                                       resumo de retomada (5 linhas) — roda o check antes
+//   check     --ref R                                       recalcula hashes e aplica a cascata
+//   iniciar   N --ref R                                     passo N → em_andamento (exige anteriores aprovados)
+//   concluir  N --ref R [--versao X] [--resumo '{json}']    passo N → aguardando_revisao (exige o arquivo)
+//   ajuste    N --ref R [--motivo M]                        aguardando_revisao → em_andamento
+//   pergunta  add --texto T [--rf RF03] | responder Qnn --resposta X | descartar Qnn      (--ref R)
+//   achado    add --severidade bloqueante|aviso --tipo T --descricao D [--refs t05,RF02]
+//             | resolver Ann | aceitar Ann --justificativa J                             (--ref R)
+//   tarefa    tNN --status pendente|em_andamento|feita [--commit SHA] --ref R
+//   aprovar   N --ref R --por NOME [--editorial]   SÓ PELA EXTENSÃO (hook do plugin bloqueia o Claude)
+//   aguardar  N --ref R [--intervalo 2] [--horas 12]      espera o humano aprovar/pedir ajuste (rodar em segundo plano)
+//   json      --ref R                                       imprime o estado
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+
+const PASSOS = [
+  { n: 0, nome: 'constituicao', titulo: 'Constituição', arquivo: 'constitution.md', raizRepo: true },
+  { n: 1, nome: 'especificacao', titulo: 'Especificação', arquivo: 'spec.md' },
+  { n: 2, nome: 'clarificacao', titulo: 'Clarificação', arquivo: 'spec.md', portao: 1 },
+  { n: 3, nome: 'planejamento', titulo: 'Planejamento técnico', arquivo: 'plan.md' },
+  { n: 4, nome: 'tarefas', titulo: 'Tarefas', arquivo: 'tasks.md' },
+  { n: 5, nome: 'analise', titulo: 'Análise de qualidade', arquivo: 'analise.md', portao: 2 },
+  { n: 6, nome: 'implementacao', titulo: 'Implementação', arquivo: 'tasks.md' }
+];
+// Quem depende de quem (a spec não cita tecnologia, então a constituição só pesa a partir do plano).
+const DEPENDENTES = { 0: [3, 4, 5, 6], 1: [2, 3, 4, 5, 6], 2: [3, 4, 5, 6], 3: [4, 5, 6], 4: [5, 6], 5: [6], 6: [] };
+
+// ── argumentos ──
+const argv = process.argv.slice(2);
+const cmd = argv[0];
+const pos = [];
+const opt = {};
+for (let i = 1; i < argv.length; i++) {
+  if (argv[i].startsWith('--')) {
+    const k = argv[i].slice(2);
+    if (i + 1 < argv.length && !argv[i + 1].startsWith('--')) opt[k] = argv[++i]; else opt[k] = true;
+  } else pos.push(argv[i]);
+}
+const falhar = (m, code = 1) => { console.error('sdd-state: ' + m); process.exit(code); };
+const agora = () => new Date().toISOString();
+
+// ── arquivos ──
+const lerJson = (f, p) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return p; } };
+function gravarJson(f, d) {
+  const tmp = `${f}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(d, null, 2) + '\n');
+  fs.renameSync(tmp, f);
+}
+const refDir = () => {
+  if (!opt.ref) falhar('informe --ref <pasta do refinamento>');
+  return path.resolve(String(opt.ref).replace(/^~(?=\/|$)/, os.homedir()));
+};
+const metaArq = () => path.join(refDir(), 'meta.json');
+function locais() {
+  const meta = lerJson(metaArq(), null);
+  if (!meta) falhar(`refinamento não encontrado em ${refDir()}`);
+  if (!meta.spec?.repo || !meta.spec?.dir) falhar('spec ainda não iniciada: rode init');
+  const dir = path.join(meta.spec.repo, meta.spec.dir);
+  return { meta, repo: meta.spec.repo, dir, estado: path.join(dir, 'sdd-state.json') };
+}
+const arquivoDo = (L, p) => (PASSOS[p.n].raizRepo ? path.join(L.repo, PASSOS[p.n].arquivo) : path.join(L.dir, PASSOS[p.n].arquivo));
+function hashDe(f) {
+  try {
+    const t = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').split('\n').map((l) => l.replace(/\s+$/, '')).join('\n').trim();
+    return 'sha256:' + crypto.createHash('sha256').update(t).digest('hex').slice(0, 16);
+  } catch { return null; }
+}
+const carregar = (L) => lerJson(L.estado, null) || falhar(`estado não encontrado: ${L.estado}`);
+const salvar = (L, e) => { e.atualizadoEm = agora(); gravarJson(L.estado, e); };
+const hist = (e, evento, extra = {}) => e.historico.push({ em: agora(), evento, ...extra });
+const PROXIMA_ACAO = {
+  0: 'constituição: validar ou criar constitution.md',
+  1: 'especificar: escrever spec.md v1.0 (o quê e por quê, sem tecnologia)',
+  2: 'clarificar: apontar ambiguidades e perguntar, uma por vez',
+  3: 'planejar: gerar plan.md e checar contra a constituição',
+  4: 'tarefas: quebrar o plano em t01..tNN',
+  5: 'analisar: cruzar constituição × spec × plano × tarefas',
+  6: 'implementar: próxima tarefa pendente com dependências feitas',
+  7: 'concluído: todos os passos aprovados'
+};
+function apontar(e) {
+  const p = e.passos.find((x) => x.status !== 'aprovado');
+  e.proximoPasso = p ? p.n : 7;
+  e.proximaAcao = PROXIMA_ACAO[e.proximoPasso];
+}
+
+// ── contagens automáticas (não dependem do que o modelo declara) ──
+function contar(L, p) {
+  let t;
+  try { t = fs.readFileSync(arquivoDo(L, p), 'utf8'); } catch { return {}; }
+  const unicos = (re) => new Set(t.match(re) || []).size;
+  if (p.n === 0) return { regras: (t.match(/^\s*[-*] /gm) || []).length, proibicoes: (t.match(/^\s*[-*] .*\b(nunca|proibido|não\s+(?:use|usar|pode|deve))/gim) || []).length };
+  if (p.n === 1 || p.n === 2) return { rfs: unicos(/\bRF\d{2,}\b/g), historias: (t.match(/^#{2,4}\s*Hist[óo]ria/gim) || []).length, bordas: (t.match(/^\s*[-*] .*\bborda\b|^#{2,4} .*borda/gim) || []).length };
+  if (p.n === 4 || p.n === 6) {
+    const tarefas = unicos(/\bt\d{2,}\b/g);
+    return { tarefas, feitas: (t.match(/^\s*[-*] \[x\] .*\bt\d{2,}\b/gim) || []).length };
+  }
+  return {};
+}
+
+function novoEstado(L, meta, feature) {
+  return {
+    schema: 1, feature, titulo: meta.titulo, refinamento: refDir(), ticket: meta.ticket || '',
+    repo: L.repo, dir: path.relative(L.repo, L.dir), criadoEm: agora(), atualizadoEm: agora(),
+    proximoPasso: 0, proximaAcao: PROXIMA_ACAO[0],
+    passos: PASSOS.map((p) => ({ n: p.n, nome: p.nome, titulo: p.titulo, arquivo: p.raizRepo ? p.arquivo : path.join(path.relative(L.repo, L.dir), p.arquivo),
+      status: 'pendente', versao: null, hash: null, hashAprovado: null, baseadoEm: {}, aprovadoPor: null, aprovadoEm: null,
+      motivoDesatualizado: null, resumo: {}, ...(p.portao ? { portao: p.portao } : {}) })),
+    perguntas: [], achados: [], tarefas: [], historico: [{ em: agora(), evento: 'iniciada' }]
+  };
+}
+
+// ── cascata: arquivo aprovado mudou → volta a revisão; dependentes ficam desatualizados ──
+function check(L, e) {
+  const mudancas = [];
+  for (const p of e.passos) {
+    const h = hashDe(arquivoDo(L, p));
+    p.hash = h;
+    if (p.status !== 'aprovado' || !p.hashAprovado || h === p.hashAprovado) continue;
+    // spec.md e tasks.md são de dois passos: depois que o passo seguinte começou, o arquivo é dele.
+    if (p.n === 1 && e.passos[2].status !== 'pendente') continue;
+    if (p.n === 4 && e.passos[6].status !== 'pendente') continue;
+    p.status = 'aguardando_revisao';
+    p.versao = bump(p.versao);
+    mudancas.push(p.n);
+    hist(e, 'editado_apos_aprovacao', { passo: p.n });
+    for (const m of DEPENDENTES[p.n]) {
+      const d = e.passos[m];
+      if ((d.status === 'aprovado' || d.status === 'aguardando_revisao' || d.status === 'em_andamento') && d.baseadoEm[p.n] !== h) {
+        d.status = 'desatualizado';
+        d.motivoDesatualizado = `${PASSOS[p.n].titulo} (${p.arquivo}) mudou depois de aprovado`;
+        hist(e, 'desatualizado', { passo: m, por: p.n });
+      }
+    }
+  }
+  apontar(e);
+  return mudancas;
+}
+const bump = (v) => { if (!v) return '1.1'; const [a, b] = String(v).split('.').map(Number); return `${a}.${(b || 0) + 1}`; };
+
+const passoN = () => {
+  const n = Number(pos[0]);
+  if (!Number.isInteger(n) || n < 0 || n > 6) falhar('informe o número do passo (0 a 6)');
+  return n;
+};
+
+// ── comandos ──
+const comandos = {
+  init() {
+    const meta = lerJson(metaArq(), null) || falhar(`refinamento não encontrado em ${refDir()}`);
+    if (meta.spec?.dir && fs.existsSync(path.join(meta.spec.repo, meta.spec.dir, 'sdd-state.json'))) {
+      console.log(`já iniciada: ${path.join(meta.spec.repo, meta.spec.dir)}`);
+      return;
+    }
+    const repo = path.resolve(String(opt.repo || meta.spec?.repo || '').replace(/^~(?=\/|$)/, os.homedir()));
+    if (!opt.repo && !meta.spec?.repo) falhar('informe --repo <raiz do repositório>');
+    if (!fs.existsSync(repo)) falhar(`repositório não existe: ${repo}`);
+    const slug = String(opt.titulo || meta.titulo || 'feature').normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'feature';
+    const specs = path.join(repo, 'specs');
+    fs.mkdirSync(specs, { recursive: true });
+    const nums = fs.readdirSync(specs).map((n) => Number(n.match(/^(\d{3})-/)?.[1])).filter(Boolean);
+    const feature = `${String(Math.max(0, ...nums) + 1).padStart(3, '0')}-${slug}`;
+    const dir = path.join(specs, feature);
+    fs.mkdirSync(dir, { recursive: true });
+    meta.spec = { repo, dir: path.relative(repo, dir) };
+    if (opt.ticket) meta.ticket = opt.ticket;
+    gravarJson(metaArq(), meta);
+    const L = locais();
+    const e = novoEstado(L, meta, feature);
+    check(L, e);
+    salvar(L, e);
+    console.log(`spec iniciada: ${dir}`);
+  },
+  check() {
+    const L = locais(); const e = carregar(L); const antes = JSON.stringify(e.passos) + e.proximoPasso;
+    const m = check(L, e);
+    if (JSON.stringify(e.passos) + e.proximoPasso !== antes) salvar(L, e); // só grava se mudou (a aba vigia este arquivo)
+    console.log(m.length ? `editados após aprovação: ${m.join(', ')}` : 'sem mudanças');
+  },
+  status() {
+    const L = locais(); const e = carregar(L); const m = check(L, e); salvar(L, e);
+    const atual = e.passos[e.proximoPasso];
+    const aprov = e.passos.filter((p) => p.status === 'aprovado').map((p) => `${p.n} ${p.titulo}${p.versao ? ' v' + p.versao : ''}`);
+    const abertas = e.perguntas.filter((q) => q.status === 'aberta').length;
+    const bloq = e.achados.filter((a) => a.severidade === 'bloqueante' && a.status === 'aberto').length;
+    const desat = e.passos.filter((p) => p.status === 'desatualizado').map((p) => p.n);
+    console.log(`Spec "${e.feature}"${e.ticket ? ` (${e.ticket})` : ''} — passo atual: ${atual ? `${atual.n} ${atual.titulo} (${atual.status})` : 'todos aprovados'}`);
+    console.log(`Aprovados: ${aprov.join(' · ') || 'nenhum'}`);
+    console.log(`Mudou desde a última sessão: ${m.length ? `passo(s) ${m.join(', ')} editado(s) após aprovação` : 'nada'}${desat.length ? ` · desatualizados: ${desat.join(', ')}` : ''}`);
+    console.log(`Pendências: ${abertas} pergunta(s) aberta(s) · ${bloq} achado(s) bloqueante(s)`);
+    console.log(`Próxima ação: ${e.proximaAcao}`);
+    console.log(`Pasta: ${L.dir}`);
+  },
+  iniciar() {
+    const n = passoN(); const L = locais(); const e = carregar(L); check(L, e);
+    const antes = e.passos.slice(0, n).filter((p) => p.status !== 'aprovado');
+    if (antes.length) falhar(`passo ${n} bloqueado: aprove antes ${antes.map((p) => `${p.n} ${p.titulo} (${p.status})`).join(', ')}`, 3);
+    const p = e.passos[n];
+    if (p.status === 'aprovado') falhar(`passo ${n} já aprovado; para mudar, edite o arquivo (vai para revisão) ou peça ajuste na aba`, 3);
+    p.status = 'em_andamento'; p.motivoDesatualizado = null;
+    hist(e, 'em_andamento', { passo: n }); apontar(e); salvar(L, e);
+    console.log(`passo ${n} ${p.titulo}: em andamento`);
+  },
+  concluir() {
+    const n = passoN(); const L = locais(); const e = carregar(L);
+    const p = e.passos[n];
+    if (!['em_andamento', 'desatualizado', 'aguardando_revisao'].includes(p.status)) falhar(`passo ${n} está ${p.status}; rode iniciar antes`, 3);
+    const h = hashDe(arquivoDo(L, p)); if (!h) falhar(`arquivo do passo não existe: ${arquivoDo(L, p)}`, 3);
+    let resumo = {};
+    if (opt.resumo) { try { resumo = JSON.parse(opt.resumo); } catch { falhar('--resumo precisa ser JSON'); } }
+    p.status = 'aguardando_revisao'; p.hash = h; p.versao = opt.versao || p.versao || (n === 2 ? '2.0' : '1.0');
+    p.baseadoEm = Object.fromEntries(e.passos.slice(0, n).map((x) => [x.n, x.hashAprovado || x.hash]));
+    p.resumo = { ...resumo, ...contar(L, p) }; p.motivoDesatualizado = null;
+    hist(e, 'aguardando_revisao', { passo: n, versao: p.versao }); apontar(e); salvar(L, e);
+    console.log(`passo ${n} ${p.titulo} v${p.versao}: aguardando revisão humana (aprovar só pela aba Constituição)`);
+  },
+  ajuste() {
+    const n = passoN(); const L = locais(); const e = carregar(L);
+    const p = e.passos[n];
+    if (p.status !== 'aguardando_revisao') falhar(`passo ${n} está ${p.status}`, 3);
+    p.status = 'em_andamento'; hist(e, 'ajuste_pedido', { passo: n, motivo: opt.motivo || '' }); apontar(e); salvar(L, e);
+    console.log(`passo ${n}: ajuste pedido`);
+  },
+  aprovar() {
+    const n = passoN(); const L = locais(); const e = carregar(L); check(L, e);
+    const p = e.passos[n];
+    if (!opt.por) falhar('informe --por <quem aprova>');
+    if (opt.editorial && p.status === 'aguardando_revisao' && p.hashAprovado) {
+      // edição declarada como não semântica: atualiza o hash aprovado sem cascata
+    } else if (p.status !== 'aguardando_revisao') falhar(`passo ${n} está ${p.status}; só um passo aguardando revisão pode ser aprovado`, 3);
+    const antes = e.passos.slice(0, n).filter((x) => x.status !== 'aprovado');
+    if (antes.length) falhar(`aprove antes: ${antes.map((x) => x.n).join(', ')}`, 3);
+    if (n === 2) { const ab = e.perguntas.filter((q) => q.status === 'aberta'); if (ab.length) falhar(`Portão 1 fechado: ${ab.length} pergunta(s) aberta(s) (${ab.map((q) => q.id).join(', ')})`, 4); }
+    if (n === 5) { const b = e.achados.filter((a) => a.severidade === 'bloqueante' && a.status === 'aberto'); if (b.length) falhar(`Portão 2 fechado: ${b.length} achado(s) bloqueante(s) aberto(s) (${b.map((a) => a.id).join(', ')})`, 4); }
+    p.status = 'aprovado'; p.hash = hashDe(arquivoDo(L, p)); p.hashAprovado = p.hash;
+    // Cópia da versão aprovada: a extensão mostra o diff quando o arquivo mudar depois (o repo pode nem ter git).
+    try { fs.mkdirSync(path.join(refDir(), 'aprovados'), { recursive: true }); fs.copyFileSync(arquivoDo(L, p), path.join(refDir(), 'aprovados', `${n}-${path.basename(arquivoDo(L, p))}`)); } catch {}
+    p.aprovadoPor = String(opt.por); p.aprovadoEm = agora(); p.motivoDesatualizado = null;
+    if (n === 6) e.passos[4].hashAprovado = hashDe(arquivoDo(L, e.passos[4])); // tasks.md marcado como feito na implementação
+    hist(e, opt.editorial ? 'aprovado_editorial' : 'aprovado', { passo: n, por: p.aprovadoPor, versao: p.versao });
+    apontar(e); salvar(L, e);
+    console.log(`passo ${n} ${p.titulo} aprovado por ${p.aprovadoPor}`);
+  },
+  pergunta() {
+    const L = locais(); const e = carregar(L); const sub = pos[0];
+    if (sub === 'add') {
+      if (!opt.texto) falhar('--texto obrigatório');
+      const id = 'Q' + String(e.perguntas.length + 1).padStart(2, '0');
+      e.perguntas.push({ id, pergunta: String(opt.texto), ref: opt.rf ? String(opt.rf).split(',') : [], status: 'aberta', resposta: null, em: agora() });
+      salvar(L, e); console.log(id); return;
+    }
+    const q = e.perguntas.find((x) => x.id === pos[1]) || falhar(`pergunta ${pos[1]} não existe`);
+    if (sub === 'responder') { if (!opt.resposta) falhar('--resposta obrigatório'); q.status = 'respondida'; q.resposta = String(opt.resposta); q.respondidaEm = agora(); }
+    else if (sub === 'descartar') { q.status = 'descartada'; q.respondidaEm = agora(); }
+    else falhar('use: pergunta add | responder Qnn | descartar Qnn');
+    salvar(L, e); console.log(`${q.id}: ${q.status}`);
+  },
+  achado() {
+    const L = locais(); const e = carregar(L); const sub = pos[0];
+    if (sub === 'add') {
+      if (!['bloqueante', 'aviso'].includes(opt.severidade)) falhar('--severidade bloqueante|aviso');
+      const id = 'A' + String(e.achados.length + 1).padStart(2, '0');
+      e.achados.push({ id, severidade: opt.severidade, tipo: opt.tipo || 'outro', refs: opt.refs ? String(opt.refs).split(',') : [], descricao: String(opt.descricao || ''), status: 'aberto', justificativa: null });
+      salvar(L, e); console.log(id); return;
+    }
+    const a = e.achados.find((x) => x.id === pos[1]) || falhar(`achado ${pos[1]} não existe`);
+    if (sub === 'resolver') a.status = 'resolvido';
+    else if (sub === 'aceitar') { if (!opt.justificativa) falhar('aceitar exige --justificativa'); a.status = 'aceito'; a.justificativa = String(opt.justificativa); }
+    else falhar('use: achado add | resolver Ann | aceitar Ann --justificativa J');
+    salvar(L, e); console.log(`${a.id}: ${a.status}`);
+  },
+  tarefa() {
+    const L = locais(); const e = carregar(L); const id = pos[0];
+    if (!/^t\d{2,}$/.test(id || '')) falhar('informe o id da tarefa (t01)');
+    if (!['pendente', 'em_andamento', 'feita'].includes(opt.status)) falhar('--status pendente|em_andamento|feita');
+    const t = e.tarefas.find((x) => x.id === id) || (e.tarefas.push({ id }), e.tarefas.at(-1));
+    t.status = opt.status; if (opt.commit) t.commit = String(opt.commit); t.em = agora();
+    e.passos[6].resumo = { ...e.passos[6].resumo, ultimaTarefa: id, ultimoCommit: t.commit || null };
+    salvar(L, e); console.log(`${id}: ${t.status}`);
+  },
+  // Fica esperando o humano decidir o passo N na aba (aprovar ou pedir ajuste). O Claude roda em segundo plano
+  // e é acordado quando termina. Também detecta edição de arquivo aprovado (cascata) enquanto espera.
+  async aguardar() {
+    const n = passoN(); const L = locais();
+    const intervalo = Number(opt.intervalo || 2) * 1000;
+    const limite = Date.now() + Number(opt.horas || 12) * 3600 * 1000;
+    while (Date.now() < limite) {
+      const e = carregar(L); const m = check(L, e); if (m.length) salvar(L, e);
+      const p = e.passos[n];
+      if (p.status === 'aprovado') {
+        console.log(`APROVADO: passo ${n} ${p.titulo} v${p.versao} por ${p.aprovadoPor}.`);
+        console.log(`Siga agora: ${e.proximoPasso <= 6 ? `iniciar ${e.proximoPasso} — ${e.proximaAcao}` : 'todos os passos aprovados'}`);
+        return;
+      }
+      if (p.status === 'em_andamento') {
+        const ult = [...e.historico].reverse().find((h) => h.evento === 'ajuste_pedido' && h.passo === n);
+        console.log(`AJUSTE PEDIDO no passo ${n} ${p.titulo}${ult?.motivo ? `: ${ult.motivo}` : ''}. Espere a instrução do humano na conversa e depois concluir ${n} de novo.`);
+        return;
+      }
+      if (p.status === 'desatualizado') {
+        console.log(`DESATUALIZADO: passo ${n} — ${p.motivoDesatualizado}. Rode status e reconcilie a partir do passo ${e.proximoPasso}.`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, intervalo));
+    }
+    console.log(`Tempo de espera esgotado; o passo ${n} continua aguardando revisão. Rode aguardar ${n} de novo.`);
+  },
+  json() { const L = locais(); const e = carregar(L); check(L, e); salvar(L, e); console.log(JSON.stringify(e, null, 2)); }
+};
+
+if (!comandos[cmd]) {
+  console.error('uso: sdd-state <init|status|check|iniciar|concluir|aguardar|ajuste|pergunta|achado|tarefa|aprovar|json> --ref <pasta do refinamento>');
+  process.exit(2);
+}
+comandos[cmd]();

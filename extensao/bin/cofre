@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+// Roda um comando com os segredos do Cofre da Crafting Table como variáveis de ambiente.
+// Uso: cofre '<comando que usa $NOME>'   |   cofre --nomes   (lista os nomes disponíveis)
+// A saída volta mascarada. O valor nunca passa por aqui: quem executa é a extensão no VS Code.
+const net = require('net');
+const path = require('path');
+const os = require('os');
+
+const SOCKET = path.join(os.homedir(), '.claude', 'documentos', '.cofre.sock');
+const args = process.argv.slice(2);
+if (!args.length) { console.error("uso: cofre '<comando>'  |  cofre --nomes"); process.exit(2); }
+
+const sock = net.connect(SOCKET);
+sock.on('error', () => { console.error('cofre: a Crafting Table não está aberta no VS Code.'); process.exit(3); });
+sock.write(JSON.stringify(args[0] === '--nomes' ? { nomes: true } : { comando: args.join(' '), cwd: process.cwd() }) + '\n');
+let buf = '';
+sock.on('data', (d) => {
+  buf += d;
+  let i;
+  while ((i = buf.indexOf('\n')) >= 0) {
+    const m = JSON.parse(buf.slice(0, i));
+    buf = buf.slice(i + 1);
+    if (m.saida) process.stdout.write(m.saida);
+    if (m.erro) process.stderr.write(m.erro);
+    if ('fim' in m) process.exitCode = m.fim;
+  }
+});
+process.on('SIGINT', () => { sock.destroy(); process.exit(130); });

@@ -1,0 +1,7 @@
+{
+  "uuid": "claude-abas-janelas@local",
+  "name": "Claude Abas: trazer janela pra frente",
+  "description": "Expõe org.claudeAbas.Janelas.Ativar(pid, título) no D-Bus da sessão, usado pela extensão claude-abas do VS Code para focar o emulador.",
+  "shell-version": ["43"],
+  "version": 1
+}

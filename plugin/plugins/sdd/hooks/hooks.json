@@ -1,0 +1,52 @@
+{
+ "hooks": {
+  "PreToolUse": [
+   {
+    "matcher": "Write|Edit|MultiEdit|Bash",
+    "hooks": [
+     {
+      "type": "command",
+      "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guarda.js\"",
+      "timeout": 10
+     }
+    ]
+   }
+  ],
+  "PostToolUse": [
+   {
+    "matcher": "Write|Edit|MultiEdit",
+    "hooks": [
+     {
+      "type": "command",
+      "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guarda.js\"",
+      "timeout": 15
+     }
+    ]
+   }
+  ],
+  "Stop": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guarda.js\"",
+      "asyncRewake": true,
+      "timeout": 43200
+     }
+    ]
+   }
+  ],
+  "SessionStart": [
+   {
+    "hooks": [
+     {
+      "type": "command",
+      "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guarda.js\"",
+      "asyncRewake": true,
+      "timeout": 43200
+     }
+    ]
+   }
+  ]
+ }
+}

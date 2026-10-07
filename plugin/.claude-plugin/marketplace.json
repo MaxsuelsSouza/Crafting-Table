@@ -1,0 +1,7 @@
+{
+  "name": "crafting-local",
+  "owner": { "name": "Crafting Table" },
+  "plugins": [
+    { "name": "sdd", "source": "./plugins/sdd", "description": "Spec Driven Development guiado, com estado para retomar de onde parou", "category": "development" }
+  ]
+}

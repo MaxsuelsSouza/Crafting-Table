@@ -1,0 +1,882 @@
+{
+  "name": "claude-abas",
+  "displayName": "Crafting Table",
+  "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets do Jira, documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
+  "icon": "icons/crafting-table.png",
+  "publisher": "local",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "craftingTable",
+          "title": "Crafting Table",
+          "icon": "icons/crafting-table.png"
+        },
+        {
+          "id": "claudeAbas-notas",
+          "title": "Notas",
+          "icon": "icons/notas.svg"
+        },
+        {
+          "id": "claudeAbas-ticket",
+          "title": "Ticket",
+          "icon": "icons/ticket.svg"
+        },
+        {
+          "id": "claudeAbas-comandos",
+          "title": "Comandos",
+          "icon": "icons/comandos.svg"
+        },
+        {
+          "id": "claudeAbas-evidencias",
+          "title": "Evidências",
+          "icon": "icons/evidencias.svg"
+        },
+        {
+          "id": "claudeAbas-emuladores",
+          "title": "Emuladores",
+          "icon": "icons/emulador.svg"
+        },
+        {
+          "id": "claudeAbas-documentos",
+          "title": "Documentos",
+          "icon": "icons/documentos.svg"
+        },
+        {
+          "id": "claudeAbas-cofre",
+          "title": "Cofre",
+          "icon": "icons/cofre.svg"
+        },
+        {
+          "id": "claudeAbas-conversas",
+          "title": "Conversas",
+          "icon": "icons/conversas.svg"
+        },
+        {
+          "id": "claudeAbas-refinamentos",
+          "title": "Refinamentos",
+          "icon": "icons/refinamentos.svg"
+        }
+      ]
+    },
+    "views": {
+      "claudeAbas-notas": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.notas",
+          "name": "Notas"
+        }
+      ],
+      "claudeAbas-ticket": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.ticket",
+          "name": "Ticket"
+        }
+      ],
+      "claudeAbas-comandos": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.comandos",
+          "name": "Comandos"
+        }
+      ],
+      "claudeAbas-evidencias": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.evidencias",
+          "name": "Evidências"
+        }
+      ],
+      "claudeAbas-emuladores": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.emuladores",
+          "name": "Emuladores"
+        }
+      ],
+      "claudeAbas-documentos": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.documentos",
+          "name": "Documentos"
+        }
+      ],
+      "craftingTable": [
+        {
+          "type": "webview",
+          "id": "craftingTable.vazio",
+          "name": "Crafting Table",
+          "when": "false"
+        }
+      ],
+      "claudeAbas-cofre": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.cofre",
+          "name": "Cofre"
+        }
+      ],
+      "claudeAbas-conversas": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.conversas",
+          "name": "Conversas"
+        }
+      ],
+      "claudeAbas-refinamentos": [
+        {
+          "type": "webview",
+          "id": "claudeAbas.refinamentos",
+          "name": "Refinamentos"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "claudeAbas.abrirClaude",
+        "title": "Claude",
+        "icon": {
+          "light": "icons/menu/claude-light.svg",
+          "dark": "icons/menu/claude-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualClaude",
+        "title": "Claude (aberto)",
+        "icon": {
+          "light": "icons/menu/claude-ativo.svg",
+          "dark": "icons/menu/claude-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirNotas",
+        "title": "Notas",
+        "icon": {
+          "light": "icons/menu/notas-light.svg",
+          "dark": "icons/menu/notas-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualNotas",
+        "title": "Notas (aberto)",
+        "icon": {
+          "light": "icons/menu/notas-ativo.svg",
+          "dark": "icons/menu/notas-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirTicket",
+        "title": "Ticket",
+        "icon": {
+          "light": "icons/menu/ticket-light.svg",
+          "dark": "icons/menu/ticket-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualTicket",
+        "title": "Ticket (aberto)",
+        "icon": {
+          "light": "icons/menu/ticket-ativo.svg",
+          "dark": "icons/menu/ticket-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirDocumentos",
+        "title": "Documentos",
+        "icon": {
+          "light": "icons/menu/documentos-light.svg",
+          "dark": "icons/menu/documentos-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualDocumentos",
+        "title": "Documentos (aberto)",
+        "icon": {
+          "light": "icons/menu/documentos-ativo.svg",
+          "dark": "icons/menu/documentos-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirComandos",
+        "title": "Comandos",
+        "icon": {
+          "light": "icons/menu/comandos-light.svg",
+          "dark": "icons/menu/comandos-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualComandos",
+        "title": "Comandos (aberto)",
+        "icon": {
+          "light": "icons/menu/comandos-ativo.svg",
+          "dark": "icons/menu/comandos-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirEvidencias",
+        "title": "Evidências",
+        "icon": {
+          "light": "icons/menu/evidencias-light.svg",
+          "dark": "icons/menu/evidencias-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualEvidencias",
+        "title": "Evidências (aberto)",
+        "icon": {
+          "light": "icons/menu/evidencias-ativo.svg",
+          "dark": "icons/menu/evidencias-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirEmulador",
+        "title": "Emuladores",
+        "icon": {
+          "light": "icons/menu/emulador-light.svg",
+          "dark": "icons/menu/emulador-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualEmulador",
+        "title": "Emuladores (aberto)",
+        "icon": {
+          "light": "icons/menu/emulador-ativo.svg",
+          "dark": "icons/menu/emulador-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirTeams",
+        "title": "Teams",
+        "icon": {
+          "light": "icons/menu/teams-light.svg",
+          "dark": "icons/menu/teams-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirCofre",
+        "title": "Cofre",
+        "icon": {
+          "light": "icons/menu/cofre-light.svg",
+          "dark": "icons/menu/cofre-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualCofre",
+        "title": "Cofre (aberto)",
+        "icon": {
+          "light": "icons/menu/cofre-ativo.svg",
+          "dark": "icons/menu/cofre-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirConversas",
+        "title": "Conversas",
+        "icon": {
+          "light": "icons/menu/conversas-light.svg",
+          "dark": "icons/menu/conversas-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualConversas",
+        "title": "Conversas (aberto)",
+        "icon": {
+          "light": "icons/menu/conversas-ativo.svg",
+          "dark": "icons/menu/conversas-ativo.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.abrirRefinamentos",
+        "title": "Refinamentos",
+        "icon": {
+          "light": "icons/menu/refinamentos-light.svg",
+          "dark": "icons/menu/refinamentos-dark.svg"
+        }
+      },
+      {
+        "command": "claudeAbas.atualRefinamentos",
+        "title": "Refinamentos (aberto)",
+        "icon": {
+          "light": "icons/menu/refinamentos-ativo.svg",
+          "dark": "icons/menu/refinamentos-ativo.svg"
+        }
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeAbas.atualClaude",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.atualTicket",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.atualRefinamentos",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.atualDocumentos",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.atualNotas",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.atualComandos",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.atualEvidencias",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.atualCofre",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.atualConversas",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.abrirEmulador",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirClaude",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeAbas.abrirTicket",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@2"
+        },
+        {
+          "command": "claudeAbas.abrirRefinamentos",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeAbas.abrirDocumentos",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@4"
+        },
+        {
+          "command": "claudeAbas.abrirNotas",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@5"
+        },
+        {
+          "command": "claudeAbas.abrirComandos",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@6"
+        },
+        {
+          "command": "claudeAbas.abrirEvidencias",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@7"
+        },
+        {
+          "command": "claudeAbas.abrirCofre",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@8"
+        },
+        {
+          "command": "claudeAbas.abrirConversas",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.atualEmulador",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@10"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeVSCodeSidebarSecondary",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.ticket",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.refinamentos",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.documentos",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.notas",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.comandos",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.evidencias",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.cofre",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.conversas",
+          "group": "navigation@11"
+        },
+        {
+          "command": "claudeAbas.abrirTeams",
+          "when": "view == claudeAbas.emuladores",
+          "group": "navigation@11"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Crafting Table",
+      "properties": {
+        "craftingTable.avdPadrao": {
+          "type": "string",
+          "default": "Small_Phone",
+          "description": "Emulador que a Crafting Table liga quando a skill testes-funcionais precisa de um e nenhum aparelho está conectado."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.5",
+    "@grpc/proto-loader": "^0.8.1"
+  }
+}
