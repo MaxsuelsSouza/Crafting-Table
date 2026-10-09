@@ -188,6 +188,10 @@ const CSS_MOLDURA = `<style>
   .ct-cmd .ct-ci { flex: none; display: flex; color: var(--ok); }
   .ct-cmd.on .ct-ci { color: var(--perigo, var(--danger)); }
   .ct-cmd svg { width: 12px; height: 12px; }
+  .ct-cmd:disabled { opacity: .55; cursor: default; }
+  .ct-cmd small { color: var(--text-dim); }
+  .ct-cmd-grupo { margin: 8px 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .ct-cmd-vazio { color: var(--text-dim); padding: 2px 0; }
   .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: var(--r-lg);
     background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgb(0 0 0 / 53%); }
 </style>`;
@@ -259,11 +263,13 @@ const rodape = (t, dentro) => {
   const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || 0) || 0;
   const nova = (n) => Date.parse(n.em) > lidas; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes
   const novas = l.filter(nova).length;
-  const cmds = require('./comandos').api?.lista() || [];
+  const cmds = require('./comandos').api?.lista() || [], emus = require('./emulador').api?.lista() || [];
   const acao = dentro ? 'data-acao' : 'data-painel';
   const caixaCmds = `<details class="ct-cmds"${cmdsAberto ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
     <div class="ct-notifs">${cmds.length ? cmds.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
-      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : 'Nenhum comando. Cadastre em Configurações → Comandos.'}</div></details>`;
+      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
+    ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
+      title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
   return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
   <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>
@@ -636,7 +642,7 @@ function telaConfig(v) {
     <button class="ct-ico" data-acao="configFechar" title="Voltar para a lista">${IC.voltar}</button>
     <span class="ct-titulo">Configurações</span></div>
     <nav class="cfg-abas">${[['geral', 'Geral'], ['comandos', 'Comandos'], ['cofre', 'Cofre']].map(([id, nome]) => `<button data-acao="cfgAba" data-id="${id}" class="${(v.aba || 'geral') === id ? 'is-on' : ''}">${nome}</button>`).join('')}</nav></header>
-  ${v.aba === 'cofre' || v.aba === 'comandos' ? `<main class="rolagem cfg">${(require('./' + v.aba).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${v.aba}:`)}</main>` : `<main class="rolagem cfg">
+  ${v.aba === 'cofre' || v.aba === 'comandos' ? `<main class="rolagem cfg">${(v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('./' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('')}</main>` : `<main class="rolagem cfg">
     ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + '<div class="cfg-dica">Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.</div>')}
@@ -1246,7 +1252,7 @@ exports.provider = (ctx) => {
   };
   const baixando = new Set(); // ids de anexos sendo baixados
   let avisarMoldura = () => {}, pedirSecao = () => {};
-  require('./comandos').aoMudar(() => ((cfgAberta && cfgAba === 'comandos') || aberto ? render() : avisarMoldura()));
+  for (const m of ['comandos', 'emulador']) require('./' + m).aoMudar(() => ((cfgAberta && cfgAba === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
     if (!require('./grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
@@ -1546,7 +1552,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     cfgAba({ id }) {
       cfgAba = ['cofre', 'comandos'].includes(id) ? id : 'geral';
       require('./cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
-      if (cfgAba === 'comandos') require('./comandos').api?.atualizar();
+      if (cfgAba === 'comandos') { require('./comandos').api?.atualizar(); require('./emulador').api?.atualizar(); }
       render();
     },
     config() { cfgAba = 'geral'; cfgAberta = true; previa = null; aberto = null; sessao.focar(null); checar(); },
@@ -1745,6 +1751,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     vigiarAgora() { return vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
     cmdsAlternar() { cmdsAberto = !cmdsAberto; },
     cmdAlternar({ id }) { require('./comandos').api?.alternar({ id }); },
+    emuAlternar({ id }) { require('./emulador').api?.alternar({ id }); },
     notifLidas() { if (aberto) gravar(aberto, LIDAS, new Date().toISOString()); },
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
@@ -2161,7 +2168,7 @@ Um snapshot é guardado: dá para desfazer depois.`
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? daNota(m) : /^(cofre|comandos):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo ? daNota(m) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
       view.onDidChangeVisibility(() => { if (view.visible) { reconciliar(); render(); } });
       reconciliar();
       render();

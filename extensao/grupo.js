@@ -7,8 +7,7 @@ const vscode = require('vscode');
 // A primeira seção é a principal. Se ela tiver moldura(id), as outras são mostradas dentro dela
 // (cabeçalho e rodapé da principal); senão, um menu simples no topo troca as seções.
 const GRUPOS = {
-  'claudeAbas.tickets': [['claudeAbas.painel', 'Ticket'], ['claudeAbas.emuladores', 'Emuladores'],
-    ['claudeAbas.evidencias', 'Evidências'], ['claudeAbas.conversas', 'Conversas']]
+  'claudeAbas.tickets': [['claudeAbas.painel', 'Ticket'], ['claudeAbas.evidencias', 'Evidências'], ['claudeAbas.conversas', 'Conversas']]
 };
 // Seções feitas de duas telas, uma embaixo da outra na mesma página (as duas usam a pagina() de comandos.js).
 const JUNTAS = {};

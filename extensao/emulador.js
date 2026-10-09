@@ -2,10 +2,9 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
 const { descendentes, matar } = require('./comandos').processos;
-const { pagina, icone, ESTILO_NOTAS } = require('./comandos').ui;
+const { icone, ESTILO_NOTAS } = require('./comandos').ui;
 const { esc } = require('./ticket')._teste;
 
 // Lista os AVDs da máquina e liga com janela. O gRPC fica só para o print da aba Evidências,
@@ -168,21 +167,24 @@ async function processosDe(emu) {
   return [{ pid: emu.pid, args }, ...await descendentes(emu.pid)];
 }
 
+const ouvintes = [];
+exports.aoMudar = (f) => { ouvintes.push(f); }; // chamado quando a tela muda (emulador liga/desliga, processos)
+
 exports.provider = () => {
-  let view, ultimo, timer;
+  let ultimo, timer, avdsCache = [], assinatura = '';
   const abertos = new Set();
   const ocupados = {}; // avd -> texto enquanto liga/limpa
 
   const render = async (forcar) => {
-    if (!view) return;
-    const [avds, ligados] = [await listarAvds(), rodando()];
+    const [avds, ligados] = [forcar || !avdsCache.length ? await listarAvds() : avdsCache, rodando()];
+    avdsCache = avds;
     const procs = {};
     for (const avd of abertos) procs[avd] = await processosDe(ligados.find((e) => e.avd === avd));
     for (const avd of Object.keys(ocupados)) if (ligados.some((e) => e.avd === avd)) delete ocupados[avd];
     const html = tela(avds, ligados, ocupados, procs);
     if (!forcar && html === ultimo) return; // não redesenha à toa (perderia hover/rolagem)
     ultimo = html;
-    view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), html);
+    ouvintes.forEach((f) => f());
   };
 
   const achar = (avd) => rodando().find((e) => e.avd === avd);
@@ -223,22 +225,22 @@ exports.provider = () => {
     }
   };
 
-  return vscode.Disposable.from(
-    { dispose: () => clearInterval(timer) },
-    require('./grupo').registrar('claudeAbas.emuladores', {
-      resolveWebviewView(v) {
-        view = v;
-        view.webview.options = { enableScripts: true };
-        view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));
-        // Emulador liga/desliga por fora (janela fechada, wms-hub): confere a cada 3 s enquanto visível.
-        const vigiar = () => { clearInterval(timer); if (view.visible) timer = setInterval(render, 3000); };
-        // Abrir a seção traz para frente os emuladores ligados (como fazia o ícone do celular).
-        view.onDidChangeVisibility(() => { vigiar(); render(true); if (view.visible) exports.focarAbertos(); });
-        vigiar();
-        render(true);
-      }
-    })
-  );
+  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (painel.js): ela pede o html e repassa os cliques.
+  exports.api = {
+    html: () => ultimo || '',
+    lista: () => avdsCache.map((avd) => ({ id: avd, nome: nomeBonito(avd), rodando: Boolean(achar(avd)), ocupado: ocupados[avd] || null })),
+    alternar: ({ id }) => (achar(id) ? acoes.parar({ id }) : acoes.ligar({ id })),
+    acao: (m) => acoes[m.acao]?.(m),
+    atualizar: () => render(true)
+  };
+  // Emulador liga/desliga por fora (janela fechada, wms-hub): confere a cada 3 s e só avisa a tela se mudou.
+  timer = setInterval(() => {
+    const atual = rodando().map((e) => e.avd).join();
+    if (atual !== assinatura) { assinatura = atual; render(true); }
+  }, 3000);
+  render(true);
+
+  return vscode.Disposable.from({ dispose: () => { clearInterval(timer); exports.api = null; } });
 };
 
 exports._teste = { tela, rodando, listarAvds, processosDe };

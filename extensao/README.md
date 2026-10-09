@@ -20,7 +20,7 @@ Na barra de título da view: **⤢ Tela cheia** (abre a mesma tela numa aba do e
 
 **Cabeçalho fixo**: ← voltar · título · ▶/⏸ (modo refinamento) · ✦ conversa do Claude do ticket · 🎫 abrir no Jira · pills de status do board e do refinamento · ⟳ atualizar do Jira.
 
-**Menu**: Docs · Spec · Ticket · Análise · Tarefas · Decisões · Dúvidas | Emuladores · Evidências · Conversas. **Comandos** e **Cofre** ficam em ⚙ Configurações; o rodapé do ticket tem a caixa ▶ Comandos para rodar e parar.
+**Menu**: Docs · Spec · Ticket · Análise · Tarefas · Decisões · Dúvidas | Evidências · Conversas. **Comandos** (com os emuladores) e **Cofre** ficam em ⚙ Configurações; o rodapé do ticket tem a caixa ▶ Comandos para rodar/parar comandos e ligar/desligar emuladores.
 
 | Aba | O que mostra |
 |---|---|
@@ -91,7 +91,7 @@ Conversas do Claude Code deste projeto, da mais recente para a mais antiga, com 
 - A conversa aberta agora (🟢) não pode ser excluída
 - Documentos que eram atalhos para arquivos do repositório: some o atalho, o original fica
 
-### 📱 Emuladores (aba Emuladores)
+### 📱 Emuladores (⚙ Configurações → Comandos)
 Todos os AVDs da máquina.
 - Clicar no **📱** do cabeçalho traz o emulador aberto para frente
 - **▶** liga com janela, **■** desliga, **🧹** wipe data (apaga os dados e liga do zero)

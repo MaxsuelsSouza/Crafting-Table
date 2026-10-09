@@ -17,7 +17,7 @@ O **ticket do Jira é o centro**: abra um ticket e tudo dele fica junto, numa pa
 | **Tarefas** | As tarefas do passo 4 em cards, como no Jira: aprovar cria a subtarefa no ticket; reprovar; pedir alteração ao Claude. |
 | **Decisões** | Perguntas respondidas e decisões tomadas no chat. |
 | **Dúvidas** | Perguntas do Claude que você marcou como "Tirar dúvida"; um clique comenta no Jira. |
-| **Emuladores · Evidências · Conversas** (Comandos e Cofre ficam em ⚙ Configurações) | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |
+| **Evidências · Conversas** (Comandos, emuladores e Cofre ficam em ⚙ Configurações) | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |
 | **🔔 Rodapé** | Notificações do ticket: Claude terminou, pediu permissão, passo pronto para revisão. Podem ir também para o Teams. |
 
 Todo item tem um botão **@** que cola a referência na conversa do Claude.
