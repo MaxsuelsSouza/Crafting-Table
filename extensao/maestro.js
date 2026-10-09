@@ -136,4 +136,7 @@ const aoVivo = (dir, n = 40) => {
   try { return fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n').slice(-n).map((l) => JSON.parse(l)); } catch { return []; }
 };
 
-module.exports = { rodar, aoVivo, rodando: (dir) => rodando.has(dir), VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd } };
+// Mata todas as execuções em segundo plano (claude -p); devolve quantas eram.
+const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
+
+module.exports = { rodar, aoVivo, matarTodos, rodando: (dir) => rodando.has(dir), VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd } };

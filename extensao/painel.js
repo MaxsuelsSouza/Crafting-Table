@@ -51,6 +51,24 @@ function pluginInstalado(prefixo) {
   const info = chave && (Array.isArray(lista[chave]) ? lista[chave][0] : lista[chave]);
   return info?.installPath || null;
 }
+// Plugins e skills que a extensão usa. "local" = mora na extensão e só o maestro carrega (--plugin-dir); os demais vêm do Claude Code.
+const MAPA_DIR = path.join(__dirname, 'plugins', 'mapa'), FOCO_DIR = path.join(__dirname, 'plugins', 'foco');
+const USADOS = [
+  { id: 'sdd@crafting-local', skills: ['sdd:sdd', 'sdd:iniciar', 'sdd:continuar'], uso: 'Spec: passos 0–6, sdd-state, hooks de guarda' },
+  { id: 'mapa', local: MAPA_DIR, skills: ['mapa:mapear'], uso: 'Mapeamento do código e banco (passo 3)' },
+  { id: 'foco', local: FOCO_DIR, skills: [], uso: 'Hooks: regras PT-BR e limite de tamanho dos .md' },
+  { id: 'fcx-qa-test-planning@fcxlabs', skills: ['jira-qa-planner', 'test-estimation'], uso: 'Método do passo 6 (plano de testes); lido, não invocado' },
+  { id: 'i-have-adhd@i-have-adhd', desliga: true, skills: [], uso: 'Desligado nas execuções do maestro (o foco o substitui)' },
+];
+function listarPlugins() {
+  const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {});
+  const lista = reg.plugins || reg;
+  const ligados = ler(path.join(os.homedir(), '.claude', 'settings.json'), {}).enabledPlugins || {};
+  return USADOS.map((u) => {
+    const v = lista[u.id]; const info = Array.isArray(v) ? v[0] : v;
+    return { ...u, instalado: !!(u.local || info), versao: info?.version || '', ligado: u.local ? true : ligados[u.id] !== false };
+  });
+}
 function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
 const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.json'), null) : null);
@@ -638,8 +656,19 @@ function telaConfig(v) {
   <header class="ct-cab"><div class="ct-linha">
     <button class="ct-ico" data-acao="configFechar" title="Voltar para a lista">${IC.voltar}</button>
     <span class="ct-titulo">Configurações</span></div>
-    <nav class="cfg-abas">${[['geral', 'Geral'], ['comandos', 'Comandos'], ['cofre', 'Cofre']].map(([id, nome]) => `<button data-acao="cfgAba" data-id="${id}" class="${(v.aba || 'geral') === id ? 'is-on' : ''}">${nome}</button>`).join('')}</nav></header>
-  ${v.aba === 'cofre' || v.aba === 'comandos' ? `<main class="rolagem cfg">${(v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('./' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('')}</main>` : `<main class="rolagem cfg">
+    <nav class="cfg-abas">${[['geral', 'Geral'], ['comandos', 'Comandos'], ['plugins', 'Plugins'], ['cofre', 'Cofre']].map(([id, nome]) => `<button data-acao="cfgAba" data-id="${id}" class="${(v.aba || 'geral') === id ? 'is-on' : ''}">${nome}</button>`).join('')}</nav></header>
+  ${v.aba === 'plugins' ? `<main class="rolagem cfg">
+    <div class="cfg-card"><div class="cfg-t"><b>Plugins e skills que a extensão usa</b></div>
+      ${(v.plugins || []).map((p) => `<div class="cfg-l"><span title="${esc(p.id)}">${esc(p.id.split('@')[0])}</span>
+        <div>${esc(p.uso)}<br><span class="cfg-dim">${p.local ? 'da extensão' : p.instalado ? `${esc(p.versao)} · ${p.ligado ? 'ligado' : 'desligado'}` : '<b>não instalado</b>'}${p.skills.length ? ` · skills: ${esc(p.skills.join(', '))}` : ''}</span></div>
+        ${p.local || !p.instalado ? '' : `<button class="cfg-b" data-acao="pluginAlternar" data-id="${esc(p.id)}">${p.ligado ? 'Desligar' : 'Ligar'}</button>`}</div>`).join('')}
+      <div class="cfg-dica">Vale para as próximas conversas; as já abertas só pegam ao reabrir.</div></div>
+    <div class="cfg-card"><div class="cfg-t"><b>Extensão</b></div>
+      <div class="cfg-dica">Encerra os refinamentos que o Claude está rodando em segundo plano. Nada é apagado; dá para retomar depois.</div>
+      <button class="cfg-b" data-acao="matarExtensao">Encerrar processos da extensão</button></div>
+  </main>` : v.aba === 'cofre' || v.aba === 'comandos' ? `<main class="rolagem cfg">${(v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('./' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('')}</main>` : `<main class="rolagem cfg">
+    <div class="cfg-card"><div class="cfg-t"><b>Instalação</b>${avisoInstalacao ? `<span class="cfg-st cfg-mal">⚠ ${esc(avisoInstalacao.motivos.join(' · '))}</span>` : '<span class="cfg-st cfg-ok">✅ em dia</span>'}
+      <button class="cfg-b" data-acao="atualizarExtensao" title="Roda o instalar.sh (faz git pull antes se houver novidades)">Atualizar agora</button></div></div>
     ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + '<div class="cfg-dica">Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.</div>')}
@@ -980,11 +1009,16 @@ function corpoAba(t, aba, d) {
 const telaTicket = (t, aba, d) => `${estilo}${cabecalho(t, { aba, secao: PRINCIPAL, dentro: true })}
   <main class="rolagem">${corpoAba(t, aba, d)}</main>${rodape(t, true)}`;
 
+// Aviso no topo quando o instalar.sh precisa rodar de novo (preenchido por conferirInstalacao).
+let avisoInstalacao = null; // { motivos: string[] } | null
+const bannerInstalacao = () => (avisoInstalacao ? `<div style="padding:8px 10px;background:var(--accent-soft);color:var(--on-cor);font:12px var(--fc-font)">
+  <b>Atualização pendente</b><div style="margin:2px 0 6px;opacity:.85">${esc(avisoInstalacao.motivos.join(' · '))}</div>
+  <button data-acao="atualizarExtensao" style="height:24px;padding:0 10px;border-radius:6px;background:var(--bg);color:var(--text);font-size:11.5px">Atualizar agora</button></div>` : '');
 function pagina(nonce, corpo, nota) {
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>body { font-family: var(--fc-font); margin: 0; } button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; } [hidden] { display: none !important; }</style>
-${nota ? notas.CSS_NOTAS : ''}</head><body>${corpo}
+${nota ? notas.CSS_NOTAS : ''}</head><body>${bannerInstalacao()}${corpo}
 ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota.estilo)}</script>` : ''}
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
@@ -1160,6 +1194,28 @@ exports.provider = (ctx) => {
     bancoSensiveis: cfg().get('bancoColunasSensiveis')?.length ? cfg().get('bancoColunasSensiveis') : banco.SENSIVEIS_PADRAO });
   const salvarCfg = (k, v) => cfg().update(k, v, vscode.ConfigurationTarget.Global);
   const exec = (cmd, args, opts = {}) => new Promise((ok) => require('child_process').execFile(cmd, args, { timeout: 20000, ...opts }, (e, out, err) => ok({ ok: !e, out: String(out || '').trim(), err: String(err || e?.message || '').trim() })));
+  // O instalar.sh precisa rodar de novo? (commits novos no remoto, plugin sdd desatualizado, hooks faltando)
+  const REPO = path.resolve(fs.realpathSync(__dirname), '..');
+  const conferirInstalacao = async () => {
+    if (!fs.existsSync(path.join(REPO, 'instalar.sh'))) return;
+    const motivos = [];
+    const git = (...a) => exec('git', ['-C', REPO, ...a], { timeout: 25000 });
+    await git('fetch', '--quiet');
+    const atras = await git('rev-list', '--count', 'HEAD..@{u}');
+    if (atras.ok && Number(atras.out) > 0) { motivos.push(`${atras.out} novidade(s) no repositório`); aposPull = true; } else aposPull = false;
+    const novo = ler(path.join(REPO, 'plugin', 'plugins', 'sdd', '.claude-plugin', 'plugin.json'), {}).version;
+    const inst = listarPlugins().find((p) => p.id === 'sdd@crafting-local');
+    if (!inst?.instalado) motivos.push('plugin sdd não instalado');
+    else if (novo && inst.versao !== novo) motivos.push(`plugin sdd ${inst.versao} → ${novo}`);
+    if (['documentos', 'decisoes', 'crafting-testes', 'notificacoes'].some((h) => !fs.existsSync(path.join(os.homedir(), '.claude', 'hooks', `${h}.py`)))) motivos.push('hooks faltando');
+    const antes = JSON.stringify(avisoInstalacao);
+    avisoInstalacao = motivos.length ? { motivos } : null;
+    if (JSON.stringify(avisoInstalacao) !== antes) render();
+  };
+  let aposPull = false;
+  setTimeout(conferirInstalacao, 5000);
+  const timerInst = setInterval(conferirInstalacao, 30 * 60 * 1000);
+  ctx.subscriptions?.push({ dispose: () => clearInterval(timerInst) }, vscode.window.onDidCloseTerminal((t) => { if (t.name === 'Atualizar Crafting Table') conferirInstalacao(); }));
   const CHECAR = {
     async agente() {
       const v = await exec(maestro.claudeBin(), ['--version']);
@@ -1267,7 +1323,7 @@ exports.provider = (ctx) => {
     if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
     if (!t) {
       aberto = null; sessao.focar(null);
-      if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
+      if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
       if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
       view.webview.html = pagina(nonce, telaLista(tickets.listar(), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}));
       avisarMoldura();
@@ -1547,9 +1603,26 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
   const acoes = {
     meusAtualizar() { carregarMeus(true); },
     cfgAba({ id }) {
-      cfgAba = ['cofre', 'comandos'].includes(id) ? id : 'geral';
+      cfgAba = ['cofre', 'comandos', 'plugins'].includes(id) ? id : 'geral';
       require('./cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
       if (cfgAba === 'comandos') { require('./comandos').api?.atualizar(); require('./emulador').api?.atualizar(); }
+      render();
+    },
+    atualizarExtensao() {
+      const t = vscode.window.createTerminal({ name: 'Atualizar Crafting Table', cwd: REPO });
+      t.show();
+      t.sendText(`${aposPull ? 'git pull --ff-only && ' : ''}./instalar.sh; echo; echo "Feche TODAS as janelas do VS Code e abra de novo. (Enter fecha este terminal)"; read; exit`);
+    },
+    async pluginAlternar({ id }) {
+      const p = listarPlugins().find((x) => x.id === id);
+      if (!p) return;
+      const r = await exec(maestro.claudeBin(), ['plugin', p.ligado ? 'disable' : 'enable', id]);
+      if (!r.ok) vscode.window.showErrorMessage(`Não consegui ${p.ligado ? 'desligar' : 'ligar'} ${id}: ${r.err}`);
+      render();
+    },
+    matarExtensao() {
+      const n = maestro.matarTodos();
+      vscode.window.showInformationMessage(n ? `${n} processo${n > 1 ? 's' : ''} do Claude encerrado${n > 1 ? 's' : ''}.` : 'Nenhum processo da extensão rodando.');
       render();
     },
     config() { cfgAba = 'geral'; cfgAberta = true; previa = null; aberto = null; sessao.focar(null); checar(); },
