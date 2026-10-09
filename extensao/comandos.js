@@ -172,17 +172,17 @@ exports.provider = (ctx) => {
   const botoes = () => ctx.globalState.get('botoes', []);
   const salvar = (l) => ctx.globalState.update('botoes', l);
   const achar = (id) => botoes().find((b) => b.id === id);
-  let view;
   const abertos = new Set(); // botões com a lista de processos aberta
+  let cache = null; // html da aba Configurações → Comandos (a lista de processos é assíncrona)
   const render = async () => {
-    if (!view) return;
     const procs = {};
     for (const id of abertos) {
       const b = achar(id);
       const shell = b && await terminalDe(b)?.processId;
       procs[id] = shell ? await descendentes(shell) : [];
     }
-    view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), tela(botoes(), procs));
+    cache = tela(botoes(), procs);
+    ouvintes.forEach((f) => f());
   };
   const depois = () => setTimeout(render, 700); // dá tempo do processo morrer
 
@@ -232,19 +232,24 @@ exports.provider = (ctx) => {
     render();
   };
 
+  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (painel.js): ela pede o html e repassa os cliques.
+  exports.api = {
+    html: () => cache ?? tela(botoes(), {}),
+    lista: () => botoes().map((b) => ({ id: b.id, nome: b.nome, rodando: Boolean(terminalDe(b)) })),
+    alternar: ({ id }) => (terminalDe(achar(id)) ? acoes.parar({ id }) : acoes.rodar({ id })),
+    acao: (m) => acoes[m.acao]?.(m),
+    atualizar: render
+  };
+
   return vscode.Disposable.from(
     vscode.window.onDidOpenTerminal(render),
     vscode.window.onDidCloseTerminal(render),
-    require('./grupo').registrar('claudeAbas.comandos.lista', {
-      resolveWebviewView(v) {
-        view = v;
-        view.webview.options = { enableScripts: true };
-        view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));
-        render();
-      }
-    })
+    { dispose: () => { exports.api = null; } }
   );
 };
+
+const ouvintes = [];
+exports.aoMudar = (f) => { ouvintes.push(f); }; // chamado a cada mudança de botões ou terminais
 
 exports.processos = { descendentes, matar };
 // Ícones de traço (no lugar de emoji) para os botões de ícone.

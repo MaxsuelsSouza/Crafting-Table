@@ -13,12 +13,12 @@ O **ticket do Jira é o centro**: abra um ticket e tudo dele fica junto, numa pa
 | **Docs** | Documentos que o Claude criou, anexos do Jira para baixar e as notas do ticket. |
 | **Spec** | Os 7 passos do Spec Driven Development (plugin `sdd`), com aprovação só humana. |
 | **Ticket** | Descrição, subtarefas, comentários e horas do Jira. |
-| **Análise** | Handoffs de backend e mobile. |
+| **Análise** | Mapeamento de backend e mobile do passo 3 (`mapa-backend.md` / `mapa-mobile.md`). |
 | **Tarefas** | As tarefas do passo 4 em cards, como no Jira: aprovar cria a subtarefa no ticket; reprovar; pedir alteração ao Claude. |
 | **Decisões** | Perguntas respondidas e decisões tomadas no chat. |
 | **Dúvidas** | Perguntas do Claude que você marcou como "Tirar dúvida"; um clique comenta no Jira. |
-| **Comandos · Evidências · Cofre · Conversas** | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |
-| **🔔 Rodapé** | Notificações do ticket: Claude terminou, pediu permissão, passo pronto para revisão. |
+| **Emuladores · Evidências · Conversas** (Comandos e Cofre ficam em ⚙ Configurações) | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |
+| **🔔 Rodapé** | Notificações do ticket: Claude terminou, pediu permissão, passo pronto para revisão. Podem ir também para o Teams. |
 
 Todo item tem um botão **@** que cola a referência na conversa do Claude.
 
@@ -26,11 +26,15 @@ Todo item tem um botão **@** que cola a referência na conversa do Claude.
 
 **▶** no ticket abre uma conversa nova e o Claude cria a spec sozinho; **Dar início** e ele percorre os passos, continuando sozinho a cada aprovação; **⏸** pausa.
 
-`0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano técnico → 4 Tarefas → 5 Análise (Portão 2) → 6 Implementação`
+`0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano técnico → 4 Tarefas → 5 Análise (Portão 2) → 6 Plano de testes QA (Portão 3)`
+
+O código fica com quem pegar a atividade: a spec termina no plano de testes.
 
 - Os arquivos ficam num repositório git de specs (`craftingTable.specsDir`): `constitution.md` e uma pasta `<CHAVE>-<slug>/` por ticket.
 - **Só você aprova**, na aba Spec, depois de abrir o arquivo; um hook impede o Claude de aprovar ou editar o estado.
 - Editou um arquivo já aprovado? O passo volta para revisão, os dependentes ficam desatualizados e **Ver mudanças** mostra o diff.
+
+- **⚙ Configurações → Agente de IA**: modelo e esforço do Claude nas etapas em segundo plano (vazio: o do `~/.claude/settings.json`).
 
 Detalhes de cada aba: [`extensao/README.md`](extensao/README.md).
 
@@ -46,6 +50,7 @@ Detalhes de cada aba: [`extensao/README.md`](extensao/README.md).
 | Android SDK (`$ANDROID_HOME` ou `~/Android/Sdk`) | *Opcional:* Emuladores e Evidências. |
 | GNOME | *Opcional:* trazer a janela do emulador para frente no Wayland. |
 | Conta no Jira Cloud + API token | *Opcional:* aba Ticket. |
+| Microsoft Teams com o app Workflows | *Opcional:* avisos no Teams. |
 
 ## Instalação
 
@@ -112,12 +117,30 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 3. No ticket aberto, **▶** inicia o modo refinamento: o Claude cria a spec em `craftingTable.specsDir` (padrão `~/specs`) e espera **Dar início**.
 4. **Cofre**: crie `NOME_DA_CHAVE`, marque **env ✓**, e o Claude passa a usar `$NOME_DA_CHAVE` sem ver o valor.
 
+## Avisos no Teams (opcional)
+
+Mudanças de impacto médio/alto vindas de comentários do Jira, perguntas do Claude esperando você e eventos da spec chegam como card no Teams. Funciona com o VS Code aberto (pode estar minimizado); fechado, nada é enviado.
+
+1. No Teams, abra o app **Workflows** e escolha um modelo:
+   - **Enviar alertas de webhook para um chat**: só para você (chat consigo mesmo) ou um grupo.
+   - **Enviar alertas de webhook para um canal**: o time inteiro vê.
+
+   Não use "…de pessoas específicas" nem "…de pessoas em uma organização": exigem login e a extensão não tem.
+2. Escolha o chat ou canal, salve e copie a URL do final (tem `sig=`; é uma senha).
+3. **⚙ Configurações → Cofre → ＋**: nome `TEAMS_WEBHOOK`, valor a URL.
+4. `Ctrl+Shift+P` → **Crafting Table: Testar aviso para o Teams**.
+
+Perdeu a URL? [Power Automate → Meus fluxos](https://make.powerautomate.com/manage/flows) → o fluxo → **Editar** → primeiro passo → **URL HTTP POST**. O mesmo passo a passo está em **⚙ Configurações → Teams → ⓘ Como criar o webhook**.
+
+Limites: só envia quem iniciou o refinamento; vigia o Jira a cada 5 min (aviso leva de 2 a 8 min); 3 falhas seguidas pausam os avisos até trocar a URL ou reiniciar o VS Code; com duas janelas do VS Code abertas o mesmo aviso pode sair duas vezes.
+
 ## Problemas comuns
 
 | Sintoma | Solução |
 |---|---|
 | A mesa não aparece na barra lateral | Feche o VS Code inteiro (`Ctrl+Q`) e abra de novo; confira o link com `ls -l ~/.vscode/extensions/crafting-table` e se `~/.vscode/extensions/extensions.json` aponta para `crafting-table`. |
 | Docs vazio em "Sem ticket" numa conversa antiga | Os hooks só identificam a conversa depois da próxima mensagem nela. |
+| Mudança na extensão não aparece | Alguma cópia antiga está registrada: rode `./instalar.sh` de novo e feche o VS Code inteiro. |
 | `Plugin sdd não encontrado` | `claude plugin install sdd@crafting-local`. |
 | Aprovar da aba Spec apagado | O VS Code recarregou e o Claude não está esperando: clique em **▶** no topo do ticket; com a conversa aberta, o Aprovar volta em segundos. |
 | ▶ não fez o Claude começar | Em 25 s aparece **Abrir com o comando**: ele abre a conversa com o comando escrito, é só enviar. |
@@ -137,4 +160,4 @@ instalar.sh instalação em um comando
 
 - Mudou `.js` da extensão: `Ctrl+Shift+P` → **Developer: Reload Window**.
 - Mudou `extensao/package.json` (abas, ícones): feche o VS Code inteiro e abra de novo.
-- Teste rápido: `node extensao/teste-ticket.js`.
+- Testes rápidos: `node extensao/teste-ticket.js`, `node extensao/teste-teams.js`, `node extensao/teste-mudancas.js`.

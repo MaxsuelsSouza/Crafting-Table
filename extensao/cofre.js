@@ -2,10 +2,9 @@ const vscode = require('vscode');
 const fs = require('fs');
 const net = require('net');
 const path = require('path');
-const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { esc } = require('./ticket')._teste;
-const { pagina, icone, ESTILO_NOTAS } = require('./comandos').ui;
+const { icone, ESTILO_NOTAS } = require('./comandos').ui;
 const { RAIZ } = require('./sessao');
 
 // Segredos para o Claude USAR sem receber o valor. Valores no SecretStorage do VS Code (cifrado pelo
@@ -17,7 +16,7 @@ const { RAIZ } = require('./sessao');
 const SOCKET = path.join(RAIZ, '.cofre.sock');
 const NOMES = path.join(RAIZ, '.cofre-nomes'); // só nomes, para o hook avisar o Claude
 const NOME_VALIDO = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/;
-const MAX = 256;
+const MAX = 500;
 
 // Cada valor e as formas em que ele costuma vazar: puro, base64, URL e as aspas do JSON.
 function mascarar(texto, valores) {
@@ -85,10 +84,9 @@ exports.provider = (ctx) => {
   const salvar = async (l) => {
     await ctx.globalState.update('cofre', l);
     fs.writeFileSync(NOMES, l.filter((s) => s.env).map((s) => s.nome).join('\n'));
-    render();
+    mudou();
   };
-  let view;
-  const render = () => view && (view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), tela(itens())));
+  let mudou = () => {};
 
   const acoes = {
     async adicionar() {
@@ -152,16 +150,12 @@ exports.provider = (ctx) => {
   servidor.listen(SOCKET, () => fs.chmodSync(SOCKET, 0o600));
   fs.writeFileSync(NOMES, itens().filter((s) => s.env).map((s) => s.nome).join('\n'));
 
+  // A tela mora em Configurações → Cofre (painel.js): ela pede o html e repassa os cliques.
+  exports.api = { html: () => tela(itens()), acao: (m) => acoes[m.acao]?.(m), aoMudar: (f) => { mudou = f; } };
+
   return vscode.Disposable.from(
     { dispose: () => { servidor.close(); try { fs.unlinkSync(SOCKET); } catch {} } },
-    require('./grupo').registrar('claudeAbas.cofre', {
-      resolveWebviewView(v) {
-        view = v;
-        view.webview.options = { enableScripts: true };
-        view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));
-        render();
-      }
-    })
+    { dispose: () => { exports.api = null; } }
   );
 };
 

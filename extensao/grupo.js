@@ -7,11 +7,11 @@ const vscode = require('vscode');
 // A primeira seção é a principal. Se ela tiver moldura(id), as outras são mostradas dentro dela
 // (cabeçalho e rodapé da principal); senão, um menu simples no topo troca as seções.
 const GRUPOS = {
-  'claudeAbas.tickets': [['claudeAbas.painel', 'Ticket'], ['claudeAbas.comandos', 'Comandos'],
-    ['claudeAbas.evidencias', 'Evidências'], ['claudeAbas.cofre', 'Cofre'], ['claudeAbas.conversas', 'Conversas']]
+  'claudeAbas.tickets': [['claudeAbas.painel', 'Ticket'], ['claudeAbas.emuladores', 'Emuladores'],
+    ['claudeAbas.evidencias', 'Evidências'], ['claudeAbas.conversas', 'Conversas']]
 };
 // Seções feitas de duas telas, uma embaixo da outra na mesma página (as duas usam a pagina() de comandos.js).
-const JUNTAS = { 'claudeAbas.comandos': ['claudeAbas.comandos.lista', 'claudeAbas.emuladores'] };
+const JUNTAS = {};
 const parteDe = (id) => Object.keys(JUNTAS).find((j) => JUNTAS[j].includes(id));
 const partes = {}; // id da parte -> provider
 const grupoDe = (id) => Object.keys(GRUPOS).find((g) => GRUPOS[g].some(([s]) => s === id));
@@ -34,6 +34,10 @@ const MENU_CSS = `<style>
 //   [data-painel="cmd"]    manda { acao: cmd, id } para a principal sem trocar de seção (botões da moldura)
 const script = (n) => `<script${n}>(() => {
     const api = acquireVsCodeApi(); window.acquireVsCodeApi = () => api;
+    // Clique fora de uma caixa aberta do rodapé (notificações, comandos) fecha: o clique no <summary> alterna e avisa o painel, como um clique do usuário.
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.ct-rod details[open]').forEach((d) => { if (!d.contains(e.target)) d.querySelector('summary').click(); });
+    }, true);
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-secao],[data-painel]');
       if (!b) return;

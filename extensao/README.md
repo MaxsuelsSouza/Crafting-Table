@@ -14,13 +14,13 @@ Barra lateral: **✳ Claude** (o chat oficial, movido para o contêiner da Craft
 
 ### Tela cheia e configurações
 
-Na barra de título da view: **⤢ Tela cheia** (abre a mesma tela numa aba do editor e esconde as barras laterais; as duas telas ficam espelhadas, com o mesmo estado) e **⚙ Configurações**. Na aba em tela cheia, o botão ⤡ **Sair da tela cheia** fecha a aba e mostra a barra lateral de volta.
+Na barra de título da view: **⤢ Tela cheia** (abre a mesma tela numa aba do editor e esconde as barras laterais; as duas telas ficam espelhadas, com o mesmo estado) e **⚙ Configurações** (Agente de IA com modelo e esforço, Jira, board, specs, repositórios, banco e Teams, cada um com **Testar**). Na aba em tela cheia, o botão ⤡ **Sair da tela cheia** fecha a aba e mostra a barra lateral de volta.
 
 ### Ticket aberto
 
 **Cabeçalho fixo**: ← voltar · título · ▶/⏸ (modo refinamento) · ✦ conversa do Claude do ticket · 🎫 abrir no Jira · pills de status do board e do refinamento · ⟳ atualizar do Jira.
 
-**Menu**: Docs · Spec · Ticket · Análise · Tarefas · Decisões · Dúvidas | Comandos · Evidências · Cofre · Conversas.
+**Menu**: Docs · Spec · Ticket · Análise · Tarefas · Decisões · Dúvidas | Emuladores · Evidências · Conversas. **Comandos** e **Cofre** ficam em ⚙ Configurações; o rodapé do ticket tem a caixa ▶ Comandos para rodar e parar.
 
 | Aba | O que mostra |
 |---|---|
@@ -39,7 +39,7 @@ Na primeira vez que fala com o Jira, pede o e-mail e o API token; os dois ficam 
 ### Modo refinamento e Spec (plugin `sdd`)
 
 - **▶** abre uma conversa nova; o hook do plugin a vincula ao ticket e o Claude cria a spec no repositório de specs (`craftingTable.specsDir`, padrão `~/specs`, uma pasta `<CHAVE>-<slug>/` por ticket) sozinho. Spec pronta → **Dar início**: o Claude segue os passos e continua sozinho a cada aprovação. **⏸** pausa depois da etapa atual. Se o Claude não começar em 25 s, aparece **Abrir com o comando**.
-- Passos: `0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano → 4 Tarefas → 5 Análise (Portão 2) → 6 Implementação`, em `<specs>/constitution.md` e `<specs>/<CHAVE>-<slug>/`.
+- Passos: `0 Constituição → 1 Especificação → 2 Clarificação (Portão 1) → 3 Plano → 4 Tarefas → 5 Análise (Portão 2) → 6 Plano de testes QA (Portão 3)`, em `<specs>/constitution.md` e `<specs>/<CHAVE>-<slug>/`.
 - Cores: cinza pendente, azul Claude trabalhando, amarelo aguardando revisão, verde aprovado, laranja desatualizado (**Reconciliar**).
 - **Só você aprova**, pela aba Spec, depois de abrir o arquivo. Um hook do plugin impede o Claude de aprovar ou editar o estado.
 - No modo refinamento toda pergunta do Claude tem a opção **Tirar dúvida**: ela vai para a aba Dúvidas em vez de virar decisão.
@@ -60,7 +60,7 @@ O `@` do chat do Claude só lista arquivos do projeto aberto. Cada item das abas
 
 Abertas pelo menu, com o mesmo cabeçalho e rodapé do ticket.
 
-### ▶ Comandos
+### ▶ Comandos (⚙ Configurações → Comandos)
 Botões configuráveis para subir backend, Metro, `yarn start` etc.
 - **＋ Adicionar**: nome, comando e pasta
 - **▶** roda num terminal com o nome do botão; **■** para
@@ -74,9 +74,9 @@ Prints e vídeos do emulador **por ticket**, em `<pasta do ticket>/evidencias/` 
 - Galeria atualiza sozinha; clique abre, **✕** manda para a lixeira
 - Os terminais recebem `WMS_DOC_HUB_EVIDENCE_DIR` apontando para a pasta, como no wms-hub
 
-### 🔒 Cofre
+### 🔒 Cofre (⚙ Configurações → Cofre)
 Senhas que o Claude **usa sem receber o valor**.
-- **+ Novo segredo**: nome no padrão `NOME_DA_CHAVE` (maiúsculas, números e `_`) e valor de até 256 caracteres
+- **+ Novo segredo**: nome no padrão `NOME_DA_CHAVE` (maiúsculas, números e `_`) e valor de até 500 caracteres
 - Valores cifrados no cofre do VS Code (chaveiro do sistema); nunca em arquivo de texto
 - **env ✓** libera o segredo para o Claude; **✎** troca o valor; **✕** remove
 - O Claude roda `~/.vscode/extensions/crafting-table/bin/cofre '<comando com $NOME>'`: quem executa é a extensão, com os segredos como variáveis de ambiente, e a saída volta mascarada (valor puro, base64 e URL viram `••••`)
@@ -91,7 +91,7 @@ Conversas do Claude Code deste projeto, da mais recente para a mais antiga, com 
 - A conversa aberta agora (🟢) não pode ser excluída
 - Documentos que eram atalhos para arquivos do repositório: some o atalho, o original fica
 
-### 📱 Emuladores (dentro de Comandos)
+### 📱 Emuladores (aba Emuladores)
 Todos os AVDs da máquina.
 - Clicar no **📱** do cabeçalho traz o emulador aberto para frente
 - **▶** liga com janela, **■** desliga, **🧹** wipe data (apaga os dados e liga do zero)
@@ -103,7 +103,7 @@ Sem modificar a skill. O hook `~/.claude/hooks/crafting-testes.py` observa os co
 
 1. **`preparar-ambiente.py`** (a skill preparando o ambiente): antes de rodar, o hook resolve os worktrees com a etapa `refs` da própria skill e pede à Crafting Table:
    - emulador: liga o `craftingTable.avdPadrao` (padrão `Small_Phone`) se nenhum aparelho estiver conectado;
-   - botões **API WMS-XXXX** e **Metro WMS-XXXX** na aba Comandos, nos worktrees certos, com as mesmas variáveis da skill.
+   - botões **API WMS-XXXX** e **Metro WMS-XXXX** em Configurações → Comandos, nos worktrees certos, com as mesmas variáveis da skill.
 
    O hook espera tudo responder (até 10 min). Depois, a skill reaproveita a API, o Metro e o aparelho.
 2. **`executar.py --com-app` / `executar-jornada.py`**: grava a tela do emulador durante a jornada, emendando trechos de 3 min, nas evidências da conversa.
@@ -139,7 +139,7 @@ O vigia olha os comentários dos tickets com spec a cada 5 min. Cada comentário
 1. **Triagem** (só se há dúvida enviada ou pergunta aberta): o Claude diz se é *resposta* (só sugere; você confirma na aba Dúvidas ou no card da pergunta), *mudança* ou *ruído*.
 2. **Análise** (só leitura): nível, passos e cards atingidos e até 3 opções. **A spec não é alterada.** Se a análise mexer nos arquivos, a extensão desfaz sozinha.
 3. **Decisão**: caixa de borda vermelha acima do Ao vivo, passos e cards afetados ficam laranja com ⚠, e Aprovar/Continuar ficam travados (também no `sdd-state`). Opções: *aplicar* (snapshot + o Claude regride a spec), *manter*, *consultar* (vira dúvida para o PO) e **Não prosseguir** (descarta; depois de aplicar, **Desfazer** restaura o snapshot).
-4. **Teams**: o card "Mudança pedida" sai para quem iniciou o refinamento (médio/alto). Cofre: `TEAMS_WEBHOOK`; teste pela paleta: *Crafting Table: Testar aviso para o Teams*.
+4. **Teams**: o card "Mudança pedida" sai para quem iniciou o refinamento (médio/alto). Como criar o `TEAMS_WEBHOOK`: [README da raiz](../README.md#avisos-no-teams-opcional) ou **⚙ Configurações → Teams → ⓘ**.
 
 Testes: `node extensao/teste-teams.js`, `node extensao/teste-mudancas.js`, `node plugin/plugins/sdd/teste-triagem.js`.
 

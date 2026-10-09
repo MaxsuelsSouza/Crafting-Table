@@ -118,6 +118,8 @@ const IC = {
   claude: '<svg viewBox="0 0 24 24" style="fill:var(--accent)"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>',
   jira: '<svg viewBox="0 0 24 24" fill="none" style="stroke:var(--accent-soft)" stroke-width="1.8"><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4z"/></svg>',
   atualizar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8a5 5 0 11-1.5-3.6M13 2.5v2.8h-2.8"/></svg>',
+  play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3l8 5-8 5z"/></svg>',
+  parar: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>',
   sino: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11V7a4 4 0 018 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>',
   grade: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
   lupa: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
@@ -180,6 +182,12 @@ const CSS_MOLDURA = `<style>
   .ct-rod summary::-webkit-details-marker { display: none; }
   .ct-rod summary:hover { background: var(--surface-2); color: var(--text); }
   .ct-rod summary svg { width: 14px; height: 14px; }
+  .ct-cmd { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 4px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
+    font: inherit; font-size: 11.5px; color: var(--text); text-align: left; }
+  .ct-cmd:hover { background: var(--surface-2); }
+  .ct-cmd .ct-ci { flex: none; display: flex; color: var(--ok); }
+  .ct-cmd.on .ct-ci { color: var(--perigo, var(--danger)); }
+  .ct-cmd svg { width: 12px; height: 12px; }
   .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: var(--r-lg);
     background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgb(0 0 0 / 53%); }
 </style>`;
@@ -245,15 +253,21 @@ const notifsDe = (dir) => {
   const linhas = (dir && lerTexto(path.join(dir, NOTIF))) || '';
   return linhas.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).reverse().slice(0, 50);
 };
+let cmdsAberto = false; // caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado)
 const rodape = (t, dentro) => {
   const dir = t && pastaDe(t.id);
   const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || 0) || 0;
   const nova = (n) => Date.parse(n.em) > lidas; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes
   const novas = l.filter(nova).length;
+  const cmds = require('./comandos').api?.lista() || [];
+  const acao = dentro ? 'data-acao' : 'data-painel';
+  const caixaCmds = `<details class="ct-cmds"${cmdsAberto ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
+    <div class="ct-notifs">${cmds.length ? cmds.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
+      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : 'Nenhum comando. Cadastre em Configurações → Comandos.'}</div></details>`;
   return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
   <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>
-    <span>${esc(n.texto)}<br><small>${esc(quando(n.em))}</small></span></div>`).join('') : 'Nenhuma notificação ainda.'}</div></details></footer>`;
+    <span>${esc(n.texto)}<br><small>${esc(quando(n.em))}</small></span></div>`).join('') : 'Nenhuma notificação ainda.'}</div></details>${caixaCmds}</footer>`;
 };
 
 const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
@@ -401,6 +415,10 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .tjira { color: var(--accent-soft); font-weight: 600; }
   .tav { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--on-cor); font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
   .cfg-eng { margin-left: 4px; }
+  .cfg-abas { display: flex; gap: 2px; margin: 8px 12px 0; padding: 4px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); }
+  .cfg-abas button { flex: 1; height: 24px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text); font: inherit; font-size: 11.5px; cursor: pointer; }
+  .cfg-abas button:hover { background: var(--surface-2); }
+  .cfg-abas button.is-on { background: var(--accent); color: var(--on-cor); font-weight: 600; }
   .cfg { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
   .cfg-card { padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra); font-size: 12px; }
   .cfg-t { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .cfg-t b { font-size: 12.5px; }
@@ -616,8 +634,9 @@ function telaConfig(v) {
   return `${estilo}
   <header class="ct-cab"><div class="ct-linha">
     <button class="ct-ico" data-acao="configFechar" title="Voltar para a lista">${IC.voltar}</button>
-    <span class="ct-titulo">Configurações</span></div><div style="height:8px"></div></header>
-  <main class="rolagem cfg">
+    <span class="ct-titulo">Configurações</span></div>
+    <nav class="cfg-abas">${[['geral', 'Geral'], ['comandos', 'Comandos'], ['cofre', 'Cofre']].map(([id, nome]) => `<button data-acao="cfgAba" data-id="${id}" class="${(v.aba || 'geral') === id ? 'is-on' : ''}">${nome}</button>`).join('')}</nav></header>
+  ${v.aba === 'cofre' || v.aba === 'comandos' ? `<main class="rolagem cfg">${(require('./' + v.aba).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${v.aba}:`)}</main>` : `<main class="rolagem cfg">
     ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + '<div class="cfg-dica">Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.</div>')}
@@ -643,8 +662,10 @@ function telaConfig(v) {
       + `<div class="cfg-acoes-linha"><button class="cfg-b" data-acao="cfgBancoDetectar">Detectar conexões</button><button class="cfg-b" data-acao="cfgBancoAdicionar">＋ Nova conexão</button>`
       + `${val.bancoConexao ? '<button class="cfg-b" data-acao="cfgBancoLimpar">Desligar banco</button>' : ''}</div>`)}
     ${card('teams', 'Teams (opcional)', e.teams, linha('Webhook', e.teams?.ok ? 'guardado no Cofre (TEAMS_WEBHOOK)' : 'não configurado')
-      + '<div class="cfg-dica">Avisos no Teams ainda não implementados (spec pronta). Guarde a URL no Cofre com o nome TEAMS_WEBHOOK.</div>')}
-  </main>`;
+      + '<div class="cfg-dica">Mudanças de impacto médio/alto, perguntas do Claude e eventos da spec chegam como card no Teams (só com o VS Code aberto). A URL vem de um fluxo do app Workflows e fica no Cofre como TEAMS_WEBHOOK.</div>'
+      + '<div class="cfg-acoes-linha"><button class="cfg-b" data-acao="cfgTeamsAjuda" title="Como criar o fluxo no Workflows">ⓘ Como criar o webhook</button>'
+      + '<button class="cfg-b" data-acao="cfgTeamsAbrir">Abrir Power Automate</button></div>')}
+  </main>`}`;
 }
 
 // Visualização de um ticket vinculado (sem trazer para a lista): o mesmo conteúdo da aba Ticket.
@@ -738,9 +759,9 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   const modo = t.refinamento?.estado;
   const passo = est && est.proximoPasso <= 6 ? est.passos[est.proximoPasso] : null;
   const abertas = est ? est.perguntas.filter((q) => q.status === 'aberta') : [];
+  const duvidasAbertas = duvidasDe(pastaDe(t.id) || pasta(t.chave)).filter((x) => !x.resposta).length;
   let titulo, texto = '', acoes = '';
   if (rodandoAgora) [titulo, texto] = [`Claude trabalhando${passo ? ` · passo ${passo.n} · ${passo.titulo}` : ''}`, 'Acompanhe abaixo. ⏸ no topo pausa depois desta etapa.'];
-  const duvidasAbertas = duvidasDe(pastaDe(t.id) || pasta(t.chave)).filter((x) => !x.resposta).length;
   else if (!est) [titulo, texto] = ['Spec não iniciada', 'Clique em ▶ no topo para o Claude criar a spec.'];
   else if (abertas.length) {
     // Perguntas em pilha: um card por vez, as outras como bordas atrás. ‹ › passa sem responder; ▦ mostra todas em grade
@@ -772,9 +793,9 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   else if (!passo) [titulo, texto] = ['Spec concluída', 'Todos os passos aprovados.'];
   else if (modo === 'aguardando_inicio') [titulo, texto, acoes] = ['Spec criada', `Próximo: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="darInicio">Dar início</button>'];
   else if (modo === 'pausado') [titulo, texto, acoes] = ['Refinamento pausado', `Para em: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="retomar">▶ Retomar</button>'];
+  else if (duvidasAbertas) [titulo, texto, acoes] = [`Passo ${passo.n} · ${passo.titulo} bloqueado`, `Há ${duvidasAbertas} dúvida(s) em aberto. A spec só avança quando todas forem respondidas.`, '<button class="primario" data-acao="aba" data-id="duvidas">Ver dúvidas</button>'];
   else [titulo, texto, acoes] = [`Pronto para o passo ${passo.n} · ${passo.titulo}`, 'O Claude não está rodando agora.', '<button class="primario" data-acao="retomar">Continuar</button>'];
   return `<div class="agora ${rodandoAgora ? 'trabalhando' : ''}"><div class="atitulo">${rodandoAgora ? '<span class="vivo-bola"></span>' : ''}${titulo}</div>
-  else if (duvidasAbertas) [titulo, texto, acoes] = [`Passo ${passo.n} · ${passo.titulo} bloqueado`, `Há ${duvidasAbertas} dúvida(s) em aberto. A spec só avança quando todas forem respondidas.`, '<button class="primario" data-acao="aba" data-id="duvidas">Ver dúvidas</button>'];
     ${texto ? `<div class="atexto">${texto}</div>` : ''}${acoes ? `<div class="aacoes">${acoes}</div>` : ''}</div>`;
 }
 
@@ -1128,7 +1149,7 @@ exports.provider = (ctx) => {
   // Configurações (⚙): settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
   const cfg = () => vscode.workspace.getConfiguration('craftingTable');
   const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar()[0]?.chave || 'WMS').split('-')[0];
-  let cfgAberta = false, cfgEstado = {};
+  let cfgAberta = false, cfgEstado = {}, cfgAba = 'geral';
   const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
     etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
@@ -1225,6 +1246,7 @@ exports.provider = (ctx) => {
   };
   const baixando = new Set(); // ids de anexos sendo baixados
   let avisarMoldura = () => {}, pedirSecao = () => {};
+  require('./comandos').aoMudar(() => ((cfgAberta && cfgAba === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
     if (!require('./grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
@@ -1242,7 +1264,7 @@ exports.provider = (ctx) => {
     if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
     if (!t) {
       aberto = null; sessao.focar(null);
-      if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
+      if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
       if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
       view.webview.html = pagina(nonce, telaLista(tickets.listar(), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}));
       avisarMoldura();
@@ -1521,7 +1543,13 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
   };
   const acoes = {
     meusAtualizar() { carregarMeus(true); },
-    config() { cfgAberta = true; previa = null; aberto = null; sessao.focar(null); checar(); },
+    cfgAba({ id }) {
+      cfgAba = ['cofre', 'comandos'].includes(id) ? id : 'geral';
+      require('./cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
+      if (cfgAba === 'comandos') require('./comandos').api?.atualizar();
+      render();
+    },
+    config() { cfgAba = 'geral'; cfgAberta = true; previa = null; aberto = null; sessao.focar(null); checar(); },
     configFechar() { cfgAberta = false; render(); },
     cfgTestar({ id }) { if (CHECAR[id]) checar([id]); },
     async cfgEditar({ id }) {
@@ -1587,6 +1615,26 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (!p.c.usavel) return vscode.window.showInformationMessage(`${p.c.nome} só tem o endereço. Use ＋ Nova conexão para informar usuário e senha.`);
       await escolherBanco(p.c.nome);
     },
+    // Passo a passo do fluxo do Workflows que gera o TEAMS_WEBHOOK.
+    async cfgTeamsAjuda() {
+      const ABRIR = 'Abrir Power Automate', TESTAR = 'Testar aviso';
+      const r = await vscode.window.showInformationMessage('Como criar o TEAMS_WEBHOOK', { modal: true, detail: [
+        '1. No Teams, abra o app Workflows (barra lateral ou "…").',
+        '2. Escolha um destes modelos:',
+        '   • "Enviar alertas de webhook para um chat": avisos só para você (chat consigo mesmo) ou um grupo.',
+        '   • "Enviar alertas de webhook para um canal": o time inteiro vê.',
+        '   Não use as variações "de pessoas específicas" / "de pessoas em uma organização": exigem login e a extensão não tem.',
+        '3. Escolha o chat ou canal e salve. Copie a URL do final (começa com https:// e tem "sig=").',
+        '4. Configurações → Cofre → ＋ → nome TEAMS_WEBHOOK → cole a URL.',
+        '5. Clique em Testar aviso.',
+        '',
+        'Perdeu a URL? Power Automate → Meus fluxos → o fluxo → Editar → primeiro passo ("Quando uma solicitação de webhook do Teams for recebida") → URL HTTP POST.',
+        'A URL é uma senha: quem tiver consegue postar no chat. Vazou? Apague o fluxo e crie outro.'
+      ].join('\n') }, ABRIR, TESTAR);
+      if (r === ABRIR) this.cfgTeamsAbrir();
+      else if (r === TESTAR) { await require('./teams').testar(ctx); checar(['teams']); }
+    },
+    cfgTeamsAbrir() { vscode.env.openExternal(vscode.Uri.parse('https://make.powerautomate.com/manage/flows')); },
     async cfgBancoLimpar() { await salvarCfg('bancoConexao', ''); await salvarCfg('bancoAmbiente', ''); checar(['banco']); },
     // Cria a conexão no próprio SQLcl (ele guarda a senha cifrada; a extensão não guarda nem registra senha).
     async cfgBancoAdicionar() {
@@ -1695,6 +1743,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     },
     atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); vigiarComentarios(); } },
     vigiarAgora() { return vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
+    cmdsAlternar() { cmdsAberto = !cmdsAberto; },
+    cmdAlternar({ id }) { require('./comandos').api?.alternar({ id }); },
     notifLidas() { if (aberto) gravar(aberto, LIDAS, new Date().toISOString()); },
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
@@ -2111,7 +2161,7 @@ Um snapshot é guardado: dá para desfazer depois.`
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? daNota(m) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo ? daNota(m) : /^(cofre|comandos):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
       view.onDidChangeVisibility(() => { if (view.visible) { reconciliar(); render(); } });
       reconciliar();
       render();
