@@ -30,7 +30,7 @@ Na barra de título da view: **⤢ Tela cheia** (abre a mesma tela numa aba do e
 | Análise | `mapa-backend.md` / `mapa-mobile.md` da **pasta da spec** (o mapeamento do passo 3, versionado com a spec), com prévia, edição e @ |
 | Tarefas | Cards das tarefas do passo 4 (Pendentes / Aprovadas / Reprovadas). O card abre o detalhe com estimativa original, "Vincular a mim", **Aprovar** (cria a subtarefa no Jira, com confirmação), **Reprovar** e **Pedir alteração** (o Claude ajusta em segundo plano) |
 | Decisões | Perguntas do Claude respondidas e mensagens suas classificadas como decisão (hook `decisoes.py`) |
-| Dúvidas | O que você marcou como **Tirar dúvida**; **Enviar para os comentários do ticket** mostra a prévia e comenta no Jira, e o card vai para a caixa cinza "Enviadas". Dúvida sem resposta **trava a spec** (iniciar/aprovar passo). Fecha por **Dar resposta** (no card) ou por comentário novo no Jira: o Claude sugere qual dúvida ele responde e você confirma |
+| Dúvidas | O que você marcou como **Tirar dúvida**; **Enviar para os comentários do ticket** mostra a prévia e comenta no Jira, e o card vai para a caixa cinza "Enviadas". Dúvida sem resposta (enviada ou não) **trava o avanço para o próximo passo**; o cartão do topo avisa e leva à aba. Fecha por **Dar resposta** (no card) ou por comentário novo no Jira: o Claude sugere qual dúvida ele responde e você confirma |
 
 **Rodapé**: 🔔 notificações do ticket com contador de não lidas (o Claude terminou, pediu permissão, passo da spec pronto, dúvida registrada). Abrir marca como lidas.
 

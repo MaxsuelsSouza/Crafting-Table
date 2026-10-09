@@ -213,7 +213,7 @@ function cabecalho(t, { aba, secao, dentro }) {
   const abas = semTicket ? ABAS_SEM_TICKET : ABAS;
   const pend = semTicket ? 0 : duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length;
   const pendT = semTicket ? 0 : tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length;
-  const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) sem resposta: a spec não segue">${pend}</span>`
+  const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) em aberto: a spec só avança quando todas forem respondidas">${pend}</span>`
     : id === 'tarefas' && pendT ? `${nome} <span class="ct-badge" title="${pendT} tarefa(s) esperando sua decisão">${pendT}</span>` : nome);
   const abaBtn = ([id, nome]) => (dentro
     ? `<button data-acao="aba" data-id="${id}" class="${secao === PRINCIPAL && aba === id ? 'is-on' : ''}">${rot(id, nome)}</button>`
@@ -740,6 +740,7 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   const abertas = est ? est.perguntas.filter((q) => q.status === 'aberta') : [];
   let titulo, texto = '', acoes = '';
   if (rodandoAgora) [titulo, texto] = [`Claude trabalhando${passo ? ` · passo ${passo.n} · ${passo.titulo}` : ''}`, 'Acompanhe abaixo. ⏸ no topo pausa depois desta etapa.'];
+  const duvidasAbertas = duvidasDe(pastaDe(t.id) || pasta(t.chave)).filter((x) => !x.resposta).length;
   else if (!est) [titulo, texto] = ['Spec não iniciada', 'Clique em ▶ no topo para o Claude criar a spec.'];
   else if (abertas.length) {
     // Perguntas em pilha: um card por vez, as outras como bordas atrás. ‹ › passa sem responder; ▦ mostra todas em grade
@@ -773,6 +774,7 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   else if (modo === 'pausado') [titulo, texto, acoes] = ['Refinamento pausado', `Para em: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="retomar">▶ Retomar</button>'];
   else [titulo, texto, acoes] = [`Pronto para o passo ${passo.n} · ${passo.titulo}`, 'O Claude não está rodando agora.', '<button class="primario" data-acao="retomar">Continuar</button>'];
   return `<div class="agora ${rodandoAgora ? 'trabalhando' : ''}"><div class="atitulo">${rodandoAgora ? '<span class="vivo-bola"></span>' : ''}${titulo}</div>
+  else if (duvidasAbertas) [titulo, texto, acoes] = [`Passo ${passo.n} · ${passo.titulo} bloqueado`, `Há ${duvidasAbertas} dúvida(s) em aberto. A spec só avança quando todas forem respondidas.`, '<button class="primario" data-acao="aba" data-id="duvidas">Ver dúvidas</button>'];
     ${texto ? `<div class="atexto">${texto}</div>` : ''}${acoes ? `<div class="aacoes">${acoes}</div>` : ''}</div>`;
 }
 
