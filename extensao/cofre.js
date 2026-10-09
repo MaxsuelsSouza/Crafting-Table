@@ -60,7 +60,7 @@ const tela = (itens) => `${estiloCofre}
     <span class="espaco"></span>
     <button class="primario" data-acao="adicionar">＋ Segredo</button>
   </div>
-  <div class="aviso"><span>🔒</span><span>Com a chave <b>Claude</b> ligada, o Claude usa o segredo como <code>$NOME</code> pelo comando <code>cofre</code>, sem ver o valor.</span></div>
+  <div class="aviso"><span>🔒</span><span>Com a chave <b>env</b> ligada, o Claude usa o segredo como <code>$NOME</code> pelo comando <code>cofre</code>, sem ver o valor.</span></div>
   ${itens.length ? `<ul class="cartoes">${itens.map((s) => `<li class="${s.env ? '' : 'off'}">
     <span class="cadeado">${CADEADO}</span>
     <div class="corpo"><div class="nome">${esc(s.nome)}</div><div class="valor">••••••••</div></div>
@@ -70,7 +70,7 @@ const tela = (itens) => `${estiloCofre}
       <button class="ico perigo" data-acao="remover" data-id="${esc(s.nome)}" title="Remover">${icone('lixo')}</button>
     </span>
     <button class="chave" role="switch" aria-checked="${s.env}" data-acao="env" data-id="${esc(s.nome)}"
-      title="${s.env ? 'O Claude pode usar (clique para bloquear)' : 'Bloqueado para o Claude (clique para liberar)'}"><span class="trilho"></span>Claude</button>
+      title="${s.env ? 'O Claude pode usar (clique para bloquear)' : 'Bloqueado para o Claude (clique para liberar)'}"><span class="trilho"></span>env</button>
   </li>`).join('')}</ul>`
     : '<div class="folha"><div class="centro"><div class="icone">🔑</div>Nenhum segredo guardado.<br>Clique em <b>＋ Segredo</b>.</div></div>'}`;
 
