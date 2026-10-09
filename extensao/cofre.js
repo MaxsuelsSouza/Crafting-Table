@@ -116,7 +116,7 @@ exports.provider = (ctx) => {
     mencionar({ id }) {
       const s = itens().find((x) => x.nome === id);
       require('./claude').mencionar(s?.env
-        ? `$${id} (segredo do Cofre: use rodando ~/.vscode/extensions/claude-abas/bin/cofre '<comando que usa $${id}>'; o valor não aparece)`
+        ? `$${id} (segredo do Cofre: use rodando ~/.vscode/extensions/crafting-table/bin/cofre '<comando que usa $${id}>'; o valor não aparece)`
         : `$${id} (segredo do Cofre, bloqueado para o Claude: peça para liberar na aba Cofre)`);
     },
     env: ({ id }) => salvar(itens().map((s) => (s.nome === id ? { ...s, env: !s.env } : s)))

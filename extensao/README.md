@@ -79,7 +79,7 @@ Senhas que o Claude **usa sem receber o valor**.
 - **+ Novo segredo**: nome no padrão `NOME_DA_CHAVE` (maiúsculas, números e `_`) e valor de até 256 caracteres
 - Valores cifrados no cofre do VS Code (chaveiro do sistema); nunca em arquivo de texto
 - **env ✓** libera o segredo para o Claude; **✎** troca o valor; **✕** remove
-- O Claude roda `~/.vscode/extensions/claude-abas/bin/cofre '<comando com $NOME>'`: quem executa é a extensão, com os segredos como variáveis de ambiente, e a saída volta mascarada (valor puro, base64 e URL viram `••••`)
+- O Claude roda `~/.vscode/extensions/crafting-table/bin/cofre '<comando com $NOME>'`: quem executa é a extensão, com os segredos como variáveis de ambiente, e a saída volta mascarada (valor puro, base64 e URL viram `••••`)
 - No início de cada conversa o Claude recebe só os **nomes** liberados
 
 **Limite:** o Claude roda com o seu usuário. Um comando que transforme o valor de outro jeito (inverter, cortar em pedaços) escapa da máscara. O Cofre evita vazamento por acidente (log, `echo`, mensagem de erro), não um Claude tentando extrair de propósito.
@@ -113,7 +113,7 @@ Com o VS Code fechado, ou em qualquer erro, o hook não faz nada e a skill segue
 
 ## Instalação
 
-A extensão fica em `~/.vscode/extensions/claude-abas/` (id `local.claude-abas`).
+A extensão fica em `~/.vscode/extensions/crafting-table/` (id `local.claude-abas`, mantido para não perder o Cofre, o login do Jira e os botões).
 
 Peças de fora do VS Code:
 

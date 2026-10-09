@@ -62,7 +62,7 @@ Depois **feche todas as janelas do VS Code e abra de novo**. Na primeira vez o *
 O script faz, e pode ser rodado de novo sem estragar nada:
 
 1. `npm ci` em `extensao/`.
-2. Liga `~/.vscode/extensions/claude-abas` → `extensao/` (link simbólico: um `git pull` já atualiza a extensão). Se já existir uma pasta lá, ela é guardada como `claude-abas.bak-<data>`.
+2. Liga `~/.vscode/extensions/crafting-table` → `extensao/` (link simbólico: um `git pull` já atualiza a extensão). Uma pasta antiga (`crafting-table` ou `claude-abas`) é guardada em `~/.vscode/extensions-bak/`, fora do alcance do VS Code.
 3. Instala o plugin SDD: `claude plugin marketplace add ./plugin` e `claude plugin install sdd@crafting-local`.
 4. Liga os hooks em `~/.claude/hooks/` e os registra em `~/.claude/settings.json` (com backup `settings.json.bak-crafting-*`).
 5. Se houver GNOME, liga a extensão `claude-abas-janelas@local`.
@@ -72,9 +72,9 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 1. **Extensão**
    ```bash
    cd ~/Crafting-Table/extensao && npm ci --omit=dev
-   ln -s ~/Crafting-Table/extensao ~/.vscode/extensions/claude-abas
+   ln -s ~/Crafting-Table/extensao ~/.vscode/extensions/crafting-table
    ```
-   O nome da pasta precisa ser `claude-abas`: o Cofre e o hook de documentos usam esse caminho.
+   O nome da pasta precisa ser `crafting-table`: o Cofre e o hook de documentos usam esse caminho. Não deixe cópias da extensão (ex.: `*.bak-*`) dentro de `~/.vscode/extensions`: o VS Code pode carregar a cópia no lugar do link.
 2. **Plugin SDD**
    ```bash
    claude plugin marketplace add ~/Crafting-Table/plugin
@@ -116,7 +116,7 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 
 | Sintoma | Solução |
 |---|---|
-| A mesa não aparece na barra lateral | Feche o VS Code inteiro (`Ctrl+Q`) e abra de novo; confira o link com `ls -l ~/.vscode/extensions/claude-abas`. |
+| A mesa não aparece na barra lateral | Feche o VS Code inteiro (`Ctrl+Q`) e abra de novo; confira o link com `ls -l ~/.vscode/extensions/crafting-table` e se `~/.vscode/extensions/extensions.json` aponta para `crafting-table`. |
 | Docs vazio em "Sem ticket" numa conversa antiga | Os hooks só identificam a conversa depois da próxima mensagem nela. |
 | `Plugin sdd não encontrado` | `claude plugin install sdd@crafting-local`. |
 | Aprovar da aba Spec apagado | O VS Code recarregou e o Claude não está esperando: clique em **▶** no topo do ticket; com a conversa aberta, o Aprovar volta em segundos. |
@@ -126,7 +126,7 @@ O script faz, e pode ser rodado de novo sem estragar nada:
 ## Estrutura do repositório
 
 ```
-extensao/   extensão do VS Code (id local.claude-abas)
+extensao/   extensão do VS Code (pasta crafting-table, id local.claude-abas)
 plugin/     marketplace local "crafting-local" com o plugin sdd (skill, comandos, sdd-state, hooks)
 hooks/      hooks do Claude Code: documentos.py, decisoes.py, notificacoes.py, crafting-testes.py
 gnome/      extensão do GNOME para trazer janelas para frente

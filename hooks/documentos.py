@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Documentos por conversa do Claude Code (usado pela aba Documentos da extensão claude-abas).
+"""Documentos por conversa do Claude Code (usado pela aba Documentos da extensão Crafting Table).
 
 ~/.claude/documentos/<session_id>/   documentos da conversa
 ~/.claude/documentos/.atual/<hash>   id da conversa ativa no workspace (hash = sha1(cwd)[:16])
@@ -71,7 +71,7 @@ def cofre():
     if not nomes:
         return ""
     return ("Cofre da Crafting Table: segredos disponiveis como variaveis de ambiente: " + ", ".join(nomes) + ". "
-            "Para usar, rode o comando atraves de ~/.vscode/extensions/claude-abas/bin/cofre '<comando que usa $NOME>' "
+            "Para usar, rode o comando atraves de ~/.vscode/extensions/crafting-table/bin/cofre '<comando que usa $NOME>' "
             "(cofre --nomes lista os atuais). A saida volta com os valores mascarados. Nunca tente ler, imprimir ou "
             "transformar o valor de um segredo, nem procure onde ele esta guardado.\n")
 

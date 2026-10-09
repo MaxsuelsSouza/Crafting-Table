@@ -10,14 +10,27 @@ done
 echo "1/5 Dependências da extensão"
 (cd "$REPO/extensao" && npm ci --omit=dev --no-audit --no-fund --silent)
 
-echo "2/5 Extensão no VS Code (~/.vscode/extensions/claude-abas → $REPO/extensao)"
-EXT="$HOME/.vscode/extensions/claude-abas"
-if [ -e "$EXT" ] && [ ! -L "$EXT" ]; then
-  mv "$EXT" "$EXT.bak-$(date +%Y%m%d%H%M%S)"
-  echo "   a pasta que já existia foi guardada como $EXT.bak-*"
-fi
+echo "2/5 Extensão no VS Code (~/.vscode/extensions/crafting-table → $REPO/extensao)"
+EXT="$HOME/.vscode/extensions/crafting-table"
+# Cópias antigas saem de ~/.vscode/extensions: lá dentro o VS Code pode registrar a cópia no lugar do link.
+BAK="$HOME/.vscode/extensions-bak"
+for velho in "$EXT" "$HOME/.vscode/extensions/claude-abas"; do
+  if [ -L "$velho" ]; then rm "$velho"
+  elif [ -e "$velho" ]; then mkdir -p "$BAK"; mv "$velho" "$BAK/$(basename "$velho").bak-$(date +%Y%m%d%H%M%S)"; echo "   $velho guardada em $BAK"; fi
+done
 mkdir -p "$(dirname "$EXT")"
 ln -sfn "$REPO/extensao" "$EXT"
+# Aponta o registro do VS Code para o link (se ele ficou com uma pasta antiga).
+python3 - <<'PY'
+import json, os
+p = os.path.expanduser("~/.vscode/extensions/extensions.json")
+try: d = json.load(open(p))
+except Exception: raise SystemExit
+for e in d:
+    if e.get("identifier", {}).get("id") == "local.claude-abas":
+        e["location"]["path"] = os.path.expanduser("~/.vscode/extensions/crafting-table"); e["relativeLocation"] = "crafting-table"
+json.dump(d, open(p, "w"))
+PY
 
 echo "3/5 Plugin SDD do Claude Code"
 claude plugin marketplace add "$REPO/plugin" >/dev/null 2>&1 || claude plugin marketplace update crafting-local >/dev/null

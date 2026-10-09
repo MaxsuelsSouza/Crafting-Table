@@ -142,6 +142,17 @@
           "default": "claude",
           "description": "Agente de IA do modo refinamento (por enquanto só Claude Code)."
         },
+        "craftingTable.modelo": {
+          "type": "string",
+          "default": "",
+          "description": "Modelo do Claude no modo refinamento (alias como opus, sonnet, fable ou o nome completo). Vazio: o do ~/.claude/settings.json."
+        },
+        "craftingTable.esforco": {
+          "type": "string",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "default": "",
+          "description": "Esforço (effort) do Claude no modo refinamento. Vazio: o do ~/.claude/settings.json."
+        },
         "craftingTable.jiraSite": {
           "type": "string",
           "default": "",

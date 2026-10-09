@@ -618,7 +618,9 @@ function telaConfig(v) {
     <button class="ct-ico" data-acao="configFechar" title="Voltar para a lista">${IC.voltar}</button>
     <span class="ct-titulo">Configurações</span></div><div style="height:8px"></div></header>
   <main class="rolagem cfg">
-    ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>'))}
+    ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
+      + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
+      + '<div class="cfg-dica">Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.</div>')}
     ${card('jira', 'Jira', e.jira, linha('Site', esc(val.jiraSite), 'jiraSite') + linha('Projeto', esc(val.jiraProjeto), 'jiraProjeto')
       + linha('Conta', esc(e.jira?.conta || ''), 'jiraConta'))}
     ${card('board', 'Board e etapas', e.board, linha('Board principal', esc(val.jiraBoard), 'jiraBoard')
@@ -1125,7 +1127,7 @@ exports.provider = (ctx) => {
   const cfg = () => vscode.workspace.getConfiguration('craftingTable');
   const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar()[0]?.chave || 'WMS').split('-')[0];
   let cfgAberta = false, cfgEstado = {};
-  const valoresCfg = () => ({ jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
+  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
     etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
     bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
@@ -1331,7 +1333,8 @@ exports.provider = (ctx) => {
     return maestro.rodar(pasta(t.chave), {
       cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { render(); depoisDaEtapa(t); },
       // O foco substitui o i-have-adhd global nestas execuções (as regras não entram duas vezes).
-      extras: ['--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
+      extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
+        '--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
       prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
         + (dirSpec(t) ? `\nPasta da spec (grave aqui spec, plano, testes e as análises mapa-backend.md/mapa-mobile.md; ~/.claude é bloqueada para escrita): ${dirSpec(t)}` : '')
         + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
@@ -1547,6 +1550,15 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       } else if (id === 'specsDir') {
         const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Pasta local do repositório de specs', openLabel: 'Usar esta pasta' });
         if (u) { await salvarCfg('specsDir', u[0].fsPath); checar(['specs', 'repos']); }
+      } else if (id === 'modelo') {
+        const PADRAO = 'padrão do Claude Code', OUTRO = 'Outro…';
+        const p = await vscode.window.showQuickPick([PADRAO, 'opus', 'sonnet', 'fable', 'haiku', OUTRO], { title: 'Modelo do refinamento', placeHolder: cfg().get('modelo') || PADRAO });
+        const v = p === OUTRO ? await vscode.window.showInputBox({ title: 'Modelo do refinamento', prompt: 'Alias ou nome completo (ex.: claude-opus-5-5)', ignoreFocusOut: true }) : p;
+        if (v !== undefined) { await salvarCfg('modelo', v === PADRAO ? '' : v.trim()); checar(['agente']); }
+      } else if (id === 'esforco') {
+        const PADRAO = 'padrão do Claude Code';
+        const p = await vscode.window.showQuickPick([PADRAO, 'low', 'medium', 'high', 'xhigh', 'max'], { title: 'Esforço do refinamento', placeHolder: cfg().get('esforco') || PADRAO });
+        if (p) { await salvarCfg('esforco', p === PADRAO ? '' : p); checar(['agente']); }
       } else if (id === 'bancoConexao') { return this.cfgBancoDetectar();
       } else if (id === 'bancoAmbiente') { return escolherBanco(cfg().get('bancoConexao'));
       } else if (id === 'bancoSqlcl') {
