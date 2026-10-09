@@ -42,9 +42,16 @@ async function buscar(secrets, { key, site }) {
   };
   // Filhos pela JQL `parent`: cobre subtarefas de história e histórias de Feature/Épico (o campo `subtasks` só traz as primeiras).
   const [j, filhos] = await Promise.all([
-    jira(`issue/${key}?fields=summary,status,assignee,issuetype,priority,description,timetracking,comment,attachment&expand=renderedFields`),
+    jira(`issue/${key}?fields=summary,status,assignee,issuetype,priority,description,timetracking,comment,attachment,parent&expand=renderedFields`),
     jira(`search/jql?jql=${encodeURIComponent(`parent = ${key} ORDER BY created ASC`)}&fields=summary,status,issuetype,assignee&maxResults=100`)
   ]);
+  // Anexos do pai e das histórias irmãs (os arquivos da feature costumam estar em outra história dela); falha aqui não derruba o ticket.
+  const pai = j.fields.parent?.key;
+  const [apai, irmas] = pai ? await Promise.all([
+    jira(`issue/${pai}?fields=attachment`).then((p) => p.fields.attachment || []),
+    jira(`search/jql?jql=${encodeURIComponent(`parent = ${pai} AND key != ${key} ORDER BY created ASC`)}&fields=attachment&maxResults=100`).then((r) => r.issues || [])
+  ]).catch(() => [[], []]) : [[], []];
+  const doPai = [...apai.map((a) => [a, pai]), ...irmas.flatMap((i) => (i.fields.attachment || []).map((a) => [a, i.key]))];
   const tt = j.fields.timetracking || {};
   const comentarios = j.fields.comment?.comments || [];
   const renderizados = j.renderedFields?.comment?.comments || [];
@@ -62,7 +69,8 @@ async function buscar(secrets, { key, site }) {
       responsavel: f.fields.assignee?.displayName
     })),
     // Anexos: o conteúdo baixa com a mesma autenticação (a URL redireciona para o armazenamento do Jira).
-    anexos: (j.fields.attachment || []).map((a) => ({ id: String(a.id), nome: a.filename, tamanho: a.size, url: a.content, criado: a.created })),
+    anexos: [...(j.fields.attachment || []).map((a) => [a, null]), ...doPai]
+      .map(([a, de]) => ({ id: String(a.id), nome: a.filename, tamanho: a.size, url: a.content, criado: a.created, de })),
     comentarios: comentarios.map((c, n) => ({
       autor: c.author?.displayName, data: c.created, corpo: renderizados[n]?.body || ''
     })).reverse() // mais recente primeiro

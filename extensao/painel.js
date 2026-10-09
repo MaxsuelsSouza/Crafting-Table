@@ -950,7 +950,7 @@ function corpoAba(t, aba, d) {
     const kb = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
     const pendentes = pend.length ? `<div class="caixa-t">Encontrados no ticket<span>${pend.length > 1 ? '<button class="baixar" data-acao="anexoTodos">↓ Baixar todos</button>' : ''}</span></div>
       <div class="folha pendentes">${pend.map((a) => `<div class="linha-doc" title="${esc(a.nome)}">
-        <span class="sigla">${esc(path.extname(a.nome).slice(1, 5).toUpperCase() || 'ARQ')}</span><span class="nome">${esc(a.nome)}</span>
+        <span class="sigla">${esc(path.extname(a.nome).slice(1, 5).toUpperCase() || 'ARQ')}</span><span class="nome">${esc(a.nome)}</span>${a.de ? `<span class="selo" title="Anexo de outro ticket da mesma feature">↑ ${esc(a.de)}</span>` : ''}
         <span class="tam">${kb(a.tamanho || 0)}</span>
         <button class="baixar" data-acao="anexoBaixar" data-id="${esc(a.id)}" ${d.baixando.has(a.id) ? 'disabled' : ''}>${d.baixando.has(a.id) ? 'Baixando…' : '↓ Baixar'}</button></div>`).join('')}</div>` : '';
     return `<div class="caixa-t">Documentos<span>${d.docs.length || ''}</span></div><div class="folha">${docs}</div>${pendentes}
