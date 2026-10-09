@@ -1,0 +1,6 @@
+{
+  "name": "mapa",
+  "version": "0.1.0",
+  "description": "Mapeamento do código para o passo 3 (Planejamento técnico) do modo refinamento da Crafting Table: camadas, ref de leitura, inventário invertido com a escada de mudança, chamadores, regras de verificação e evidência conferida. Exclusivo da extensão (carregado com --plugin-dir).",
+  "author": { "name": "Crafting Table" }
+}

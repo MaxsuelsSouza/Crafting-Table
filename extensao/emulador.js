@@ -98,29 +98,29 @@ exports.print = (emu) => new Promise((resolve, reject) => {
 
 const estiloEmu = ESTILO_NOTAS + `<style>
   .cartoes > li.ligado { border-left: 3px solid var(--ok); }
-  .cartoes > li.ocupado { border-left: 3px solid #e3a43b; }
+  .cartoes > li.ocupado { border-left: 3px solid var(--warn); }
   .cartoes > li.ligado:hover { border-left-color: var(--ok); }
-  .cartoes > li.ocupado:hover { border-left-color: #e3a43b; }
+  .cartoes > li.ocupado:hover { border-left-color: var(--warn); }
   .card { display: flex; align-items: center; gap: 10px; }
   /* Só o símbolo: ▶ verde para rodar, ■ vermelho para parar, sem círculo nem borda. */
   .run { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-md); padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 400; background: transparent; color: var(--ok, #4fb477); }
+    font-size: 14px; font-weight: 400; background: transparent; color: var(--ok, var(--ok)); }
   .run:hover { background: var(--surface-2); }
-  .run.stop { color: var(--perigo, #e5484d); }
+  .run.stop { color: var(--perigo, var(--danger)); }
   .run:disabled { opacity: .4; cursor: default; }
   .corpo { flex: 1; min-width: 0; }
   .corpo .nome { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
-  .tag { flex: none; font-size: 9.5px; font-weight: 500; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-dim); }
+  .tag { flex: none; font-size: 9.5px; font-weight: 500; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
   .estado { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
-  .ponto { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #8b949e; }
+  .ponto { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-dim); }
   .ligado .ponto { background: var(--ok); animation: pulso 1.6s infinite; }
-  .ocupado .ponto { background: #e3a43b; animation: pulso .9s infinite; }
+  .ocupado .ponto { background: var(--warn); animation: pulso .9s infinite; }
   .ligado .estado .txt { color: var(--ok); }
-  .ocupado .estado .txt { color: #e3a43b; }
+  .ocupado .estado .txt { color: var(--warn); }
   @keyframes pulso { 50% { opacity: .3; } }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; }
+  .mono { font-family: var(--fc-mono); font-size: 10.5px; }
   .cartoes .procs { margin: 8px 0 0 38px; padding: 6px 8px; border-left: none; border-radius: var(--r-md); background: var(--surface-2); }
-  .cartoes .proc .pid { min-width: 0; padding: 0 6px; border-radius: 8px; font-size: 10.5px; background: var(--surface); color: var(--accent); }
+  .cartoes .proc .pid { min-width: 0; padding: 0 6px; border-radius: var(--r-pill); font-size: 10.5px; background: var(--surface); color: var(--accent); }
   .cartoes .procs .todos { font-size: 11px; margin-top: 6px; }
 </style>`;
 

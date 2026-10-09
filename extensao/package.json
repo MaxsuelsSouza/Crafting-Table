@@ -13,6 +13,9 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "markdown.previewStyles": [
+      "./markdown.css"
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -22,13 +25,8 @@
         },
         {
           "id": "claudeAbas-tickets",
-          "title": "Tickets",
+          "title": "Crafting Table",
           "icon": "icons/crafting-table.png"
-        },
-        {
-          "id": "claudeAbas-musica",
-          "title": "YouTube Music",
-          "icon": "icons/musica.svg"
         }
       ]
     },
@@ -41,18 +39,11 @@
           "when": "false"
         }
       ],
-      "claudeAbas-musica": [
-        {
-          "type": "webview",
-          "id": "claudeAbas.musica",
-          "name": "YouTube Music"
-        }
-      ],
       "claudeAbas-tickets": [
         {
           "type": "webview",
           "id": "claudeAbas.tickets",
-          "name": "Tickets"
+          "name": "Crafting Table"
         }
       ]
     },
@@ -64,6 +55,10 @@
           "light": "icons/menu/claude-light.svg",
           "dark": "icons/menu/claude-dark.svg"
         }
+      },
+      {
+        "command": "claudeAbas.testarTeams",
+        "title": "Crafting Table: Testar aviso para o Teams"
       },
       {
         "command": "claudeAbas.abrirTeams",
@@ -82,37 +77,47 @@
         }
       },
       {
-        "command": "claudeAbas.musica.voltar",
-        "title": "Voltar",
-        "icon": "$(arrow-left)"
+        "command": "claudeAbas.configuracoes",
+        "title": "Configurações",
+        "icon": "$(gear)",
+        "category": "Crafting Table"
       },
       {
-        "command": "claudeAbas.musica.recarregar",
-        "title": "Recarregar",
-        "icon": "$(refresh)"
+        "command": "claudeAbas.telaCheia",
+        "title": "Tela cheia",
+        "icon": "$(screen-full)",
+        "category": "Crafting Table"
       },
       {
-        "command": "claudeAbas.musica.inicio",
-        "title": "Início do YouTube Music",
-        "icon": "$(home)"
+        "command": "claudeAbas.sairTelaCheia",
+        "title": "Sair da tela cheia",
+        "icon": "$(screen-normal)",
+        "category": "Crafting Table"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "claudeAbas.musica.voltar",
-          "when": "view == claudeAbas.musica",
+          "command": "claudeAbas.configuracoes",
+          "when": "view == claudeAbas.tickets",
+          "group": "navigation@9"
+        },
+        {
+          "command": "claudeAbas.telaCheia",
+          "when": "view == claudeAbas.tickets",
+          "group": "navigation@8"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "claudeAbas.configuracoes",
+          "when": "activeWebviewPanelId == 'claudeAbas.cheia'",
           "group": "navigation@1"
         },
         {
-          "command": "claudeAbas.musica.recarregar",
-          "when": "view == claudeAbas.musica",
+          "command": "claudeAbas.sairTelaCheia",
+          "when": "activeWebviewPanelId == 'claudeAbas.cheia'",
           "group": "navigation@2"
-        },
-        {
-          "command": "claudeAbas.musica.inicio",
-          "when": "view == claudeAbas.musica",
-          "group": "navigation@3"
         }
       ]
     },
@@ -128,6 +133,114 @@
           "type": "string",
           "default": "",
           "description": "Repositório git das specs SDD dos tickets (▶ do ticket cria <CHAVE>-<slug>/ nele). Vazio: ~/specs."
+        },
+        "craftingTable.agente": {
+          "type": "string",
+          "enum": [
+            "claude"
+          ],
+          "default": "claude",
+          "description": "Agente de IA do modo refinamento (por enquanto só Claude Code)."
+        },
+        "craftingTable.jiraSite": {
+          "type": "string",
+          "default": "",
+          "description": "Site do Jira (https://<org>.atlassian.net). Vazio: o site do primeiro ticket da lista."
+        },
+        "craftingTable.jiraProjeto": {
+          "type": "string",
+          "default": "",
+          "description": "Chave do projeto no Jira (ex.: WMS). Vazio: a do primeiro ticket da lista."
+        },
+        "craftingTable.jiraBoard": {
+          "type": "string",
+          "default": "Downstream",
+          "description": "Board principal do projeto: as colunas dele viram as etapas do filtro dos vinculados (procura pelo nome)."
+        },
+        "craftingTable.etapasExtras": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Pronto p/ Dev"
+          ],
+          "description": "Status que não são coluna do board mas entram no filtro de etapas."
+        },
+        "craftingTable.specsRemoto": {
+          "type": "string",
+          "default": "",
+          "description": "URL do repositório (GitLab) das specs, para clonar/atualizar a pasta de specs."
+        },
+        "craftingTable.repositorios": {
+          "type": "array",
+          "default": [],
+          "description": "Repositórios de código que o Claude pode ler no refinamento: [{ caminho, camada (backend|mobile|web|outro), refRelease? }]. Vazio: novo-wms-backend e wms-mobile ao lado da pasta de specs.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "caminho": {
+                "type": "string"
+              },
+              "camada": {
+                "type": "string",
+                "enum": [
+                  "backend",
+                  "mobile",
+                  "web",
+                  "outro"
+                ]
+              },
+              "refRelease": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "craftingTable.bancoConexao": {
+          "type": "string",
+          "default": "",
+          "description": "Conexão salva do SQLcl usada pelo mapeamento do passo 3 (só leitura). Vazio: sem banco."
+        },
+        "craftingTable.bancoAmbiente": {
+          "type": "string",
+          "enum": [
+            "",
+            "copia-producao",
+            "qas",
+            "producao"
+          ],
+          "default": "",
+          "description": "O que a conexão é. 'producao' é recusada: o mapeamento só consulta a cópia de produção ou o QAS."
+        },
+        "craftingTable.bancoSqlcl": {
+          "type": "string",
+          "default": "",
+          "description": "Caminho do executável do SQLcl. Vazio: procura em ~/sqlcl/bin/sql e no PATH."
+        },
+        "craftingTable.bancoColunasSensiveis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "cpf",
+            "cnpj",
+            "rg",
+            "email",
+            "telefone",
+            "fone",
+            "celular",
+            "endereco",
+            "logradouro",
+            "cep",
+            "senha",
+            "password",
+            "token",
+            "nascimento",
+            "salario"
+          ],
+          "description": "Colunas pessoais cujo valor vira *** antes de a IA ver o resultado (casa pelo nome da coluna)."
         }
       }
     }

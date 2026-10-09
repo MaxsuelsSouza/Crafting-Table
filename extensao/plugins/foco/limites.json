@@ -1,0 +1,18 @@
+{
+  "linhas": {
+    "padrao": 200,
+    "spec.md": 300,
+    "plan.md": 350,
+    "tasks.md": 300,
+    "analise.md": 200,
+    "constitution.md": 450,
+    "mapa-backend.md": 350,
+    "mapa-mobile.md": 350,
+    ".handoff-backend.md": 350,
+    ".handoff-mobile.md": 350,
+    "testes.md": 450
+  },
+  "palavrasPorParagrafo": 90,
+  "palavrasPorFrase": 35,
+  "avisosPorArquivo": 2
+}

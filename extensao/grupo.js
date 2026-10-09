@@ -1,3 +1,4 @@
+const { CSS: MARCA, fontesCss } = require('./marca');
 const vscode = require('vscode');
 
 // Junta várias telas numa só view (uma seção visível por vez).
@@ -15,15 +16,17 @@ const parteDe = (id) => Object.keys(JUNTAS).find((j) => JUNTAS[j].includes(id));
 const partes = {}; // id da parte -> provider
 const grupoDe = (id) => Object.keys(GRUPOS).find((g) => GRUPOS[g].some(([s]) => s === id));
 const secoes = {}; // id da seção -> { provider }
+const montados = {}; // grupo -> { adicionar(alvo), remover(alvo) }: janelas extras que espelham a mesma tela (tela cheia)
+let painelCheia = null;
 let memoria; // globalState: última seção aberta de cada grupo (só grupos sem moldura)
 
 const MENU_CSS = `<style>
-  .grupo-menu { display: flex; gap: 2px; margin: 10px 12px 2px; padding: 4px; overflow-x: auto; scrollbar-width: none; border-radius: 10px;
-    background: var(--vscode-editorWidget-background, #232328); border: 1px solid var(--vscode-widget-border, #3a3a42); }
-  .grupo-menu button { flex: none; height: 24px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
-    color: var(--vscode-foreground); font: inherit; font-size: 11.5px; }
-  .grupo-menu button:hover { background: var(--vscode-toolbar-hoverBackground, #2a2a30); }
-  .grupo-menu button.is-on { background: #007aff; color: #fff; font-weight: 600; }
+  .grupo-menu { display: flex; gap: 2px; margin: 10px 12px 2px; padding: 4px; overflow-x: auto; scrollbar-width: none; border-radius: var(--r-lg);
+    background: var(--surface); border: 1px solid var(--border); }
+  .grupo-menu button { flex: none; height: 24px; padding: 0 9px; border: 0; border-radius: var(--r-md); background: transparent; cursor: pointer;
+    color: var(--text); font: inherit; font-size: 11.5px; }
+  .grupo-menu button:hover { background: var(--surface-2); }
+  .grupo-menu button.is-on { background: var(--accent); color: var(--on-cor); font-weight: 600; }
 </style>`;
 
 // Entrega a API do VS Code para o menu e para o script da página (acquireVsCodeApi só pode ser chamado uma vez).
@@ -43,16 +46,16 @@ const script = (n) => `<script${n}>(() => {
   })();</script>`;
 
 // Fonte única da extensão: Mono em todo texto (a nota mantém a fonte escolhida no editor, que é mais específica).
-const FONTE = '<style>body, button, input, textarea, select { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }</style>';
 
-function comMenu(html, grupo, atual, moldura) {
+function comMenu(html, grupo, atual, moldura, web) {
   const nonce = html.match(/nonce-([A-Za-z0-9+/=]+)/)?.[1];
   const n = nonce ? ` nonce="${nonce}"` : '';
   const principal = GRUPOS[grupo][0][0];
   const m = moldura && atual !== principal ? moldura(atual) : null;
-  const css = FONTE + (moldura ? m?.css || '' : MENU_CSS);
+  const css = MARCA + fontesCss((p) => web.asWebviewUri(vscode.Uri.file(p))) + (moldura ? m?.css || '' : MENU_CSS); // a paleta da marca vem por último no head: vale sobre os :root de cada tela
   const topo = moldura ? m?.topo || ''
     : `<nav class="grupo-menu">${GRUPOS[grupo].map(([id, nome]) => `<button data-secao="${id}" class="${id === atual ? 'is-on' : ''}">${nome}</button>`).join('')}</nav>`;
+  html = html.replace(/default-src 'none';/, `default-src 'none'; font-src ${web.cspSource};`);
   const cabeca = html.includes('</head>') ? html.replace('</head>', `${css}${script(n)}</head>`) : css + script(n) + html;
   const comTopo = cabeca.replace(/<body([^>]*)>/, `<body$1>${topo}`);
   return m?.rodape ? comTopo.replace(/<\/body>(?![\s\S]*<\/body>)/, `${m.rodape}</body>`) : comTopo;
@@ -103,8 +106,10 @@ function montarGrupo(grupo, real) {
   let atual = !moldura && ids.includes(memoria.get(`grupo.${grupo}`)) ? memoria.get(`grupo.${grupo}`) : principal;
   const ativo = (id) => id === atual;
   const vis = {}, msg = {}, htmls = {};
-  const desenhar = () => { real.webview.html = comMenu(htmls[atual], grupo, atual, moldura); };
-  real.webview.options = { enableScripts: true };
+  const alvos = [real]; // a view da barra lateral e, na tela cheia, a aba do editor: todas mostram a mesma coisa
+  const desenhar = () => alvos.forEach((a) => { a.webview.html = comMenu(htmls[atual], grupo, atual, moldura, a.webview); });
+  const opcoes = { enableScripts: true, localResourceRoots: [vscode.Uri.file(__dirname)] };
+  real.webview.options = opcoes;
 
   for (const id of ids) if (JUNTAS[id]) secoes[id] = { provider: juntar(JUNTAS[id]) };
   for (const id of ids) {
@@ -116,13 +121,13 @@ function montarGrupo(grupo, real) {
         get html() { return htmls[id]; },
         set html(h) { htmls[id] = h; if (ativo(id)) desenhar(); },
         get options() { return real.webview.options; },
-        set options(o) { real.webview.options = { ...real.webview.options, ...o, enableScripts: true }; },
+        set options(o) { alvos.forEach((a) => { a.webview.options = { ...a.webview.options, ...o, enableScripts: true, localResourceRoots: opcoes.localResourceRoots }; }); },
         get cspSource() { return real.webview.cspSource; },
         asWebviewUri: (u) => real.webview.asWebviewUri(u),
-        postMessage: (m) => (ativo(id) ? real.webview.postMessage(m) : Promise.resolve(false)),
+        postMessage: (m) => (ativo(id) ? Promise.all(alvos.map((a) => a.webview.postMessage(m))).then((r) => r.some(Boolean)) : Promise.resolve(false)),
         onDidReceiveMessage: sub(msg[id])
       },
-      get visible() { return ativo(id) && real.visible; },
+      get visible() { return ativo(id) && alvos.some((a) => a.visible); },
       onDidChangeVisibility: sub(vis[id]),
       onDidDispose: real.onDidDispose,
       show: (p) => real.show?.(p)
@@ -145,15 +150,45 @@ function montarGrupo(grupo, real) {
   // Voltar para a principal sem clique (ex.: o ticket foi fechado).
   secoes[principal]?.provider.aoPedirSecao?.((id) => trocar(id || principal));
 
-  real.webview.onDidReceiveMessage((m) => {
+  const aoReceber = (m) => {
     if (m?.acao === '__painel') return paraPrincipal({ acao: m.cmd, id: m.id });
     if (m?.acao === '__secao') {
       if (m.aba || m.cmd) paraPrincipal({ acao: m.cmd || 'aba', id: m.aba });
       return trocar(m.id);
     }
     msg[atual].forEach((f) => f(m));
-  });
-  real.onDidChangeVisibility(() => vis[atual].forEach((f) => f()));
+  };
+  const aoVisivel = () => vis[atual].forEach((f) => f());
+  real.webview.onDidReceiveMessage(aoReceber);
+  real.onDidChangeVisibility(aoVisivel);
+  // Tela cheia: outra janela (aba do editor) entra no espelho; o estado continua um só.
+  montados[grupo] = {
+    adicionar(alvo) { alvo.webview.options = opcoes; alvos.push(alvo); alvo.webview.onDidReceiveMessage(aoReceber); alvo.onDidChangeVisibility(aoVisivel); desenhar(); aoVisivel(); },
+    remover(alvo) { const i = alvos.indexOf(alvo); if (i > 0) alvos.splice(i, 1); aoVisivel(); }
+  };
+}
+
+// ── Tela cheia: abre a Crafting Table numa aba do editor e esconde as barras laterais ──
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+async function abrirTelaCheia() {
+  const g = 'claudeAbas.tickets';
+  if (!montados[g]) { await vscode.commands.executeCommand('claudeAbas.tickets.focus'); for (let i = 0; i < 20 && !montados[g]; i++) await espera(150); }
+  if (!montados[g]) return vscode.window.showWarningMessage('Abra a Crafting Table na barra lateral uma vez antes de usar a tela cheia.');
+  if (painelCheia) painelCheia.reveal(vscode.ViewColumn.Active);
+  else {
+    const p = vscode.window.createWebviewPanel('claudeAbas.cheia', 'Crafting Table', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.file(__dirname)] });
+    p.iconPath = vscode.Uri.file(require('path').join(__dirname, 'icons', 'crafting-table.png'));
+    const alvo = { webview: p.webview, get visible() { return p.visible; }, onDidChangeVisibility: (f) => p.onDidChangeViewState(f), onDidDispose: p.onDidDispose };
+    painelCheia = p;
+    p.onDidDispose(() => { montados[g]?.remover(alvo); painelCheia = null; vscode.commands.executeCommand('setContext', 'claudeAbas.cheia', false); });
+    montados[g].adicionar(alvo);
+  }
+  vscode.commands.executeCommand('setContext', 'claudeAbas.cheia', true);
+  await vscode.commands.executeCommand('workbench.action.maximizeEditorHideSidebar');
+}
+async function sairTelaCheia() {
+  painelCheia?.dispose();
+  await vscode.commands.executeCommand('workbench.view.extension.claudeAbas-tickets'); // mostra a barra lateral de volta
 }
 
 module.exports = {
@@ -164,8 +199,10 @@ module.exports = {
     secoes[id] = { provider };
     return { dispose() {} };
   },
+  telaCheiaAberta: () => !!painelCheia,
   provider(ctx) {
     memoria = ctx.globalState;
+    ctx.subscriptions.push(vscode.commands.registerCommand('claudeAbas.telaCheia', abrirTelaCheia), vscode.commands.registerCommand('claudeAbas.sairTelaCheia', sairTelaCheia));
     return vscode.Disposable.from(...Object.keys(GRUPOS).map((g) => vscode.window.registerWebviewViewProvider(g, {
       resolveWebviewView: (real) => montarGrupo(g, real)
     }, { webviewOptions: { retainContextWhenHidden: true } })));

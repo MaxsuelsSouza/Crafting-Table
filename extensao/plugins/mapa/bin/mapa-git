@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+// git SÓ LEITURA para o mapeamento: mapa-git <repo> <log|show|grep|ls-tree|blame|rev-parse|branch|for-each-ref|cat-file> [args]
+// Recusa qualquer coisa que escreva (opções de saída em arquivo, editor/pager, branch que não seja listagem).
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const [repo, sub, ...args] = process.argv.slice(2);
+const falhar = (m) => { console.error('mapa-git: ' + m); process.exit(2); };
+const PERMITIDOS = ['log', 'show', 'grep', 'ls-tree', 'blame', 'rev-parse', 'branch', 'for-each-ref', 'cat-file'];
+if (!repo || !sub) falhar('uso: mapa-git <repo> <' + PERMITIDOS.join('|') + '> [args]');
+if (!fs.existsSync(repo)) falhar(`repositório não existe: ${repo}`);
+if (!PERMITIDOS.includes(sub)) falhar(`"${sub}" não é permitido (só leitura: ${PERMITIDOS.join(', ')})`);
+const proibida = args.find((a) => /^--output\b|^-O|^--open-files-in-pager|^--ext-diff|^--textconv/.test(a));
+if (proibida) falhar(`opção não permitida: ${proibida}`);
+// branch sem flag de listagem cria branch: exige uma delas e recusa as que alteram.
+if (sub === 'branch' && (!args.some((a) => /^(-r|-a|--list|--remotes|--all|--contains|--merged|--no-merged)$/.test(a))
+  || args.some((a) => /^-(d|D|m|M|c|C|f|u)$|^--(delete|move|copy|force|set-upstream|unset-upstream|edit-description|track)/.test(a))))
+  falhar('branch: só listagem (-r, -a, --list, --contains…)');
+const r = spawnSync('git', ['-C', repo, '--no-pager', sub, ...args], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, GIT_PAGER: 'cat', GIT_EDITOR: 'false' } });
+process.stdout.write(r.stdout || '');
+process.stderr.write(r.stderr || '');
+process.exit(r.status ?? 1);

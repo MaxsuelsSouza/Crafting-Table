@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+// Consulta SÓ LEITURA ao banco (via SQLcl) para o mapeamento do passo 3.
+//   mapa-db consulta "<select …>" [--limite N]
+//   mapa-db lote <arquivo.sql> [--limite N]      várias consultas separadas por ";" numa só sessão (o SQLcl demora a subir)
+//   mapa-db status                               o que está configurado
+// A conexão, o ambiente e as colunas mascaradas vêm da Crafting Table (variáveis MAPA_DB_*): o Claude não escolhe base.
+// Cite o resultado no handoff com o marcador [db:xxxxxxxx] que sai no cabeçalho: o mapa-conferir confere no log.
+const fs = require('fs');
+const banco = require('../lib/banco');
+
+const cfg = {
+  conexao: process.env.MAPA_DB_CONEXAO || '', ambiente: process.env.MAPA_DB_AMBIENTE || '', sqlcl: process.env.MAPA_DB_SQLCL || '',
+  sensiveis: String(process.env.MAPA_DB_SENSIVEIS || '').split(',').map((x) => x.trim()).filter(Boolean),
+  limite: Number(process.env.MAPA_DB_LIMITE) || banco.LIMITE_PADRAO, log: process.env.MAPA_DB_LOG || ''
+};
+const [cmd, arg, ...resto] = process.argv.slice(2);
+const opt = (n) => { const i = resto.indexOf(n); return i >= 0 ? resto[i + 1] : undefined; };
+const falhar = (m, c = 2) => { console.error('mapa-db: ' + m); process.exit(c); };
+
+(async () => {
+  if (cmd === 'status') {
+    console.log(cfg.conexao ? `conexão: ${cfg.conexao} · ambiente: ${banco.AMBIENTES[cfg.ambiente] || '(não definido)'} · limite: ${cfg.limite} linhas`
+      : 'banco não configurado: liste as consultas que deveriam rodar como pendência (🟡).');
+    return;
+  }
+  if (!['consulta', 'lote'].includes(cmd) || !arg) falhar('uso: mapa-db consulta "<select …>" | lote <arquivo.sql> | status');
+  const lim = Number(opt('--limite'));
+  if (lim) cfg.limite = lim;
+  let consultas;
+  if (cmd === 'consulta') consultas = [arg];
+  else { if (!fs.existsSync(arg)) falhar(`arquivo não existe: ${arg}`); consultas = banco.dividir(fs.readFileSync(arg, 'utf8')); }
+  if (!consultas.length) falhar('nenhuma consulta');
+  if (consultas.length > 25) falhar('no máximo 25 consultas por lote');
+  const res = await banco.rodar(cfg, consultas);
+  console.log(banco.formatar(res, cfg));
+  if (res.erro || res.resultados.some((r) => !r.ok)) process.exitCode = 1;
+})();

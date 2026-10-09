@@ -1,0 +1,6 @@
+{
+  "name": "foco",
+  "version": "0.1.0",
+  "description": "Texto curto e acionável em tudo que o Claude produz pela Crafting Table: regras de resposta (próxima ação primeiro, passos numerados, sem preâmbulo) e de documento (resumo no topo, uma ideia por seção, tabela em vez de prosa), com medição automática de cada .md/.txt escrito. Exclusivo da extensão (carregado com --plugin-dir).",
+  "author": { "name": "Crafting Table" }
+}

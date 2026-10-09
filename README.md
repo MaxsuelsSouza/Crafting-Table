@@ -2,7 +2,7 @@
 
 Bancada de trabalho para o **Claude Code no VS Code**. Fica ao lado do chat oficial do Claude, sem modificá-lo, e acrescenta as ferramentas do dia a dia de quem desenvolve com ele: tickets do Jira, notas, documentos e evidências por conversa, botões de comando, emuladores Android, um cofre de senhas e refinamentos com **Spec Driven Development** guiado.
 
-Barra lateral: **✳ Claude** · **🎫 Tickets** · **YouTube Music**.
+Barra lateral: **✳ Claude** · **🎫 Tickets**.
 
 ## O que ela faz
 
@@ -14,7 +14,7 @@ O **ticket do Jira é o centro**: abra um ticket e tudo dele fica junto, numa pa
 | **Spec** | Os 7 passos do Spec Driven Development (plugin `sdd`), com aprovação só humana. |
 | **Ticket** | Descrição, subtarefas, comentários e horas do Jira. |
 | **Análise** | Handoffs de backend e mobile. |
-| **TODO** | Quadro A fazer / Fazendo / Feito. |
+| **Tarefas** | As tarefas do passo 4 em cards, como no Jira: aprovar cria a subtarefa no ticket; reprovar; pedir alteração ao Claude. |
 | **Decisões** | Perguntas respondidas e decisões tomadas no chat. |
 | **Dúvidas** | Perguntas do Claude que você marcou como "Tirar dúvida"; um clique comenta no Jira. |
 | **Comandos · Evidências · Cofre · Conversas** | Botões de API/Metro e emuladores, prints e vídeos, senhas que o Claude usa sem ver, conversas do ticket. |

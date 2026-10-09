@@ -1,9 +1,10 @@
+const { FC } = require('./marca');
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // Editor de notas (aba Docs do ticket): <pasta do ticket ou da conversa>/.notas.html e .notas.json (aparência).
 // HTML em vez de .md: título e listas vêm do editor do próprio navegador (contenteditable).
 // Aparência da nota, copiada do Atelier (makeStickyNoteContent / typography.ts): post-it amarelo, Mono 14.
-const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: '#FEFDE8', alinhamento: 'left' };
+const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: FC.digitalSoft, alinhamento: 'left' };
 
 // Peças do editor (barras de formatação, busca, papel e o script), também usadas na aba Docs do ticket (painel.js).
 // O script fala com a extensão por { tipo: 'salvar' | 'estilo' | 'mencionar' | 'colar', sid } e recebe { tipo: 'colado', texto }.
@@ -43,9 +44,9 @@ const CSS_NOTAS = `<style>
   .fb-row { border: 0; background: transparent; color: var(--text); text-align: left; padding: 4px 6px; border-radius: var(--r-sm); font-size: var(--fs-md); cursor: pointer; }
   .fb-row:hover { background: var(--surface-2); }
   .fb-row.is-on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .fb-row[data-family='sans'] { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif; }
+  .fb-row[data-family='sans'] { font-family: var(--fc-font); }
   .fb-row[data-family='serif'] { font-family: ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif; }
-  .fb-row[data-family='mono'] { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .fb-row[data-family='mono'] { font-family: var(--fc-mono); }
   .fb-row[data-family='rounded'] { font-family: 'SF Pro Rounded', ui-rounded, Nunito, 'Avenir Next', system-ui, sans-serif; }
   .fb-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
   .fb-swatch { width: 20px; height: 20px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); cursor: pointer; }
@@ -57,6 +58,11 @@ const CSS_NOTAS = `<style>
   .fb-clear { border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; color: var(--text-dim); font-size: var(--fs-sm); padding: 2px 7px; cursor: pointer; }
   .fb-clear:hover { color: var(--text); background: var(--surface-2); }
   .barras .espaco { flex: 1; }
+  .fb-popover.esq { left: 0; transform: none; }
+  #estado { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 0 6px; font-size: 10.5px; color: var(--text-dim); }
+  #estado::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--warn, #e0a030); }
+  #estado.ok::before { background: #2ea043; }
+  #estado.erro::before { background: #d73a49; }
 
   /* ── Papel da nota (post-it do Atelier) ── */
   .papel { flex: 1; min-height: 0; margin: 0 12px 12px; border-radius: var(--r-lg); display: flex; flex-direction: column;
@@ -76,14 +82,14 @@ const CSS_NOTAS = `<style>
   #busca .cont { font-size: 11px; color: var(--text-dim); min-width: 42px; text-align: center; }
   #busca button { background: none; border: none; color: var(--text); cursor: pointer; padding: 2px 6px; border-radius: var(--r-sm); }
   #busca button:hover { background: var(--surface-2); }
-  ::highlight(busca) { background: rgba(255, 196, 0, .45); }
-  ::highlight(atual) { background: rgba(255, 140, 0, .75); }
+  ::highlight(busca) { background: color-mix(in srgb, var(--warn) 45%, transparent); }
+  ::highlight(atual) { background: color-mix(in srgb, var(--warn) 75%, transparent); }
 </style>`;
 const corpoNotas = (vazio = 'Escreva suas notas desta conversa…') => `<div class="barras">
   <div class="format-bar" id="fb">
     <div class="fb-pop-host">
       <button type="button" class="icon-btn fb-btn fb-wide" data-pop="fonte" title="Fonte"><span id="fonteNome">Mono</span> <span class="fb-caret">▾</span></button>
-      <div class="fb-popover" id="pop-fonte" hidden>
+      <div class="fb-popover esq" id="pop-fonte" hidden>
         <div class="fb-popover-title">Fonte</div>
         <div class="fb-list">
           <button class="fb-row" data-family="sans">Sans</button><button class="fb-row" data-family="serif">Serif</button>
@@ -127,6 +133,7 @@ const corpoNotas = (vazio = 'Escreva suas notas desta conversa…') => `<div cla
     <button class="icon-btn fb-btn" data-cmd="insertUnorderedList" title="Lista com marcador • (Ctrl+Shift+8)">•</button>
     <span class="fb-sep"></span>
     <button class="icon-btn fb-btn" id="mencionar" title="Mencionar a nota no Claude (com o trecho selecionado, se houver)">@</button>
+    <span id="estado" class="ok" title="Nota salva">Salva</span>
     <button class="icon-btn fb-btn" id="lupa" title="Buscar nas notas (Ctrl+F)"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
   </div>
 </div>
@@ -148,16 +155,23 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   ed.innerHTML = ${JSON.stringify(conteudo).replace(/</g, '\\u003c')};
   document.execCommand('defaultParagraphSeparator', false, 'div');
 
-  let t;
+  let t, seq = 0, ack = 0;
   const estado = document.getElementById('estado');
+  let pendente = false;
+  const marca = (cls, txt, dica) => { if (!estado) return; estado.className = cls; estado.textContent = txt; estado.title = dica; };
+  // Grava já (sem esperar o atraso): usado ao sair da página, trocar de aba e perder o foco.
+  const enviar = () => { clearTimeout(t); pendente = false; vscode.postMessage({ tipo: 'salvar', html: ed.innerHTML, sid: SID, seq: ++seq }); };
   const salvar = () => {
     clearTimeout(t);
-    estado.textContent = 'Salvando…'; estado.classList.remove('ok');
-    t = setTimeout(() => {
-      vscode.postMessage({ tipo: 'salvar', html: ed.innerHTML, sid: SID });
-      estado.textContent = 'Salvo'; estado.classList.add('ok');
-    }, 300);
+    pendente = true;
+    marca('', 'Salvando…', 'Ainda não gravada em disco');
+    t = setTimeout(enviar, 150);
   };
+  const emDia = () => { if (pendente) enviar(); };
+  addEventListener('pagehide', emDia);
+  addEventListener('blur', emDia);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) emDia(); });
+  document.addEventListener('click', emDia, true); // clicar em outra aba/botão grava antes de a página trocar
 
   // Título alterna: se o bloco já é título, volta a texto normal.
   const aplicar = (cmd) => {
@@ -232,7 +246,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   botoes.forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); aplicar(b.dataset.cmd); }));
   ed.addEventListener('input', salvar);
   // Trocar de seção no menu da Conversa troca a página: grava antes o que estava esperando o atraso.
-  addEventListener('crafting:sair', () => { if (estado.textContent === 'Salvando…') { clearTimeout(t); vscode.postMessage({ tipo: 'salvar', html: ed.innerHTML, sid: SID }); } });
+  addEventListener('crafting:sair', emDia);
   document.addEventListener('selectionchange', marcar);
   ed.addEventListener('keydown', (e) => {
     const k = e.ctrlKey && (e.shiftKey ? { '&': 'insertOrderedList', '7': 'insertOrderedList', '*': 'insertUnorderedList', '8': 'insertUnorderedList' }[e.key]
@@ -240,16 +254,16 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
     if (k) { e.preventDefault(); aplicar(k); }
   });
   // ── Barra de formatação (Atelier: format-bar.tsx + typography.ts) ──
-  const FONTES = { sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif',
+  const FONTES = { sans: 'var(--fc-font)',
     serif: 'ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif',
-    mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    mono: 'var(--fc-mono)',
     rounded: '"SF Pro Rounded", ui-rounded, "Nunito", "Avenir Next", system-ui, sans-serif' };
   const ROTULO = { sans: 'Sans', serif: 'Serif', mono: 'Mono', rounded: 'Rounded' };
   const DEGRAUS = [11, 12, 14, 16, 18, 24, 32, 40, 56, 72, 96];
-  const CORES_TEXTO = [['#1a1a1a','Preto'],['#6b6b70','Cinza'],['#ffffff','Branco'],['#e0245e','Rosa'],['#e74c3c','Vermelho'],['#f39c12','Laranja'],
-    ['#f1c40f','Amarelo'],['#2ecc71','Verde'],['#1abc9c','Turquesa'],['#007aff','Azul'],['#5856d6','Índigo'],['#af52de','Violeta']];
-  const CORES_PAPEL = [['#FEFDE8','Amarelo'],['#FFF1E6','Pêssego'],['#FFE8EC','Rosa'],['#F3E8FF','Lilás'],['#E6F0FF','Azul'],['#E3F9F2','Menta'],
-    ['#EEF7DC','Lima'],['#F2F2F5','Cinza'],['#2A2A30','Grafite']];
+  const CORES_TEXTO = [['${FC.text}','Claro'],['${FC.bg}','Escuro'],['${FC.claroMuted}','Cinza'],['${FC.accent}','Verde'],['${FC.green}','Verde claro'],
+    ['${FC.digital}','Amarelo']];
+  const CORES_PAPEL = [['${FC.digitalSoft}','Amarelo'],['${FC.bgSoft}','Escuro'],['${FC.text}','Claro'],['${FC.claroBgSoft}','Creme'],['${FC.claroRule}','Cinza'],
+    ['${FC.accent}','Verde'],['${FC.green}','Verde claro'],['${FC.digital}','Digital']];
   const limitar = (n) => Math.min(200, Math.max(8, Math.round(n)));
   const degrau = (atual, d) => limitar((d === 1 ? DEGRAUS : [...DEGRAUS].reverse()).find((x) => (d === 1 ? x > atual : x < atual)) ?? atual + d);
   function luminancia(hex) {
@@ -258,7 +272,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
     const c = (i) => { const v = parseInt(f.slice(i * 2, i * 2 + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
     return 0.2126 * c(0) + 0.7152 * c(1) + 0.0722 * c(2);
   }
-  const contraste = (fundo) => (luminancia(fundo) > 0.45 ? '#2a2a2a' : '#f0f0f2');
+  const contraste = (fundo) => (luminancia(fundo) > 0.45 ? '${FC.bg}' : '${FC.text}');
 
   let estiloNota = ${JSON.stringify(estilo).replace(/</g, '\\u003c')};
   const folha = document.querySelector('.papel');
@@ -276,7 +290,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
     tamanhoSel.value = DEGRAUS.includes(e.tamanho) ? String(e.tamanho) : 'custom';
     document.getElementById('chipTexto').style.background = tinta;
     document.getElementById('chipPapel').style.background = e.corPapel;
-    document.getElementById('customTexto').value = e.corTexto || '#000000';
+    document.getElementById('customTexto').value = e.corTexto || '${FC.text}';
     document.getElementById('customPapel').value = e.corPapel;
     document.querySelectorAll('#swTexto .fb-swatch').forEach((b) => b.classList.toggle('is-on', (e.corTexto || '').toLowerCase() === b.dataset.cor.toLowerCase()));
     document.querySelectorAll('#swPapel .fb-swatch').forEach((b) => b.classList.toggle('is-on', e.corPapel.toLowerCase() === b.dataset.cor.toLowerCase()));
@@ -323,6 +337,13 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
     }
   });
   addEventListener('message', (e) => {
+    if (e.data?.tipo === 'salvo' && e.data.sid === SID) {
+      if (e.data.erro) return marca('erro', 'Não salvou', e.data.erro);
+      if (!e.data.seq) return;
+      ack = Math.max(ack, e.data.seq);
+      if (!pendente && ack === seq) marca('ok', 'Salva', 'Nota salva');
+      return;
+    }
     if (e.data?.tipo !== 'colado' || !e.data.texto) return;
     ed.focus();
     document.execCommand('insertText', false, e.data.texto);

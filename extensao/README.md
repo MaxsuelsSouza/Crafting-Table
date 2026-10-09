@@ -1,32 +1,36 @@
 # Crafting Table
 
-Bancada de trabalho ao lado do Claude Code, com o **ticket do Jira no centro**: documentos, notas, evidências, conversas, TODO, decisões e dúvidas ficam presos ao ticket. A extensão oficial do Claude Code não é modificada.
+Bancada de trabalho ao lado do Claude Code, com o **ticket do Jira no centro**: documentos, notas, evidências, conversas, tarefas, decisões e dúvidas ficam presos ao ticket. A extensão oficial do Claude Code não é modificada.
 
-Barra lateral: **✳ Claude** (o chat oficial, movido para o contêiner da Crafting Table na primeira execução) · **🎫 Tickets** · **YouTube Music**.
+Barra lateral: **✳ Claude** (o chat oficial, movido para o contêiner da Crafting Table na primeira execução) · **🎫 Tickets**.
 
 ## Tickets
 
 - **＋ Novo ticket**: cole o link (`.../browse/WMS-123`). A lista mostra chave, título e a coluna do board.
 - **Sem ticket**: documentos e notas da conversa atual do Claude que não pertence a nenhum ticket.
 - **Excluir** move a pasta para `~/.claude/tickets/_arquivados/` (nada é apagado; as conversas continuam).
-- Tudo do ticket mora em `~/.claude/tickets/<CHAVE>/` (`.ticket.json`, documentos, `.notas.html`, `.todo.json`, `.handoff-*.md`, `.decisoes.json`, `.duvidas.json`, `.notificacoes.jsonl`, `evidencias/`).
+- Tudo do ticket mora em `~/.claude/tickets/<CHAVE>/` (`.ticket.json`, documentos, `.notas.html`, `.decisoes.json`, `.duvidas.json`, `.notificacoes.jsonl`, `evidencias/`).
 - Conversa nova aberta pelo ticket é vinculada a ele na primeira mensagem e ganha o título `CHAVE · título`.
+
+### Tela cheia e configurações
+
+Na barra de título da view: **⤢ Tela cheia** (abre a mesma tela numa aba do editor e esconde as barras laterais; as duas telas ficam espelhadas, com o mesmo estado) e **⚙ Configurações**. Na aba em tela cheia, o botão ⤡ **Sair da tela cheia** fecha a aba e mostra a barra lateral de volta.
 
 ### Ticket aberto
 
 **Cabeçalho fixo**: ← voltar · título · ▶/⏸ (modo refinamento) · ✦ conversa do Claude do ticket · 🎫 abrir no Jira · pills de status do board e do refinamento · ⟳ atualizar do Jira.
 
-**Menu**: Docs · Spec · Ticket · Análise · TODO · Decisões · Dúvidas | Comandos · Evidências · Cofre · Conversas.
+**Menu**: Docs · Spec · Ticket · Análise · Tarefas · Decisões · Dúvidas | Comandos · Evidências · Cofre · Conversas.
 
 | Aba | O que mostra |
 |---|---|
 | Docs | Documentos do ticket, anexos do Jira ainda não baixados (**↓ Baixar**) e as Notas (editor com fonte, tamanho, cores, alinhamento, busca e @) |
 | Spec | Os 7 passos do plugin `sdd` (ver abaixo) |
 | Ticket | Descrição, subtarefas, comentários e horas, direto do Jira |
-| Análise | `.handoff-backend.md` / `.handoff-mobile.md`, com prévia, edição e @ |
-| TODO | Quadro do Atelier (A fazer / Fazendo / Feito), em lista ou quadro |
+| Análise | `mapa-backend.md` / `mapa-mobile.md` da **pasta da spec** (o mapeamento do passo 3, versionado com a spec), com prévia, edição e @ |
+| Tarefas | Cards das tarefas do passo 4 (Pendentes / Aprovadas / Reprovadas). O card abre o detalhe com estimativa original, "Vincular a mim", **Aprovar** (cria a subtarefa no Jira, com confirmação), **Reprovar** e **Pedir alteração** (o Claude ajusta em segundo plano) |
 | Decisões | Perguntas do Claude respondidas e mensagens suas classificadas como decisão (hook `decisoes.py`) |
-| Dúvidas | O que você marcou como **Tirar dúvida**; **Enviar para os comentários do ticket** mostra a prévia e comenta no Jira |
+| Dúvidas | O que você marcou como **Tirar dúvida**; **Enviar para os comentários do ticket** mostra a prévia e comenta no Jira, e o card vai para a caixa cinza "Enviadas". Dúvida sem resposta **trava a spec** (iniciar/aprovar passo). Fecha por **Dar resposta** (no card) ou por comentário novo no Jira: o Claude sugere qual dúvida ele responde e você confirma |
 
 **Rodapé**: 🔔 notificações do ticket com contador de não lidas (o Claude terminou, pediu permissão, passo da spec pronto, dúvida registrada). Abrir marca como lidas.
 

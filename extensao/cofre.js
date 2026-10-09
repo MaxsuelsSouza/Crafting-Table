@@ -35,17 +35,17 @@ const estiloCofre = ESTILO_NOTAS + `<style>
   .aviso code { font-size: 10.5px; }
   .cartoes > li { display: flex; align-items: center; gap: 10px; }
   .cadeado { flex: none; width: 32px; height: 32px; border-radius: var(--r-md); display: flex; align-items: center; justify-content: center;
-    color: #e3a43b; background: color-mix(in srgb, #e3a43b 14%, transparent); }
+    color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
   .off .cadeado { color: var(--text-dim); background: var(--surface-2); }
   .cadeado svg { width: 16px; height: 16px; }
   .corpo { flex: 1; min-width: 0; }
-  .corpo .nome { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .corpo .nome { font-family: var(--fc-font); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .corpo .valor { font-size: 11px; letter-spacing: .15em; color: var(--text-dim); margin-top: 2px; }
-  .chave { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; background: none; padding: 0 6px; border-radius: var(--r-md);
+  .chave { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; background: none; padding: 0 6px; border-radius: var(--r-pill);
     font-weight: 500; font-size: 11px; color: var(--text-dim); }
   .chave:hover { background: var(--surface-2); }
-  .trilho { width: 26px; height: 14px; border-radius: 7px; background: rgba(128,128,128,.4); position: relative; transition: background .15s; }
-  .trilho::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: #fff; transition: left .15s; }
+  .trilho { width: 26px; height: 14px; border-radius: var(--r-pill); background: var(--border); position: relative; transition: background .15s; }
+  .trilho::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text); transition: left .15s; }
   .chave[aria-checked="true"] { color: var(--ok); }
   .chave[aria-checked="true"] .trilho { background: var(--ok); }
   .chave[aria-checked="true"] .trilho::after { left: 14px; }

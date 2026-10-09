@@ -25,35 +25,35 @@ function matar(pid) {
 }
 
 const estilo = `
-  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-foreground); padding: 12px 14px; }
+  body { font-family: var(--fc-font); color: var(--text); padding: 12px 14px; }
   /* Padrão de botões da Crafting Table: principal azul sólido; o resto só texto/ícone com fundo no hover. */
-  button { font: inherit; font-size: 12px; cursor: pointer; border: none; border-radius: 6px; padding: 5px 12px; font-weight: 600;
-    background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-  button:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+  button { font: inherit; font-size: 12px; cursor: pointer; border: none; border-radius: var(--r-md); padding: 5px 12px; font-weight: 600;
+    background: var(--accent); color: var(--on-cor); }
+  button:hover { background: var(--accent-soft); }
   .ico { display: inline-flex; align-items: center; justify-content: center; }
   .ico svg { width: 15px; height: 15px; }
   ul { list-style: none; padding: 0; margin: 12px 0; }
-  li { padding: 6px 4px; border-radius: 3px; }
-  li:hover { background: var(--vscode-list-hoverBackground); }
+  li { padding: 6px 4px; border-radius: var(--r-sm); }
+  li:hover { background: var(--surface-2); }
   .linha { display: flex; align-items: center; gap: 8px; }
-  .procs { margin: 6px 0 2px 8px; padding-left: 8px; border-left: 2px solid var(--vscode-widget-border, #444); font-size: 12px; }
+  .procs { margin: 6px 0 2px 8px; padding-left: 8px; border-left: 2px solid var(--border); font-size: 12px; }
   .proc { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-  .proc .pid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-textLink-foreground); min-width: 52px; }
-  .proc .args { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-descriptionForeground); }
-  .proc button, .procs .todos { background: none; color: #e5484d; padding: 2px 6px; font-weight: 500; }
-  .proc button:hover, .procs .todos:hover { background: color-mix(in srgb, #e5484d 12%, transparent); }
+  .proc .pid { font-family: var(--fc-mono); color: var(--accent-soft); min-width: 52px; }
+  .proc .args { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); }
+  .proc button, .procs .todos { background: none; color: var(--danger); padding: 2px 6px; font-weight: 500; }
+  .proc button:hover, .procs .todos:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .procs .todos { margin-top: 4px; font-size: 11px; }
   .procs .vazio { margin: 2px 0; }
   li .info { flex: 1; min-width: 0; cursor: pointer; }
   li .nome { font-weight: 600; }
-  li .det { font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  li .acoes button { background: none; color: var(--vscode-descriptionForeground); padding: 3px 7px; font-weight: 500; }
-  li .acoes button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+  li .det { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li .acoes button { background: none; color: var(--text-dim); padding: 3px 7px; font-weight: 500; }
+  li .acoes button:hover { background: var(--surface-2); color: var(--text); }
   li .acoes .sec { visibility: hidden; }
   li:hover .acoes .sec { visibility: visible; }
-  .play { color: #4fb477 !important; }
-  .parar { color: #e5484d !important; }
-  .vazio { color: var(--vscode-descriptionForeground); }
+  .play { color: var(--ok) !important; }
+  .parar { color: var(--danger) !important; }
+  .vazio { color: var(--text-dim); }
 `;
 
 const pagina = (nonce, corpo) => `<!doctype html><html><head>
@@ -73,9 +73,7 @@ const terminalDe = (b) => vscode.window.terminals.find((t) => t.name === b.nome)
 // Estilo próprio da aba (o `estilo` acima é a base compartilhada com Cofre, Emuladores, Conversas).
 const estiloBotoes = `<style>
   /* Mesmos tokens e peças das Notas (Atelier: tokens.css + format-bar.css). */
-  :root { --surface: var(--vscode-editorWidget-background, #232328); --surface-2: var(--vscode-toolbar-hoverBackground, #2a2a30);
-    --border: var(--vscode-widget-border, #3a3a42); --text: var(--vscode-foreground, #ececf0); --text-dim: var(--vscode-descriptionForeground, #9a9aa4);
-    --accent: #007aff; --r-md: 6px; --r-lg: 10px; --fs-md: 12px; --sombra: 0 4px 16px rgb(0 0 0 / 16%); }
+  :root { --fs-md: 12px; --sombra: 0 4px 16px rgb(0 0 0 / 16%); }
   body { padding: 0; color: var(--text); }
   .topo { padding: 10px 12px 8px; display: flex; align-items: baseline; gap: 8px; }
   .topo .rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); flex: none; }
@@ -89,20 +87,20 @@ const estiloBotoes = `<style>
   ul.cmds > li { padding: 9px 8px 9px 10px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra);
     transition: border-color 140ms, transform 140ms; }
   ul.cmds > li:hover { background: var(--surface); border-color: var(--accent); transform: translateY(-1px); }
-  ul.cmds > li.rodando { border-left: 3px solid #4fb477; }
-  ul.cmds > li.rodando:hover { border-left-color: #4fb477; }
+  ul.cmds > li.rodando { border-left: 3px solid var(--ok); }
+  ul.cmds > li.rodando:hover { border-left-color: var(--ok); }
   .card { display: flex; align-items: center; gap: 10px; }
   /* Só o símbolo: ▶ verde para rodar, ■ vermelho para parar, sem círculo nem borda. */
   .run { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-md); padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 400; background: transparent; color: var(--ok, #4fb477); }
+    font-size: 14px; font-weight: 400; background: transparent; color: var(--ok, var(--ok)); }
   .run:hover { background: var(--surface-2); }
-  .run.stop { color: var(--perigo, #e5484d); }
+  .run.stop { color: var(--perigo, var(--danger)); }
   .corpo { flex: 1; min-width: 0; cursor: pointer; }
   .corpo .nome { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
-  .vivo { font-size: 10px; font-weight: 500; color: #4fb477; }
-  .vivo::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4fb477; margin-right: 4px; vertical-align: 1px; animation: pulso 1.6s infinite; }
+  .vivo { font-size: 10px; font-weight: 500; color: var(--ok); }
+  .vivo::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 4px; vertical-align: 1px; animation: pulso 1.6s infinite; }
   @keyframes pulso { 50% { opacity: .3; } }
-  .cmd { display: inline-block; max-width: 100%; margin-top: 4px; padding: 1px 6px; border-radius: var(--r-md); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+  .cmd { display: inline-block; max-width: 100%; margin-top: 4px; padding: 1px 6px; border-radius: var(--r-md); font-family: var(--fc-mono); font-size: 11px;
     background: var(--surface-2); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   .pastinha { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mini { flex: none; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border);
@@ -110,9 +108,9 @@ const estiloBotoes = `<style>
   ul.cmds > li:hover .mini, ul.cmds > li.com-procs .mini { opacity: 1; }
   .mini button { height: 22px; min-width: 22px; background: none; color: var(--text); padding: 0 6px; font-weight: 400; border-radius: var(--r-md); }
   .mini button:hover, .mini button.aberto { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .mini button[data-acao="remover"]:hover { background: color-mix(in srgb, #e5484d 14%, transparent); color: #e5484d; }
+  .mini button[data-acao="remover"]:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
   ul.cmds .procs { margin: 8px 0 0 38px; padding: 6px 8px; border-left: none; border-radius: var(--r-md); background: var(--surface-2); }
-  ul.cmds .proc .pid { min-width: 0; padding: 0 6px; border-radius: 8px; font-size: 10.5px; background: var(--surface); color: var(--accent); }
+  ul.cmds .proc .pid { min-width: 0; padding: 0 6px; border-radius: var(--r-pill); font-size: 10.5px; background: var(--surface); color: var(--accent); }
   ul.cmds .procs .todos { font-size: 11px; margin-top: 6px; }
   .folha { margin: 0 12px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra); }
   .centro { text-align: center; padding: 24px 12px; line-height: 1.6; color: var(--text-dim); font-size: 12.5px; }
@@ -261,9 +259,7 @@ const ICONES = {
 const icone = (nome) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONES[nome]}</svg>`;
 // Estilo gráfico das Notas (tokens e peças do Atelier: tokens.css + format-bar.css), para as abas que usam esta base.
 const ESTILO_NOTAS = `<style>
-  :root { --surface: var(--vscode-editorWidget-background, #232328); --surface-2: var(--vscode-toolbar-hoverBackground, #2a2a30);
-    --border: var(--vscode-widget-border, #3a3a42); --text: var(--vscode-foreground, #ececf0); --text-dim: var(--vscode-descriptionForeground, #9a9aa4);
-    --accent: #007aff; --perigo: #e5484d; --ok: #4fb477; --r-sm: 4px; --r-md: 6px; --r-lg: 10px; --fs-md: 12px; --sombra: 0 4px 16px rgb(0 0 0 / 16%); }
+  :root { --fs-md: 12px; --sombra: 0 4px 16px rgb(0 0 0 / 16%); }
   body { padding: 0; color: var(--text); }
   .topo { padding: 10px 12px 8px; display: flex; align-items: baseline; gap: 8px; }
   .topo .rotulo { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); flex: none; }
@@ -281,8 +277,8 @@ const ESTILO_NOTAS = `<style>
   .fb-btn.is-on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
   .fb-btn svg { width: 13px; height: 13px; }
   .primario { flex: none; height: 34px; padding: 0 12px; border: 0; border-radius: var(--r-md); font-size: var(--fs-md); font-weight: 600; box-shadow: var(--sombra);
-    background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-  .primario:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+    background: var(--accent); color: var(--on-cor); }
+  .primario:hover { background: var(--accent-soft); }
   .folha { margin: 0 12px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra); }
   .cartoes { list-style: none; margin: 0; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
   .cartoes > li { padding: 9px 8px 9px 10px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra);

@@ -9,6 +9,7 @@ const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
 const maestro = require('./maestro');
+const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 
 // Aba Tickets: a lista e, com um ticket aberto, o ticket ocupando a view inteira —
@@ -16,7 +17,7 @@ const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (
 // Comandos, Emulador, Evidências, Cofre e Conversas são de outros módulos: o grupo.js mostra cada um dentro
 // da moldura deste painel (moldura()), com o mesmo cabeçalho e rodapé.
 // Pasta do ticket (tickets.pasta, mesmo layout da pasta de uma conversa): .ticket.json, documentos, .notas.html,
-// .todo.json, .handoff-backend.md, .handoff-mobile.md, .decisoes.json, aprovados/ e .vigia (plugin sdd).
+// .tarefas.json, .decisoes.json, aprovados/ e .vigia (plugin sdd).
 // "Sem ticket": a pasta da conversa atual do Claude (conversas que não são de nenhum ticket).
 const SEM_TICKET = '__sem-ticket';
 const PRINCIPAL = 'claudeAbas.painel';
@@ -30,66 +31,60 @@ const gravar = (id, nome, dado) => {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, nome), typeof dado === 'string' ? dado : JSON.stringify(dado, null, 2));
 };
-const HANDOFF = { backend: '.handoff-backend.md', mobile: '.handoff-mobile.md' };
+// Análise por camada (cards Backend/Mobile da aba Análise): o mapeamento do passo 3 mora na PASTA DA SPEC (versionado, viaja
+// com a spec para quem for implementar). Fora de ~/.claude de propósito: o Claude Code bloqueia a escrita ali ("arquivo sensível").
+const HANDOFF = { backend: 'mapa-backend.md', mobile: 'mapa-mobile.md' };
+const HANDOFF_LEGADO = { backend: '.handoff-backend.md', mobile: '.handoff-mobile.md' }; // antes: pasta do ticket; ainda é lido se existir
 const NOTAS = '.notas.html';
 const ORIGEM = '.origem.json'; // { "arquivo.pdf": { origem: 'jira', id: '123' } }: documentos que vieram de fora
-const TODO = '.todo.json';
+const TAREFAS = '.tarefas.json'; // cards das tarefas do passo 4 (sdd-state card); aprovar/reprovar é daqui
 // O ticket com id = chave: as funções da spec (vindas do refinamento) usam r.id para achar a pasta.
 const ticketDe = (chave) => { const t = tickets.ler(chave); return t && { ...t, id: chave }; };
 const comSpec = (t) => t && { ...t, specPronta: !!(t.spec?.dir && estadoSpec(t)) }; // estadoSpec vem mais abaixo
 
 // ── Spec (plugin sdd do Claude Code) ──
 // O plugin guarda o estado em <repo>/<spec.dir>/sdd-state.json; aprovar um passo é só por aqui (o hook dele bloqueia o Claude).
-function sddState() {
+function pluginInstalado(prefixo) {
   const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {});
   const lista = reg.plugins || reg;
-  const chave = Object.keys(lista).find((k) => k.startsWith('sdd@'));
+  const chave = Object.keys(lista).find((k) => k.startsWith(prefixo));
   const info = chave && (Array.isArray(lista[chave]) ? lista[chave][0] : lista[chave]);
-  return info?.installPath ? path.join(info.installPath, 'bin', 'sdd-state') : null;
+  return info?.installPath || null;
 }
+function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
 const dirSpec = (r) => (r.spec?.repo && r.spec?.dir ? path.join(r.spec.repo, r.spec.dir) : null);
+// Arquivo da análise de uma camada: o da spec; se ainda não existe e há um antigo na pasta do ticket, usa o antigo.
+function arqHandoff(r, lado) {
+  const novo = dirSpec(r) && path.join(dirSpec(r), HANDOFF[lado]);
+  const legado = path.join(pasta(r.id || r.chave), HANDOFF_LEGADO[lado]);
+  return novo && (fs.existsSync(novo) || !fs.existsSync(legado)) ? novo : legado;
+}
 const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.json'), null) : null);
 const arquivoPasso = (r, n) => (n === 0 ? path.join(r.spec.repo, 'constitution.md')
-  : path.join(dirSpec(r), { 1: 'spec.md', 2: 'spec.md', 3: 'plan.md', 4: 'tasks.md', 5: 'analise.md', 6: 'tasks.md' }[n]));
+  : path.join(dirSpec(r), { 1: 'spec.md', 2: 'spec.md', 3: 'plan.md', 4: 'tasks.md', 5: 'analise.md', 6: 'testes.md' }[n]));
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 
-
-// ── TODO: mesmo modelo do Atelier (shared/types.ts TodoBoard; colunas padrão; ordem esparsa de 1000 em 1000) ──
-const COLUNAS = [{ id: 'todo', title: 'A fazer' }, { id: 'doing', title: 'Fazendo' }, { id: 'done', title: 'Feito' }];
-const quadro = (id) => {
-  const b = ler(path.join(pastaDe(id), TODO), null) || { version: 1, title: 'TODO', columns: COLUNAS, items: [] };
-  for (const i of b.items) if (!b.columns.some((c) => c.id === i.status)) i.status = b.columns[0].id; // status órfão cai na primeira
-  return b;
-};
-function aplicarTodo(b, op) {
-  const agora = new Date().toISOString();
-  const ultima = b.columns.at(-1).id;
-  const fimDa = (status) => Math.max(0, ...b.items.filter((i) => i.status === status).map((i) => i.order)) + 1000;
-  if (op.type === 'add' && op.title?.trim()) {
-    const status = b.columns[0].id;
-    b.items.push({ id: crypto.randomUUID(), title: op.title.trim(), status, order: fimDa(status), assignee: '', notes: '', tags: [],
-      createdAt: agora, updatedAt: agora, doneAt: null, origin: { type: 'manual' }, activePlanId: null });
-  }
-  const item = b.items.find((i) => i.id === op.id);
-  if (op.type === 'move' && item && b.columns.some((c) => c.id === op.status) && item.status !== op.status) {
-    item.status = op.status;
-    item.order = fimDa(op.status);
-    item.updatedAt = agora;
-    item.doneAt = op.status === ultima ? agora : null; // preenchido ao entrar na última coluna, limpo ao sair
-  }
-  if (op.type === 'remove') b.items = b.items.filter((i) => i.id !== op.id);
-  return b;
-}
 
 // Markdown simples para os handoffs (títulos, listas, código, negrito, código inline).
 function markdown(md) {
   const linhas = esc(md).split('\n');
   let html = '', lista = false, codigo = false;
   const inline = (t) => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
-  for (const l of linhas) {
+  const celulas = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => inline(c.trim()));
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
     if (l.startsWith('```')) { html += codigo ? '</pre>' : '<pre>'; codigo = !codigo; continue; }
     if (codigo) { html += l + '\n'; continue; }
+    // Tabela: | a | b | seguida de |---|---|
+    if (/^\s*\|/.test(l) && /^\s*\|?\s*:?-{2,}/.test(linhas[i + 1] || '')) {
+      if (lista) { html += '</ul>'; lista = false; }
+      html += `<table><tr>${celulas(l).map((c) => `<th>${c}</th>`).join('')}</tr>`;
+      for (i += 2; i < linhas.length && /^\s*\|/.test(linhas[i]); i++) html += `<tr>${celulas(linhas[i]).map((c) => `<td>${c}</td>`).join('')}</tr>`;
+      html += '</table>';
+      i--;
+      continue;
+    }
     const item = l.match(/^\s*[-*] (.*)/) || l.match(/^\s*\d+\. (.*)/);
     if (item && !lista) { html += '<ul>'; lista = true; }
     if (!item && lista) { html += '</ul>'; lista = false; }
@@ -109,6 +104,10 @@ const decisoesDe = (dir) => {
 const DUVIDAS = '.duvidas.json'; // gravado pelo `sdd-state duvida add` (opção "Tirar dúvida" nas perguntas do Claude)
 const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : []; return Array.isArray(l) ? l : []; };
 const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.contexto ? `\nContexto: ${x.contexto}` : ''}`;
+const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l : []; };
+const RESPOSTAS = '.respostas.json'; // fila de comentários a avaliar como resposta de dúvida (sdd-state duvida avaliar)
+const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
+const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
 
 // ── Telas ──
@@ -116,71 +115,73 @@ const IC = {
   voltar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>',
   play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.8v10.4L13 8z"/></svg>',
   pausa: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>',
-  claude: '<svg viewBox="0 0 24 24" fill="#d97757"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>',
-  jira: '<svg viewBox="0 0 24 24" fill="none" stroke="#4a9eed" stroke-width="1.8"><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4z"/></svg>',
+  claude: '<svg viewBox="0 0 24 24" style="fill:var(--accent)"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>',
+  jira: '<svg viewBox="0 0 24 24" fill="none" style="stroke:var(--accent-soft)" stroke-width="1.8"><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4z"/></svg>',
   atualizar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8a5 5 0 11-1.5-3.6M13 2.5v2.8h-2.8"/></svg>',
   sino: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11V7a4 4 0 018 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>',
   grade: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
+  lupa: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
+  engrenagem: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4"/></svg>',
   lixo: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg>'
 };
 
-const ABAS = [['docs', 'Docs'], ['spec', 'Spec'], ['ticket', 'Ticket'], ['analise', 'Análise'], ['todo', 'TODO'], ['decisoes', 'Decisões'], ['duvidas', 'Dúvidas']];
+const ABAS = [['docs', 'Docs'], ['spec', 'Spec'], ['ticket', 'Ticket'], ['analise', 'Análise'], ['tarefas', 'Tarefas'], ['decisoes', 'Decisões'], ['duvidas', 'Dúvidas']];
 const ABAS_SEM_TICKET = [['docs', 'Docs'], ['decisoes', 'Decisões']];
 const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1); // [id da seção, nome]
 
 // Cabeçalho e rodapé do ticket aberto: na página do painel os botões falam com ele direto (data-acao);
 // na moldura de outra seção, passam pelo grupo.js (data-painel / data-secao).
 const CSS_MOLDURA = `<style>
-  .ct-cab { position: sticky; top: 0; z-index: 100; flex: none; padding: 8px 10px 0; background: var(--vscode-sideBar-background, #181818);
-    border-bottom: 1px solid var(--vscode-widget-border, #3a3a42); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-foreground); }
+  .ct-cab { position: sticky; top: 0; z-index: 100; flex: none; padding: 8px 10px 0; background: var(--bg);
+    border-bottom: 1px solid var(--border); font-family: var(--fc-font); color: var(--text); }
   .ct-linha { display: flex; align-items: center; gap: 4px; }
   .ct-titulo { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ct-titulo .ct-chave { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #007aff; }
-  .ct-ico { flex: none; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
-    color: var(--vscode-foreground); display: inline-flex; align-items: center; justify-content: center; }
-  .ct-ico:hover { background: var(--vscode-toolbar-hoverBackground, #2a2a30); border-color: var(--vscode-widget-border, #3a3a42); }
+  .ct-titulo .ct-chave { font-family: var(--fc-font); color: var(--accent); }
+  .ct-ico { flex: none; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: var(--r-md); background: none; cursor: pointer;
+    color: var(--text); display: inline-flex; align-items: center; justify-content: center; }
+  .ct-ico:hover { background: var(--surface-2); border-color: var(--border); }
   .ct-ico svg { width: 16px; height: 16px; }
-  .ct-ico.ct-play { color: #a371f7; }
-  .ct-ico.ct-pausa { color: #e3a43b; }
-  .ct-dar { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #a371f7; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  .ct-ico.ct-play { color: var(--ia); }
+  .ct-ico.ct-pausa { color: var(--warn); }
+  .ct-dar { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-md); background: var(--ia); color: var(--on-cor); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
     animation: ct-chama 1.4s infinite; }
-  .ct-dar:disabled { background: color-mix(in srgb, #a371f7 35%, transparent); animation: none; cursor: default; font-weight: 400; }
-  @keyframes ct-chama { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, #a371f7 30%, transparent); } }
+  .ct-dar:disabled { background: color-mix(in srgb, var(--ia) 35%, transparent); animation: none; cursor: default; font-weight: 400; }
+  @keyframes ct-chama { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ia) 30%, transparent); } }
   /* Modo refinamento: borda roxa em volta da view inteira */
-  .ct-roxo { position: fixed; inset: 0; border: 2px solid #a371f7; border-radius: 4px; pointer-events: none; z-index: 300;
-    box-shadow: inset 0 0 14px color-mix(in srgb, #a371f7 22%, transparent); }
+  .ct-roxo { position: fixed; inset: 0; border: 2px solid var(--ia); border-radius: var(--r-sm); pointer-events: none; z-index: 300;
+    box-shadow: inset 0 0 14px color-mix(in srgb, var(--ia) 22%, transparent); }
   /* Pills do topo: coluna do ticket no Jira e modo refinamento, lado a lado à esquerda */
   .ct-pills { margin: 8px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .ct-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  .ct-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: var(--r-pill); font-size: 11px; font-weight: 600;
     white-space: nowrap; cursor: default; color: var(--cor); background: color-mix(in srgb, var(--cor) 14%, transparent);
     border: 1px solid color-mix(in srgb, var(--cor) 40%, transparent); }
-  .ct-pill.ct-refino { --cor: #b48cff; }
-  .ct-pill.ct-refino.ct-pausada { --cor: #e3a43b; }
+  .ct-pill.ct-refino { --cor: var(--ia); }
+  .ct-pill.ct-refino.ct-pausada { --cor: var(--warn); }
   .ct-bola { width: 7px; height: 7px; border-radius: 50%; background: var(--cor); flex: none; }
   .ct-pills .ct-ico { width: 22px; height: 22px; } .ct-pills .ct-ico svg { width: 13px; height: 13px; }
-  .ct-novo { --cor: #8b949e; } .ct-andando { --cor: #e3a43b; } .ct-ok { --cor: #4fb477; }
-  .ct-menu { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; margin-bottom: 8px; border-radius: 10px;
-    background: var(--vscode-editorWidget-background, #232328); border: 1px solid var(--vscode-widget-border, #3a3a42); }
-  .ct-menu button { flex: none; height: 24px; padding: 0 7px; border: 0; border-radius: 6px; background: none; cursor: pointer; font: inherit; font-size: 11.5px; color: var(--vscode-foreground); }
-  .ct-menu button:hover { background: var(--vscode-toolbar-hoverBackground, #2a2a30); }
-  .ct-badge { display: inline-block; min-width: 14px; padding: 0 4px; margin-left: 2px; border-radius: 7px; font-size: 9.5px; line-height: 14px; text-align: center; background: #d97757; color: #fff; font-weight: 600; }
-  .ct-menu button.is-on { background: color-mix(in srgb, #007aff 18%, transparent); color: #007aff; font-weight: 600; }
-  .ct-menu .ct-sep { width: 1px; margin: 3px 3px; background: var(--vscode-widget-border, #3a3a42); }
-  .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--vscode-widget-border, #3a3a42);
-    background: var(--vscode-sideBar-background, #181818); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--vscode-descriptionForeground); }
+  .ct-novo { --cor: var(--text-dim); } .ct-andando { --cor: var(--warn); } .ct-ok { --cor: var(--ok); }
+  .ct-menu { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; margin-bottom: 8px; border-radius: var(--r-lg);
+    background: var(--surface); border: 1px solid var(--border); }
+  .ct-menu button { flex: none; height: 24px; padding: 0 7px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer; font: inherit; font-size: 11.5px; color: var(--text); }
+  .ct-menu button:hover { background: var(--surface-2); }
+  .ct-badge { display: inline-block; min-width: 14px; padding: 0 4px; margin-left: 2px; border-radius: var(--r-pill); font-size: 9.5px; line-height: 14px; text-align: center; background: var(--accent); color: var(--on-cor); font-weight: 600; }
+  .ct-menu button.is-on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 600; }
+  .ct-menu .ct-sep { width: 1px; margin: 3px 3px; background: var(--border); }
+  .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--border);
+    background: var(--bg); font-family: var(--fc-font); font-size: 11.5px; color: var(--text-dim); }
   .ct-rod details { position: relative; }
   .ct-rod details[open] .ct-badge { display: none; }
-  .ct-notif { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--vscode-widget-border, #3a3a42); font-size: 11.5px; line-height: 1.45; }
+  .ct-notif { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 11.5px; line-height: 1.45; }
   .ct-notif:last-child { border-bottom: 0; }
-  .ct-notif small { color: var(--vscode-descriptionForeground, #9a9aa4); }
-  .ct-notif.nova .ct-ni { color: #d97757; }
+  .ct-notif small { color: var(--text-dim); }
+  .ct-notif.nova .ct-ni { color: var(--accent); }
   .ct-ni { flex: none; width: 12px; text-align: center; }
-  .ct-rod summary { list-style: none; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11.5px; margin: 0; color: inherit; display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px; }
+  .ct-rod summary { list-style: none; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11.5px; margin: 0; color: inherit; display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: var(--r-md); }
   .ct-rod summary::-webkit-details-marker { display: none; }
-  .ct-rod summary:hover { background: var(--vscode-toolbar-hoverBackground, #2a2a30); color: var(--vscode-foreground); }
+  .ct-rod summary:hover { background: var(--surface-2); color: var(--text); }
   .ct-rod summary svg { width: 14px; height: 14px; }
-  .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: 10px;
-    background: var(--vscode-editorWidget-background, #252526); border: 1px solid var(--vscode-widget-border, #454545); box-shadow: 0 8px 30px #0008; }
+  .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: var(--r-lg);
+    background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgb(0 0 0 / 53%); }
 </style>`;
 
 // Modo refinamento (.ticket.json refinamento.estado): aguardando_inicio → (Dar início) → rodando ⇄ pausado.
@@ -210,8 +211,10 @@ function cabecalho(t, { aba, secao, dentro }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
   const abas = semTicket ? ABAS_SEM_TICKET : ABAS;
-  const pend = semTicket ? 0 : duvidasDe(pastaDe(t.id)).filter((x) => !x.enviadaEm).length;
-  const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) não enviada(s) ao Jira">${pend}</span>` : nome);
+  const pend = semTicket ? 0 : duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length;
+  const pendT = semTicket ? 0 : tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length;
+  const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) sem resposta: a spec não segue">${pend}</span>`
+    : id === 'tarefas' && pendT ? `${nome} <span class="ct-badge" title="${pendT} tarefa(s) esperando sua decisão">${pendT}</span>` : nome);
   const abaBtn = ([id, nome]) => (dentro
     ? `<button data-acao="aba" data-id="${id}" class="${secao === PRINCIPAL && aba === id ? 'is-on' : ''}">${rot(id, nome)}</button>`
     : `<button data-secao="${PRINCIPAL}" data-aba="${id}">${rot(id, nome)}</button>`);
@@ -235,7 +238,9 @@ function cabecalho(t, { aba, secao, dentro }) {
 // Notificações: .notificacoes.jsonl da pasta (hook notificacoes.py e sdd-state); lidas = mais antigas que .notificacoes.lidas.
 // Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
 const NOTIF = '.notificacoes.jsonl', LIDAS = '.notificacoes.lidas';
-const ICONE_NOTIF = { fim: '✓', permissao: '⚠', sdd: '◆', duvida: '?', aviso: '•' };
+const ICONE_NOTIF = { fim: '✓', permissao: '⚠', sdd: '◆', duvida: '?', aviso: '•', jira: '◇' };
+// Grava uma linha no 🔔 do ticket (o encaminhador do Teams lê as mesmas linhas).
+const notificar = (chave, tipo, texto) => { try { fs.appendFileSync(path.join(pasta(chave), NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo, texto }) + '\n'); } catch {} };
 const notifsDe = (dir) => {
   const linhas = (dir && lerTexto(path.join(dir, NOTIF))) || '';
   return linhas.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).reverse().slice(0, 50);
@@ -255,11 +260,11 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   html, body { height: 100%; }
   body { display: flex; flex-direction: column; }
   .rolagem { flex: 1; min-height: 0; overflow-y: auto; }
-  .tipo { flex: none; font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: 9px; color: var(--cor); background: color-mix(in srgb, var(--cor) 15%, transparent); }
-  .t-tecnico { --cor: #7c8cff; } .t-funcional { --cor: #e3a43b; } .t-spec { --cor: #2fa5a0; }
+  .tipo { flex: none; font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 15%, transparent); }
+  .t-tecnico { --cor: var(--ia); } .t-funcional { --cor: var(--warn); } .t-spec { --cor: var(--ok); }
   .secundario { flex: none; height: 34px; padding: 0 12px; border-radius: var(--r-md); font-size: 12px; font-weight: 600;
-    color: #2fa5a0 !important; border: 1px solid color-mix(in srgb, #2fa5a0 55%, transparent) !important; background: var(--surface) !important; box-shadow: var(--sombra); }
-  .secundario:hover { background: color-mix(in srgb, #2fa5a0 14%, transparent) !important; }
+    color: var(--ok) !important; border: 1px solid color-mix(in srgb, var(--ok) 55%, transparent) !important; background: var(--surface) !important; box-shadow: var(--sombra); }
+  .secundario:hover { background: color-mix(in srgb, var(--ok) 14%, transparent) !important; }
   /* Constituição: os 7 passos do SDD — cinza até acontecer */
   .sdd-topo { font-size: 11.5px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
   .sdd-topo b { color: var(--text); }
@@ -269,39 +274,39 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .num { flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
     background: var(--border); color: var(--text-dim); }
   .passo .nome { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; }
-  .passo .st { flex: none; font-size: 10px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--text-dim); }
+  .passo .st { flex: none; font-size: 10px; padding: 1px 7px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
   .passo .corpo-passo { margin: 8px 0 0 30px; font-size: 11.5px; color: var(--text-dim); line-height: 1.55; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
-  .chip { font-size: 10.5px; padding: 0 7px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+  .chip { font-size: 10.5px; padding: 0 7px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); color: var(--text); }
   .chip.alerta { color: var(--perigo); border-color: color-mix(in srgb, var(--perigo) 45%, transparent); }
   .arquivo { display: inline-flex; gap: 2px; margin-top: 6px; }
   .acoes-passo { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .acoes-passo button { height: 26px; padding: 0 10px; border-radius: var(--r-md); font-size: 11.5px; font-weight: 600; border: 1px solid var(--border) !important; background: var(--surface) !important; color: var(--text); }
-  .acoes-passo button.aprovar { background: var(--ok) !important; color: #fff; border-color: transparent !important; }
+  .acoes-passo button.aprovar { background: var(--ok) !important; color: var(--on-cor); border-color: transparent !important; }
   .acoes-passo button:disabled, .acoes-passo button.travado { opacity: .45; cursor: not-allowed; }
   .motivo { color: var(--perigo); }
   .lista-mini { margin: 4px 0 0; padding-left: 14px; }
   .lista-mini li { margin: 2px 0; }
   .s-pendente { opacity: .45; filter: grayscale(1); }
   .s-em_andamento { border-color: var(--accent); animation: pulsa 1.6s infinite; }
-  .s-em_andamento .num { background: var(--accent); color: #fff; }
+  .s-em_andamento .num { background: var(--accent); color: var(--on-cor); }
   @keyframes pulsa { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); } }
-  .s-aguardando_revisao { border-color: #e3a43b; }
-  .s-aguardando_revisao .num { background: #e3a43b; color: #1a1a1a; }
-  .s-aguardando_revisao .st { color: #e3a43b; border-color: color-mix(in srgb, #e3a43b 50%, transparent); }
+  .s-aguardando_revisao { border-color: var(--warn); }
+  .s-aguardando_revisao .num { background: var(--warn); color: var(--on-cor); }
+  .s-aguardando_revisao .st { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
   .s-aprovado { border-color: color-mix(in srgb, var(--ok) 55%, transparent); background: color-mix(in srgb, var(--ok) 8%, var(--surface-2)); }
-  .s-aprovado .num { background: var(--ok); color: #fff; }
+  .s-aprovado .num { background: var(--ok); color: var(--on-cor); }
   .s-aprovado .st { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
-  .s-desatualizado { border-color: #e8833a; }
-  .s-desatualizado .num { background: #e8833a; color: #fff; }
-  .s-desatualizado .st { color: #e8833a; border-color: color-mix(in srgb, #e8833a 50%, transparent); }
+  .s-desatualizado { border-color: var(--warn); }
+  .s-desatualizado .num { background: var(--warn); color: var(--on-cor); }
+  .s-desatualizado .st { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
   .cartoes > li { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .cartoes .corpo { flex: 1; min-width: 0; }
   .cartoes .nome { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
   .cartoes .nome span:first-child { overflow: hidden; text-overflow: ellipsis; }
   .cartoes .det { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 8px; }
-  .chave { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--accent); font-weight: 600; }
-  .aguardando { color: #e3a43b; }
+  .chave { font-family: var(--fc-font); color: var(--accent); font-weight: 600; }
+  .aguardando { color: var(--warn); }
   /* Detalhe */
   .menu { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
   .menu .fb-btn { flex: none; padding: 0 6px; font-size: 11.5px; }
@@ -321,29 +326,9 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .md { font-size: 12.5px; line-height: 1.55; }
   .md h3, .md h4, .md h5, .md h6 { margin: .8em 0 .3em; } .md h3:first-child { margin-top: 0; }
   .md pre { background: var(--surface-2); padding: 8px; border-radius: var(--r-md); white-space: pre-wrap; font-size: 11.5px; }
-  .md code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  .md code { font-family: var(--fc-mono); font-size: .92em; }
   .md ul { padding-left: 1.3em; margin: .3em 0; }
-  .ticket-link { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--accent); word-break: break-all; }
-  /* TODO: quadro do Atelier (widget-node.css .todo-*) */
-  .todo-bar { display: flex; align-items: center; gap: 4px; }
-  .todo-input { flex: 1; min-width: 0; height: 26px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 8px; font: inherit; font-size: 12px; }
-  .todo-input:focus { outline: none; border-color: var(--accent); }
-  .todo-mode { flex-shrink: 0; height: 26px; background: none; border: 1px solid var(--border); border-radius: var(--r-sm); color: var(--text-dim); font-size: 11px; padding: 0 8px; }
-  .todo-columns { display: flex; gap: 6px; margin-top: 10px; }
-  .todo-column { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; border-radius: var(--r-md); padding: 4px; min-height: 60px; }
-  .todo-column.is-target { background: var(--surface-2); }
-  .todo-column-title { display: flex; align-items: center; gap: 6px; margin: 0 0 2px; padding: 0 2px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
-  .todo-count { font-weight: 400; letter-spacing: 0; padding: 0 4px; border-radius: var(--r-sm); background: var(--surface-2); }
-  .todo-card { position: relative; padding: 6px 22px 6px 8px; border-radius: var(--r-sm); background: var(--surface-2); border: 1px solid var(--border); cursor: grab; font-size: 12px; word-break: break-word; }
-  .todo-card:active { cursor: grabbing; }
-  .todo-remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--perigo); opacity: 0; }
-  .todo-card:hover .todo-remove, .todo-line:hover .todo-remove { opacity: 1; }
-  .todo-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-  .todo-list-items { list-style: none; margin: 4px 0 0; padding: 0; }
-  .todo-line { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 3px 22px 3px 2px; font-size: 12.5px; }
-  .todo-line-title { flex: 1; word-break: break-word; }
-  .todo-line-title.is-done { color: var(--text-dim); text-decoration: line-through; }
-  .todo-empty { padding: 16px; text-align: center; color: var(--text-dim); font-size: 11.5px; }
+  .ticket-link { font-family: var(--fc-mono); font-size: 13px; color: var(--accent); word-break: break-all; }
   /* Decisões: histórico; clique expande o resumo embaixo */
   .hist { display: flex; flex-direction: column; }
   .decisao { border-left: 2px solid var(--border); margin-left: 4px; padding: 0 0 2px 12px; position: relative; }
@@ -351,16 +336,16 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .decisao summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; padding: 5px 6px; border-radius: var(--r-md); }
   .decisao summary::-webkit-details-marker { display: none; }
   .decisao summary:hover { background: var(--surface-2); }
-  .quando { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; color: var(--text-dim); }
+  .quando { flex: none; font-family: var(--fc-font); font-size: 10.5px; color: var(--text-dim); }
   .dtitulo { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .decisao[open] .dtitulo { white-space: normal; }
-  .origem { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-dim); }
+  .origem { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
   .o-pergunta { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .dresumo { margin: 2px 6px 10px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); font-size: 12px; line-height: 1.55; }
   .dresumo p { margin: 0 0 6px; }
   .dtrecho { font-size: 11.5px; color: var(--text-dim); }
   .agora { margin: 0 12px 10px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border);
-    border-left: 3px solid #a78bfa; box-shadow: var(--sombra); font-size: 12px; line-height: 1.5; }
+    border-left: 3px solid var(--ia); box-shadow: var(--sombra); font-size: 12px; line-height: 1.5; }
   .agora .atitulo { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; }
   .agora .atexto { color: var(--text-dim); margin-top: 2px; }
   .agora .aacoes { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
@@ -375,41 +360,177 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .pnav button { width: 22px; height: 22px; border-radius: var(--r-md); color: var(--text); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
   .pnav button:hover { background: var(--surface-2); }
   .pnav button svg { width: 13px; height: 13px; }
+  .ptam { display: inline-flex; gap: 2px; margin: 0 2px; padding: 0 2px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .pnav #pPos { min-width: 42px; text-align: center; }
-  .pilha.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .pilha.grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(var(--pw, 240px), 100%), 1fr)); gap: 10px; margin-bottom: 12px; }
   .pilha.grade::before, .pilha.grade::after { display: none !important; }
   .pilha.grade .pcard { min-height: 0; max-height: none; animation: none; }
-  .pnav button.is-on { background: color-mix(in srgb, #a78bfa 22%, transparent); color: #a78bfa; }
+  .pnav button.is-on { background: color-mix(in srgb, var(--ia) 22%, transparent); color: var(--ia); }
   .pcard { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; min-height: 200px; max-height: 320px; overflow: auto;
-    padding: 14px 14px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); border-top: 3px solid #a78bfa;
+    padding: 14px 14px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--ia);
     box-shadow: var(--sombra); animation: sobe 220ms ease-out; }
   @keyframes sobe { from { transform: translateY(8px); opacity: 0; } }
   .pcab { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); }
-  .pcab b { color: #a78bfa; }
+  .pcab b { color: var(--ia); }
   .pcard .ptexto { font-size: 13px; font-weight: 600; line-height: 1.45; }
   .pcard .pctx { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
   .popcoes { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
   .popcoes button { padding: 7px 10px; border: 1px solid var(--border) !important; border-radius: var(--r-md); background: var(--surface-2) !important;
     font-size: 12px; text-align: left; line-height: 1.35; }
-  .popcoes button:hover { border-color: #a78bfa !important; }
-  .prod { display: flex; justify-content: space-between; margin-top: auto; padding-top: 4px; }
+  .popcoes button:hover { border-color: var(--ia) !important; }
+  .prod { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; margin-top: auto; padding-top: 4px; }
+  .prod button { white-space: nowrap; }
   .prod button { font-size: 11.5px; color: var(--text-dim); padding: 2px 0; }
   .prod button:hover { color: var(--text); text-decoration: underline; }
-  .prod .duv { color: #d97757; }
+  .prod .duv { color: var(--accent); }
+  .tboard { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 12px; align-items: flex-start; }
+  .tcol { flex: 1 0 210px; min-width: 210px; display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: var(--r-lg); background: var(--surface-2); }
+  .tcol-t { display: flex; justify-content: space-between; padding: 2px 4px 4px; font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+  .tvazio { text-align: center; color: var(--text-dim); font-size: 11px; padding: 8px 0; }
+  .tcard { display: flex; flex-direction: column; gap: 6px; padding: 9px 10px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 18%); cursor: pointer; font-size: 12px; line-height: 1.4; }
+  .tcard:hover { border-color: var(--accent); }
+  .tcard.ts-em_alteracao { border-color: var(--ia); }
+  .tcard.ts-reprovada .ttit { color: var(--text-dim); text-decoration: line-through; }
+  .ttit { font-weight: 500; word-break: break-word; }
+  .tpe { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10.5px; color: var(--text-dim); }
+  .tid { font-weight: 600; color: var(--text-dim); }
+  .tcam { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; text-transform: uppercase; background: var(--surface-2); }
+  .cam-backend { background: color-mix(in srgb, var(--text) 14%, transparent); color: var(--text); }
+  .cam-mobile { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
+  .tjira { color: var(--accent-soft); font-weight: 600; }
+  .tav { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--on-cor); font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+  .cfg-eng { margin-left: 4px; }
+  .cfg { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .cfg-card { padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--sombra); font-size: 12px; }
+  .cfg-t { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .cfg-t b { font-size: 12.5px; }
+  .cfg-t .cfg-b { margin-left: auto; }
+  .cfg-st { font-size: 10.5px; padding: 0 6px; border-radius: var(--r-pill); } .cfg-ok { color: var(--ok); } .cfg-mal { color: var(--warn); } .cfg-esp { color: var(--text-dim); }
+  .cfg-msg { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; white-space: pre-line; } .cfg-msg.mal { color: var(--warn); }
+  .cfg-l { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--border); }
+  .cfg-l > span { flex: none; width: 110px; color: var(--text-dim); } .cfg-l > div { flex: 1; min-width: 0; word-break: break-word; }
+  .cfg-b { flex: none; height: 24px; padding: 0 9px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
+  .cfg-b:hover { border-color: var(--accent) !important; }
+  .cfg-dim { color: var(--text-dim); font-size: 11px; } .cfg-mal { font-size: 11px; }
+  .cfg-dica { font-size: 11px; color: var(--text-dim); margin: 4px 0 6px; }
+  .cfg-repo { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--border); }
+  .cfg-repo > div { flex: 1; min-width: 0; word-break: break-all; } .cfg-acoes { display: flex; gap: 4px; }
+  .cfg-cam { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: var(--surface-2); }
+  .cfg-add { margin-top: 6px; }
+  .cfg-acoes-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .mudancas { display: flex; flex-direction: column; gap: 8px; margin: 0 12px 12px; }
+  .mud { position: relative; padding: 9px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--cor); font-size: 12px; }
+  .mud-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
+  .mud-niv { display: inline-flex; align-items: center; padding: 0 6px; border-radius: var(--r-sm); font-size: 10px; font-weight: 700; color: var(--on-cor); background: var(--cor); }
+  .mud-q { color: var(--text-dim); } .mud-l1 a { color: var(--accent-soft); margin-left: auto; }
+  .mud-tx { margin-top: 4px; line-height: 1.45; }
+  .mud-ef { margin-top: 4px; font-size: 11px; color: var(--text-dim); }
+  .mud-ok { margin-top: 6px; padding: 2px 10px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
+  .trev { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: color-mix(in srgb, var(--ia) 25%, transparent); color: var(--ia); }
+  .tm-rev { padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--ia); background: color-mix(in srgb, var(--ia) 8%, transparent); }
+  .tm-rev b { color: var(--ia); }
+  .tqa { border-left: 3px solid var(--warn); }
+  .selo-qa { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; font-weight: 700; background: var(--warn); color: var(--on-cor); vertical-align: 1px; }
+  .tres { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+  .tm-desc.md { white-space: normal; max-height: 50vh; overflow: auto; }
+  .tm-desc.md h3, .tm-desc.md h4, .tm-desc.md h5 { margin: 10px 0 4px; }
+  .md table { border-collapse: collapse; margin: 6px 0; font-size: 11.5px; }
+  .md th, .md td { border: 1px solid var(--border); padding: 3px 7px; text-align: left; }
+  .md th { background: var(--surface-2); }
+  .tproc { display: flex; align-items: center; font-size: 11px; color: var(--ia); }
+  .tmodal { position: fixed; inset: 0; z-index: 300; background: rgb(0 0 0 / 55%); display: flex; align-items: flex-start; justify-content: center; padding: 24px 10px; overflow: auto; }
+  .tm-caixa { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--surface);
+    border: 1px solid var(--border); box-shadow: 0 12px 40px rgb(0 0 0 / 45%); font-size: 12.5px; line-height: 1.5; }
+  .tm-cab { display: flex; align-items: center; gap: 8px; }
+  .tm-x { margin-left: auto; width: 26px; height: 26px; border-radius: var(--r-md); }
+  .tm-x:hover { background: var(--surface-2); }
+  .tstatus { padding: 0 7px; border-radius: var(--r-pill); font-size: 10.5px; border: 1px solid var(--border); }
+  .tstatus.ts-aprovada { color: var(--ok); border-color: var(--ok); } .tstatus.ts-reprovada { color: var(--danger); border-color: var(--danger); }
+  .tstatus.ts-em_alteracao { color: var(--ia); border-color: var(--ia); }
+  .tm-caixa h3 { margin: 0; font-size: 14px; }
+  .tm-desc { white-space: pre-wrap; word-break: break-word; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); }
+  .tm-ls { display: flex; flex-direction: column; gap: 4px; }
+  .tm-l { display: flex; gap: 10px; font-size: 12px; } .tm-l > span { flex: none; width: 130px; color: var(--text-dim); }
+  .tm-l a { color: var(--accent-soft); }
+  .tm-campos { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .tm-campos label { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); }
+  .tm-campos input:not([type]) { flex: 1; max-width: 160px; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); font: inherit; }
+  .tchk { cursor: pointer; } .tchk input { margin: 0; }
+  .tm-acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tm-acoes button { height: 28px; padding: 0 12px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 12px; }
+  .tm-acoes .aprovar { background: var(--ok) !important; border-color: var(--ok) !important; color: var(--on-cor); }
+  .tm-acoes .reprovar { color: var(--danger); }
+  .tm-alt textarea { width: 100%; min-height: 80px; box-sizing: border-box; margin-bottom: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface-2); color: var(--text); font: inherit; resize: vertical; }
+  .tm-hist { font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+  .tm-hist span { margin-right: 6px; }
+  .busca-t { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 1px solid var(--border);
+    border-radius: var(--r-md); background: var(--surface); color: var(--text-dim); }
+  .busca-t:focus-within { border-color: var(--accent); }
+  .busca-t svg { width: 13px; height: 13px; flex: none; }
+  .busca-t input { flex: 1; min-width: 0; height: 26px; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 12px; }
+  .ordem-t { flex: none; width: 30px; height: 30px; border: 1px solid var(--border) !important; border-radius: var(--r-md); background: var(--surface) !important; font-size: 13px; }
+  .ordem-t:hover { border-color: var(--accent) !important; }
+  .ordem-t.is-on { color: var(--accent); }
+  .meus { flex: none; display: flex; flex-direction: column; max-height: 45vh; margin: 8px 12px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sombra); overflow: hidden; }
+  .meus-t { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; font-size: 10px; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  .meus-t > span { display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0; }
+  .meus-etapa { max-width: 150px; height: 24px; padding: 0 22px 0 8px; border: 1px solid var(--border); border-radius: var(--r-md); font: inherit;
+    font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text); background: var(--surface-2); cursor: pointer; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239a9aa4' stroke-width='1.8'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 5px center; background-size: 12px; }
+  .meus-etapa:focus { outline: none; border-color: var(--accent); }
+  .meus-t .ct-ico { width: 24px; height: 24px; } .meus-t .ct-ico svg { width: 13px; height: 13px; }
+  .meus-lista { flex: 1; min-height: 0; overflow-y: auto; }
+  .meu { opacity: .62; transition: opacity 120ms; }
+  .meu:hover { opacity: 1; }
+  .meu-acoes { display: flex; gap: 12px; margin-top: 5px; }
+  .meu-acoes button { padding: 0; font-size: 11px; color: var(--text-dim); }
+  .meu-acoes button:hover { color: var(--accent); text-decoration: underline; }
+  .meus-ocultos { flex: none; padding: 5px 12px; font-size: 10.5px; color: var(--text-dim); text-align: left; border-top: 1px solid var(--border) !important; }
+  .meus-ocultos:hover { color: var(--accent); }
+  .previa-acoes { display: flex; gap: 8px; padding: 6px 0 8px; }
+  .previa-acoes button { height: 28px; padding: 0 12px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 12px; }
+  .previa-acoes .primario { border-color: transparent !important; }
+  .meu { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+  .meu:last-child { border-bottom: 0; }
+  .meu:hover { background: var(--surface-2); }
+  .meu-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+  .meu-l1 .chave { color: var(--accent); font-weight: 600; }
+  .meu-l1 .pill { margin-left: auto; }
+  .meu-tipo { color: var(--text-dim); }
+  .meu-na { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+  .meu-tit { margin-top: 2px; line-height: 1.4; word-break: break-word; }
+  .meu-pai { margin-top: 2px; font-size: 11px; color: var(--text-dim); }
+  .meus-vazio { padding: 12px; font-size: 12px; color: var(--text-dim); }
+  .meus-vazio.erro { color: var(--danger); }
+  .meus-vazio .link { color: var(--accent); text-decoration: underline; }
+  .nada-t { margin: 4px 12px; font-size: 12px; color: var(--text-dim); }
   .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
   .vivo { display: flex; gap: 6px; padding: 2px 0; }
   .vivo .vi { flex: none; width: 12px; text-align: center; color: var(--text-dim); }
   .vivo .vt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
   .vivo .vq { flex: none; color: var(--text-dim); font-size: 10px; }
-  .v-ferramenta .vt { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text-dim); }
-  .v-bloqueio .vt, .v-erro .vt { color: var(--vscode-errorForeground, #f48771); }
-  .v-fim .vi { color: var(--ok, #4fb477); }
-  .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #a78bfa; animation: pulsa 1.2s infinite; }
+  .v-etapa { margin: 8px 0 2px; padding: 3px 6px; border-radius: var(--r-md); background: color-mix(in srgb, var(--ia) 14%, transparent);
+    color: var(--ia); font-weight: 600; font-size: 11.5px; }
+  .v-etapa:first-child { margin-top: 0; }
+  .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
+  .v-fala .vt { font-style: italic; }
+  .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
+  .v-fim .vi { color: var(--ok, var(--ok)); }
+  .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--ia); animation: pulsa 1.2s infinite; }
   @keyframes pulsa { 50% { opacity: .3; } }
   .duvida { padding: 4px 0 10px 12px; }
   .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
   .duvida .dtexto { margin: 4px 0; font-size: 12.5px; line-height: 1.5; }
   .duvida .enviar { border: 1px solid var(--border); margin-top: 6px; }
+  .duvida summary { text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 400; color: inherit; margin: 0; }
+  .duvida .dtexto { display: block; margin-top: 4px; }
+  .caixa-enviadas { margin-top: 14px; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); }
+  .caixa-enviadas .titulo-caixa { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-bottom: 6px; }
+  .duvida.enviada { opacity: .6; } .duvida.enviada:hover, .duvida.enviada[open] { opacity: .9; }
+  .duvida .sug { border-left: 3px solid var(--accent); padding-left: 8px; }
   .dtrecho .esc { color: var(--ok); }
   /* Rodapé (por enquanto sem conteúdo) */
   .rodape { flex: none; height: 26px; border-top: 1px solid var(--border); background: var(--surface); }
@@ -423,11 +544,11 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .lado { display: flex; gap: 4px; margin: 0 12px 10px; }
   .lado button { flex: 1; height: 28px; border-radius: var(--r-md); border: 1px solid var(--border) !important; background: var(--surface) !important; font-size: 12px; }
   .lado button.is-on { border-color: var(--accent) !important; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent) !important; }
-  .st-novo { --cor: #8b949e; } .st-andando { --cor: #e3a43b; } .st-ok { --cor: #4fb477; }
-  .pill { font-size: 10px; padding: 1px 7px; border-radius: 9px; color: var(--cor); background: color-mix(in srgb, var(--cor) 16%, transparent); white-space: nowrap; }
+  .st-novo { --cor: var(--text-dim); } .st-andando { --cor: var(--warn); } .st-ok { --cor: var(--ok); }
+  .pill { font-size: 10px; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 16%, transparent); white-space: nowrap; }
   .cartoes > li.sem-ticket { border-style: dashed; }
-  .erro { color: var(--vscode-errorForeground); font-size: 12px; margin: 0 12px 8px; }
-  .selo { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: 8px; border: 1px solid color-mix(in srgb, #4a9eed 45%, transparent); color: #4a9eed; }
+  .erro { color: var(--danger); font-size: 12px; margin: 0 12px 8px; }
+  .selo { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--accent-soft) 45%, transparent); color: var(--accent-soft); }
   .pendentes { border-style: dashed; }
   .pendentes .linha-doc { opacity: .45; cursor: default; transition: opacity 140ms; }
   .pendentes .linha-doc:hover { opacity: .8; background: none; }
@@ -438,26 +559,112 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .caixa-t .baixar { height: 20px; font-size: 10.5px; text-transform: none; letter-spacing: 0; }
 </style><style>${jira.estiloDetalhe}</style>`;
 
-const telaLista = (lista, erro) => `${estilo}
+// Caixa "Vinculados a você" (presa embaixo da tela): tickets do Jira com você de responsável que ainda não estão na
+// lista. Clique abre só a visualização; Puxar traz para a lista (lá ele baixa título, status e anexos); Remover esconde.
+// v = { itens, etapas, filtro, ocultos, erro, carregando, semCredencial }.
+function caixaMeus(v, lista) {
+  if (!v) return '';
+  const naLista = new Set(lista.map((t) => t.chave)), ocultos = new Set(v.ocultos || []);
+  const itens = (v.itens || []).filter((i) => !naLista.has(i.key) && !ocultos.has(i.key));
+  const escondidos = (v.itens || []).filter((i) => ocultos.has(i.key)).length;
+  const corpo = v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
+    : v.erro ? `<div class="meus-vazio erro">${esc(v.erro)}</div>`
+    : !v.itens ? '<div class="meus-vazio">Carregando do Jira…</div>'
+    : !itens.length ? '<div class="meus-vazio">Nada novo vinculado a você.</div>'
+    : itens.map((i) => `<div class="meu" data-acao="meuVer" data-id="${esc(i.key)}" data-busca="${esc(`${i.key} ${i.resumo || ''} ${i.status || ''} ${i.pai || ''}`.toLowerCase())}" title="Ver o ticket">
+        <div class="meu-l1"><span class="chave">${esc(i.key)}</span><span class="meu-tipo">${esc(i.tipo || '')}</span><span class="pill">${esc(i.status || '')}</span></div>
+        <div class="meu-tit">${esc(i.resumo || '')}</div>
+        ${i.pai ? `<div class="meu-pai">↳ subtarefa de ${esc(i.pai)}</div>` : ''}
+        <div class="meu-acoes"><button data-acao="meuPuxar" data-id="${esc(i.key)}" title="Trazer para a lista de tickets">↑ Puxar</button>
+          <button data-acao="meuRemover" data-id="${esc(i.key)}" title="Tirar desta caixa">✕ Remover</button></div></div>`).join('');
+  const opcoes = [['', 'Abertos'], ...(v.etapas || []).map((e) => [e, e])];
+  if (v.filtro && !(v.etapas || []).includes(v.filtro)) opcoes.push([v.filtro, v.filtro]);
+  return `<div class="meus"><div class="meus-t">Vinculados a você<span>
+    <select class="meus-etapa" id="filtroMeus" title="Filtrar pela etapa do ticket no board">${opcoes.map(([val, rot]) =>
+      `<option value="${esc(val)}" ${(v.filtro || '') === val ? 'selected' : ''}>${esc(rot)}</option>`).join('')}</select>
+    ${v.itens ? itens.length : ''}
+    <button class="ct-ico" data-acao="meusAtualizar" title="Atualizar do Jira">${v.carregando ? '…' : IC.atualizar}</button></span></div>
+    ${v.aviso ? `<div class="meus-vazio erro">${esc(v.aviso)}</div>` : ''}<div class="meus-lista">${corpo}</div>
+    ${escondidos ? `<button class="meus-ocultos" data-acao="meusMostrar">${escondidos} removido${escondidos > 1 ? 's' : ''} · mostrar de novo</button>` : ''}</div>`;
+}
+
+// ⚙ Configurações: as mesmas seções do primeiro uso, cada uma com o estado (✅/⚠), Editar e Testar.
+// v = { valores, estado: { agente, jira, board, specs, repos, teams }, reposAuto }.
+const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
+function telaConfig(v) {
+  const e = v.estado || {};
+  const pill = (x) => (!x ? '<span class="cfg-st cfg-esp">testando…</span>' : x.ok ? '<span class="cfg-st cfg-ok">✅ ok</span>' : `<span class="cfg-st cfg-mal">⚠ ${esc(x.curto || 'atenção')}</span>`);
+  const linha = (rot, val, acao) => `<div class="cfg-l"><span>${rot}</span><div>${val || '<i>—</i>'}</div>${acao ? `<button class="cfg-b" data-acao="cfgEditar" data-id="${acao}">Editar</button>` : ''}</div>`;
+  const card = (id, titulo, x, corpo, extra = '') => `<div class="cfg-card"><div class="cfg-t"><b>${titulo}</b>${pill(x)}
+      <button class="cfg-b" data-acao="cfgTestar" data-id="${id}">Testar</button></div>
+    ${x?.texto ? `<div class="cfg-msg ${x.ok ? '' : 'mal'}">${esc(x.texto)}</div>` : ''}${corpo}${extra}</div>`;
+  const val = v.valores;
+  const repos = val.repositorios.length ? val.repositorios : v.reposAuto;
+  return `${estilo}
+  <header class="ct-cab"><div class="ct-linha">
+    <button class="ct-ico" data-acao="configFechar" title="Voltar para a lista">${IC.voltar}</button>
+    <span class="ct-titulo">Configurações</span></div><div style="height:8px"></div></header>
+  <main class="rolagem cfg">
+    ${card('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>'))}
+    ${card('jira', 'Jira', e.jira, linha('Site', esc(val.jiraSite), 'jiraSite') + linha('Projeto', esc(val.jiraProjeto), 'jiraProjeto')
+      + linha('Conta', esc(e.jira?.conta || ''), 'jiraConta'))}
+    ${card('board', 'Board e etapas', e.board, linha('Board principal', esc(val.jiraBoard), 'jiraBoard')
+      + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
+      + (e.board?.colunas ? linha('Etapas no filtro', esc(e.board.colunas.join(' → '))) : ''))}
+    ${card('specs', 'Repositório de specs', e.specs, linha('Pasta local', esc(val.specsDir), 'specsDir') + linha('Remoto (GitLab)', esc(val.specsRemoto), 'specsRemoto'))}
+    ${card('repos', 'Repositórios de código', e.repos, `<div class="cfg-dica">O Claude só lê os repositórios desta lista durante o refinamento. A camada diz onde ele olha cada requisito.</div>
+      ${repos.length ? repos.map((r, i) => `<div class="cfg-repo"><div><b>${esc(path.basename(r.caminho))}</b> <span class="cfg-cam">${esc(r.camada)}</span>
+          ${r.refRelease ? `<span class="cfg-dim">release: ${esc(r.refRelease)}</span>` : ''}<br><span class="cfg-dim">${esc(r.caminho.replace(os.homedir(), '~'))}</span>
+          ${(e.repos?.itens || [])[i] ? `<br><span class="${e.repos.itens[i].ok ? 'cfg-dim' : 'cfg-mal'}">${esc(e.repos.itens[i].texto)}</span>` : ''}</div>
+          ${val.repositorios.length ? `<span class="cfg-acoes"><button class="cfg-b" data-acao="cfgRepoEditar" data-id="${i}">Editar</button>
+          <button class="cfg-b" data-acao="cfgRepoRemover" data-id="${i}">Remover</button></span>` : ''}</div>`).join('') : '<div class="cfg-dim">Nenhum repositório.</div>'}
+      ${!val.repositorios.length && repos.length ? '<div class="cfg-dica">Detectados automaticamente ao lado da pasta de specs. Adicionar outro salva a lista.</div>' : ''}
+      <button class="cfg-b cfg-add" data-acao="cfgRepoAdicionar">＋ Adicionar repositório</button>`)}
+    ${card('banco', 'Banco de dados (opcional)', e.banco, linha('Conexão', esc(val.bancoConexao), 'bancoConexao')
+      + linha('Ambiente', esc(AMB_BANCO[val.bancoAmbiente] || ''), val.bancoConexao ? 'bancoAmbiente' : '')
+      + linha('SQLcl', esc(e.banco?.sqlcl || val.bancoSqlcl || '(procura sozinho)'), 'bancoSqlcl')
+      + linha('Dados protegidos', esc(val.bancoSensiveis.join(', ')), 'bancoSensiveis')
+      + `<div class="cfg-dica">O mapeamento do passo 3 só <b>lê</b> (sessão somente leitura, até 50 linhas). A IA vê números, estrutura e IDs; colunas pessoais aparecem como <b>***</b>. Sem banco, as premissas de dado ficam como pendência.</div>`
+      + `<div class="cfg-acoes-linha"><button class="cfg-b" data-acao="cfgBancoDetectar">Detectar conexões</button><button class="cfg-b" data-acao="cfgBancoAdicionar">＋ Nova conexão</button>`
+      + `${val.bancoConexao ? '<button class="cfg-b" data-acao="cfgBancoLimpar">Desligar banco</button>' : ''}</div>`)}
+    ${card('teams', 'Teams (opcional)', e.teams, linha('Webhook', e.teams?.ok ? 'guardado no Cofre (TEAMS_WEBHOOK)' : 'não configurado')
+      + '<div class="cfg-dica">Avisos no Teams ainda não implementados (spec pronta). Guarde a URL no Cofre com o nome TEAMS_WEBHOOK.</div>')}
+  </main>`;
+}
+
+// Visualização de um ticket vinculado (sem trazer para a lista): o mesmo conteúdo da aba Ticket.
+const telaPrevia = (key, dados) => `${estilo}
+  <header class="ct-cab"><div class="ct-linha">
+    <button class="ct-ico" data-acao="previaFechar" title="Voltar para a lista">${IC.voltar}</button>
+    <span class="ct-titulo"><span class="ct-chave">${esc(key)}</span>${dados?.resumo ? ` · ${esc(dados.resumo)}` : ''}</span>
+    <button class="ct-ico" data-acao="previaJira" data-id="${esc(key)}" title="Ver no Jira">${IC.jira}</button></div>
+    <div class="previa-acoes"><button class="primario" data-acao="meuPuxar" data-id="${esc(key)}">↑ Puxar para a lista</button>
+      <button data-acao="meuRemover" data-id="${esc(key)}">✕ Remover dos vinculados</button></div></header>
+  <main class="rolagem">${dados?.erro ? `<p class="erro">${esc(dados.erro)}</p>` : dados ? jira.folhaTicket(dados) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>'}</main>`;
+
+const telaLista = (lista, erro, meus) => `${estilo}
   <div class="rolagem">
   <div class="topo"><span class="rotulo">Tickets</span><span class="titulo"></span>
     <span class="extra">${lista.length ? `${lista.length} ticket${lista.length === 1 ? '' : 's'}` : ''}</span></div>
-  <div class="barras"><span class="dica">${lista.length ? 'do mais recente para o mais antigo' : ''}</span><span class="espaco"></span>
+  <div class="barras">${lista.length ? `<label class="busca-t">${IC.lupa}<input id="filtroT" type="search" placeholder="Pesquisar" title="Pesquisa por chave, título ou status (Esc limpa)" spellcheck="false"></label>
+    <button class="ordem-t" id="ordemT" title="Mais recentes primeiro (clique para inverter)">↑↓</button>` : '<span class="espaco"></span>'}
     <button class="primario" data-acao="novo" title="Adicionar ticket pelo link do Jira">＋ Ticket</button></div>
   ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-  <ul class="cartoes">${lista.map((t) => `<li data-acao="abrir" data-id="${esc(t.chave)}" class="st-${jira.corStatus(t.status)}" title="Abrir o ticket"${emRefino(t) ? ' style="border-left: 3px solid #a371f7"' : ''}>
+  <ul class="cartoes" id="listaT">${lista.map((t) => `<li data-acao="abrir" data-id="${esc(t.chave)}" data-busca="${esc(`${t.chave} ${t.titulo || ''} ${t.status || ''}`.toLowerCase())}" class="st-${jira.corStatus(t.status)}" title="Abrir o ticket"${emRefino(t) ? ' style="border-left: 3px solid var(--ia)"' : ''}>
     <div class="corpo">
       <div class="nome"><span>${esc(t.titulo || t.chave)}</span></div>
       <div class="det"><span class="chave">${esc(t.chave)}</span>${t.status ? `<span class="pill">${esc(t.status)}</span>` : ''}
-        ${emRefino(t) ? '<span class="pill" style="--cor:#a371f7">● refinando</span>' : ''}
+        ${emRefino(t) ? '<span class="pill" style="--cor:var(--ia)">● refinando</span>' : ''}
         <span>${t.conversas.length} conversa${t.conversas.length === 1 ? '' : 's'}</span></div>
     </div>
     <span class="mini"><button class="perigo" data-acao="excluir" data-id="${esc(t.chave)}" title="Excluir (a pasta vai para _arquivados, nada é apagado)">${IC.lixo}</button></span></li>`).join('')}
     <li class="sem-ticket" data-acao="abrir" data-id="${SEM_TICKET}" title="Documentos e notas da conversa atual, sem ticket">
       <div class="corpo"><div class="nome"><span>Sem ticket</span></div><div class="det"><span>conversa atual do Claude</span></div></div></li>
   </ul>
+  <p class="nada-t" id="nadaT" hidden>Nenhum ticket encontrado.</p>
   ${lista.length ? '' : '<div class="folha"><div class="centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do Jira.</div></div>'}
-  </div>`;
+  </div>
+  ${caixaMeus(meus, lista)}`;
 
 function telaConstituicao(r, est, abertos) {
   if (!est) return `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>specs/NNN-…/</code> em ${esc(path.basename(r.spec?.repo || 'repositório'))} e começa pelo passo 0.</div>`;
@@ -475,7 +682,7 @@ function telaConstituicao(r, est, abertos) {
     const resumo = Object.entries(p.resumo || {}).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length));
     const extra = p.n === 2 && est.perguntas.length ? `<ul class="lista-mini">${est.perguntas.map((q) => `<li><b>${esc(q.id)}</b> ${esc(q.pergunta)} — ${q.status === 'respondida' ? esc(q.resposta) : `<i>${esc(q.status)}</i>`}</li>`).join('')}</ul>`
       : p.n === 5 && est.achados.length ? `<ul class="lista-mini">${est.achados.map((a) => `<li><b>${esc(a.id)}</b> [${esc(a.severidade)}] ${esc(a.descricao)} — <i>${esc(a.status)}</i></li>`).join('')}</ul>`
-      : p.n === 6 && est.tarefas.length ? `<div>Tarefas feitas: ${est.tarefas.filter((t) => t.status === 'feita').length}/${p.resumo?.tarefas || est.tarefas.length}</div>` : '';
+      : '';
     return `<div class="passo s-${esc(p.status)}">
       <div class="cab"><span class="num">${p.n}</span><span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
         <span class="st">${STATUS[p.status] || esc(p.status)}${p.versao ? ` · v${esc(p.versao)}` : ''}</span></div>
@@ -507,7 +714,10 @@ const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') 
   : est.passos.some((p) => p.status === 'aguardando_revisao') ? 'revisao' : null);
 
 // Cartão "Agora" no topo da aba Spec: o que está acontecendo e a sua única ação, com o botão certo.
-function cartaoAgora(t, est, rodandoAgora) {
+// Cards que ainda esperam decisão para o passo poder ser aprovado: dev (tNN) no passo 4, o [QA] no passo 6.
+const semDecisaoDo = (n, l) => l.filter((c) => (n === 6 ? c.tipo === 'qa' : c.tipo !== 'qa') && ['pendente', 'em_alteracao'].includes(c.status));
+
+function cartaoAgora(t, est, rodandoAgora, tarefas = []) {
   const modo = t.refinamento?.estado;
   const passo = est && est.proximoPasso <= 6 ? est.passos[est.proximoPasso] : null;
   const abertas = est ? est.perguntas.filter((q) => q.status === 'aberta') : [];
@@ -529,8 +739,14 @@ function cartaoAgora(t, est, rodandoAgora) {
     return `<div class="pilha-t"><span>Perguntas do Claude</span>${abertas.length > 1 ? `<span class="pnav">
       <button data-pilha="ant" title="Pergunta anterior">‹</button><span id="pPos">1 de ${abertas.length}</span>
       <button data-pilha="prox" title="Próxima pergunta (sem responder esta)">›</button>
+      <span class="ptam" hidden><button data-pilha="menor" title="Cards menores (mais por linha)">−</button><button data-pilha="maior" title="Cards maiores (menos por linha)">+</button></span>
       <button data-pilha="grade" title="Ver todas as perguntas">${IC.grade}</button></span>` : '<span>última</span>'}</div>
     <div class="pilha atras-${resto}" id="pilha">${abertas.map(card).join('')}</div>`;
+  } else if (passo?.status === 'aguardando_revisao' && [4, 6].includes(passo.n) && semDecisaoDo(passo.n, tarefas).length) {
+    const n = semDecisaoDo(passo.n, tarefas).length;
+    [titulo, texto, acoes] = passo.n === 4
+      ? [`Revise as tarefas · ${n} sem decisão`, 'Aprove (vira subtarefa no Jira), reprove ou peça alteração em cada card. Depois aprove o passo 4 aqui.', '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>']
+      : ['Revise o plano de testes', 'O card [QA] está na aba Tarefas: aprove (cria a subtarefa [QA] no Jira com o plano), reprove ou peça alteração. Depois aprove o passo 6 aqui.', '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>'];
   } else if (passo?.status === 'aguardando_revisao') [titulo, texto] = [`Revise o passo ${passo.n} · ${passo.titulo}`, `Abra <b>${esc(path.basename(arquivoPasso(t, passo.n)))}</b> no cartão do passo, leia e clique em <b>Aprovar</b> ou <b>Pedir ajuste</b>.`];
   else if (!passo) [titulo, texto] = ['Spec concluída', 'Todos os passos aprovados.'];
   else if (modo === 'aguardando_inicio') [titulo, texto, acoes] = ['Spec criada', `Próximo: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="darInicio">Dar início</button>'];
@@ -541,10 +757,91 @@ function cartaoAgora(t, est, rodandoAgora) {
 }
 
 // Caixa "Ao vivo" da aba Spec: o que o Claude em segundo plano (maestro.js) está fazendo.
-const ICONE_VIVO = { texto: '✦', ferramenta: '›', bloqueio: '⛔', erro: '⚠', fim: '✓', inicio: '▶' };
+// Tipos antigos (antes da padronização) caem no equivalente novo.
+const TIPO_VIVO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
+const ICONE_VIVO = { fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
+const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}</span></div>
-  <div class="folha ao-vivo" id="aoVivo">${l.map((x) => `<div class="vivo v-${esc(x.tipo)}"><span class="vi">${ICONE_VIVO[x.tipo] || '·'}</span>
-    <span class="vt">${esc(x.tipo === 'texto' ? x.texto.slice(0, 400) : x.texto)}</span><span class="vq">${esc(new Date(x.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}</span></div>`).join('')}</div>` : '');
+  <div class="folha ao-vivo" id="aoVivo">${l.map((x) => {
+    const tipo = TIPO_VIVO[x.tipo] || x.tipo;
+    return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
+      : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE_VIVO[tipo] || '·'}</span>
+        <span class="vt">${esc(x.texto.slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`;
+  }).join('')}</div>` : '');
+
+// ── Tarefas: cards do passo 4 (como no Jira). Pendentes → você aprova (vira subtarefa no Jira), reprova ou pede
+// alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
+const STATUS_T = { pendente: 'Pendente', em_alteracao: 'Claude alterando', aprovada: 'Aprovada', reprovada: 'Reprovada' };
+const COLUNAS_T = [['Pendentes', ['pendente', 'em_alteracao']], ['Aprovadas', ['aprovada']], ['Reprovadas', ['reprovada']]];
+const iniciais = () => (os.userInfo().username.split(/[._-]/).map((x) => x[0]).join('').slice(0, 2) || 'EU').toUpperCase();
+function telaTarefas(t, l) {
+  if (!l.length) return `<div class="folha"><div class="vazio-aba">Nenhuma tarefa ainda.<br>No passo 4 da spec o Claude cria as tarefas e elas aparecem aqui como cards,
+    para você aprovar (vira subtarefa no Jira em ${esc(t.chave)}), reprovar ou pedir alteração.</div></div>`;
+  const chip = (c) => `${c.camada ? `<span class="tcam cam-${esc(c.camada)}">${esc(c.camada)}</span>` : ''}
+    ${c.estimativa ? `<span class="test" title="Estimativa original">⏱ ${esc(c.estimativa)}</span>` : ''}
+    ${c.jira ? `<span class="tjira">${esc(c.jira)}</span>` : ''}
+    ${c.vinculado ? `<span class="tav" title="Vinculada a você">${esc(iniciais())}</span>` : ''}`;
+  const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
+    <div class="ttit">${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
+    ${c.tipo === 'qa' && c.resumo ? `<div class="tres">${esc(c.resumo)}</div>` : ''}
+    ${c.status === 'em_alteracao' ? '<div class="tproc"><span class="vivo-bola"></span>Claude alterando…</div>' : ''}
+    <div class="tpe"><span class="tid">${esc(c.id)}</span>${chip(c)}</div></div>`;
+  const linha = (rot, v) => (v ? `<div class="tm-l"><span>${rot}</span><div>${v}</div></div>` : '');
+  const modal = (c) => {
+    const aberta = c.status === 'pendente';
+    return `<div class="tmodal" data-tmodal="${esc(c.id)}" hidden><div class="tm-caixa">
+      <div class="tm-cab"><span class="tid">${esc(c.id)}</span><span class="tstatus ts-${esc(c.status)}">${STATUS_T[c.status] || esc(c.status)}</span>
+        <button class="tm-x" data-tfechar title="Fechar (Esc)">✕</button></div>
+      <h3>${esc(c.titulo || c.id)}</h3>
+      ${c.status === 'em_alteracao' ? `<div class="tproc"><span class="vivo-bola"></span>Claude aplicando: “${esc(c.alteracao || '')}”</div>` : ''}
+      ${c.tipo === 'qa' ? `<div class="tm-desc md">${markdown(lerTexto(c.arquivo || '') || 'Plano de testes não encontrado.')}</div>`
+        : `<div class="tm-desc">${esc(c.descricao || 'Sem descrição.')}</div>`}
+      <div class="tm-ls">
+        ${linha('Pronto quando', esc(c.pronto || ''))}
+        ${linha('Requisitos', esc((c.rf || []).join(', ')))}
+        ${linha('Depende de', esc((c.depende || []).join(', ')))}
+        ${linha('Camada', esc(c.camada || ''))}
+        ${linha('Jira', c.jira ? `<a href="${esc(t.site)}/browse/${esc(c.jira)}">${esc(c.jira)}</a>` : '')}
+        ${!aberta ? linha('Estimativa original', esc(c.estimativa || '—')) + linha('Responsável', c.vinculado ? 'você' : '—') : ''}
+        ${c.motivo ? linha('Motivo', esc(c.motivo)) : ''}
+      </div>
+      ${aberta ? `<div class="tm-campos">
+        <label>Estimativa original<input data-tcampo="estimativa" value="${esc(c.estimativa || '')}" placeholder="ex.: 30m, 2h, 1d"></label>
+        <label class="tchk"><input type="checkbox" data-tcampo="vinculado" ${c.vinculado ? 'checked' : ''}>Vincular a mim (responsável no Jira)</label></div>
+      <div class="tm-acoes"><button class="aprovar" data-tacao="tarefaAprovar">Aprovar</button>
+        <button class="reprovar" data-tacao="tarefaReprovar">Reprovar</button><button data-talterar>Pedir alteração</button></div>
+      <div class="tm-alt" hidden><textarea placeholder="O que o Claude deve mudar nesta tarefa?"></textarea>
+        <div class="tm-acoes"><button class="primario" data-tenviar>Enviar para o Claude</button><button data-tcancelar>Cancelar</button></div></div>` : ''}
+      ${c.revisao ? `<div class="tm-rev"><b>↻ Alteração proposta</b> — ${esc(c.revisao.motivo)}
+        ${c.revisao.comentario ? ` · <a href="${esc(c.revisao.comentario)}">comentário</a>` : ''}
+        ${Object.entries(c.revisao.campos || {}).map(([k, v]) => `<div class="tm-l"><span>${esc(k)} (novo)</span><div>${esc(v)}</div></div>`).join('')}
+        ${c.tipo === 'qa' ? '<div class="tm-l"><span>Plano</span><div>testes.md atualizado (acima)</div></div>' : ''}
+        <div class="tm-acoes"><button class="aprovar" data-tacao="revisaoAplicar">Aplicar no Jira</button><button data-tacao="revisaoDescartar">Descartar</button></div></div>` : ''}
+      ${(c.historico || []).length ? `<div class="tm-hist">${c.historico.map((h) => `<div><span>${esc(quando(h.em))}</span> ${esc(h.texto || h.evento)}</div>`).join('')}</div>` : ''}
+    </div></div>`;
+  };
+  return `<div class="tboard">${COLUNAS_T.map(([nome, sts]) => {
+    const cs = l.filter((c) => sts.includes(c.status));
+    return `<div class="tcol"><div class="tcol-t">${nome}<span>${cs.length}</span></div>${cs.map(card).join('') || '<div class="tvazio">—</div>'}</div>`;
+  }).join('')}</div>${l.map(modal).join('')}`;
+}
+
+// Mudanças vindas de comentários do Jira: o vigia acha, o Claude mede (nível) e regride a spec; aqui você vê e dá ciência.
+const NIVEL = { alto: ['ALTO', 'var(--danger)'], medio: ['MÉDIO', 'var(--warn)'], baixo: ['BAIXO', 'var(--ok)'], nenhum: ['SEM IMPACTO', 'var(--text-dim)'] };
+function caixaMudancas(l) {
+  const vis = l.filter((i) => i.status !== 'ciente' && !(i.status === 'analisado' && i.nivel === 'nenhum')).slice().reverse().slice(0, 5);
+  if (!vis.length) return '';
+  return `<div class="caixa-t">Mudanças por comentário<span>${vis.length}</span></div><div class="mudancas">${vis.map((i) => {
+    const [rot, cor] = NIVEL[i.nivel] || ['ANALISANDO', 'var(--ia)'];
+    return `<div class="mud" style="--cor:${cor}">
+      <div class="mud-l1"><span class="mud-niv">${i.status === 'analisado' ? rot : i.status === 'erro' ? 'NÃO ANALISADO' : '<span class="vivo-bola"></span>ANALISANDO'}</span>
+        <b>${esc(i.autor || 'alguém')}</b><span class="mud-q">${esc(quando(i.data))}</span><a href="${esc(i.link)}">ver comentário</a></div>
+      <div class="mud-tx">${esc(i.resumo || (i.texto || '').slice(0, 220))}</div>
+      ${i.status === 'analisado' && i.nivel !== 'nenhum' ? `<div class="mud-ef">${i.passo !== null && i.passo !== undefined ? `Spec voltou ao passo ${esc(i.passo)}. ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))} (revise na aba Tarefas).` : ''}</div>` : ''}
+      ${i.status !== 'na_fila' && i.status !== 'analisando' ? `<button class="mud-ok" data-acao="impactoCiente" data-id="${esc(i.id)}">Ciente</button>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
 
 function corpoAba(t, aba, d) {
   const semTicket = t.id === SEM_TICKET;
@@ -567,7 +864,7 @@ function corpoAba(t, aba, d) {
     <div class="caixa-t">Notas</div>
     <div class="notas-caixa">${notas.corpoNotas(semTicket ? 'Notas desta conversa…' : 'Notas do ticket…')}</div>`;
   }
-  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando) : ''}${aoVivoHtml(d.vivo, d.vivoRodando)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos)
+  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas) : ''}${caixaMudancas(d.impactos)}${aoVivoHtml(d.vivo, d.vivoRodando)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
@@ -583,27 +880,7 @@ function corpoAba(t, aba, d) {
           : `<span class="fb-sep"></span><button class="fb-btn" data-acao="handoffCriar" data-id="${d.lado}">Criar arquivo</button>`}
       </div></div></div>`;
   }
-  if (aba === 'todo') {
-    const b = d.board, ultima = b.columns.at(-1).id;
-    const ord = (st) => b.items.filter((i) => i.status === st).sort((x, y) => x.order - y.order);
-    return `<div class="folha">
-      <div class="todo-bar">
-        <input class="todo-input" id="novaTarefa" placeholder="nova tarefa…">
-        <button class="fb-btn" id="addTarefa" title="Adicionar tarefa">＋</button>
-        <button class="todo-mode" id="modoTodo" title="Alternar entre quadro e lista">lista</button>
-      </div>
-      <div id="todoQuadro" class="todo-columns" hidden>${b.columns.map((c) => `<div class="todo-column" data-coluna="${esc(c.id)}">
-        <h5 class="todo-column-title">${esc(c.title)}<span class="todo-count">${ord(c.id).length}</span></h5>
-        ${ord(c.id).map((i) => `<div class="todo-card" draggable="true" data-item="${esc(i.id)}" title="${esc(i.notes || '')}">${esc(i.title)}
-          <button class="todo-remove" data-acao="todo" data-op="remove" data-id="${esc(i.id)}" title="Excluir tarefa">✕</button></div>`).join('')}
-      </div>`).join('')}</div>
-      <ul id="todoLista" class="todo-list">${b.columns.map((c) => ord(c.id).length ? `<li><h5 class="todo-column-title">${esc(c.title)}</h5><ul class="todo-list-items">
-        ${ord(c.id).map((i) => `<li class="todo-line"><input type="checkbox" data-check="${esc(i.id)}" ${i.status === ultima ? 'checked' : ''}>
-          <span class="todo-line-title ${i.status === ultima ? 'is-done' : ''}">${esc(i.title)}</span>
-          <button class="todo-remove" data-acao="todo" data-op="remove" data-id="${esc(i.id)}" title="Excluir tarefa">✕</button></li>`).join('')}</ul></li>` : '').join('')}
-        ${b.items.length ? '' : '<li class="todo-empty">nenhuma tarefa ainda</li>'}</ul>
-    </div>`;
-  }
+  if (aba === 'tarefas') return telaTarefas(t, d.tarefas);
   if (aba === 'decisoes') return `<div class="folha">${d.decisoes.length ? `<div class="hist">${d.decisoes.map((x) => `
     <details class="decisao" data-dec="${esc(x.id)}">
       <summary><span class="quando">${esc(quando(x.data))}</span><span class="dtitulo">${esc(x.titulo)}</span>
@@ -614,15 +891,25 @@ function corpoAba(t, aba, d) {
       </div>
     </details>`).join('')}</div>`
     : '<div class="vazio-aba">Nenhuma decisão registrada ainda.<br>Elas aparecem quando você responde uma pergunta do Claude ou pede para ele fazer diferente.</div>'}</div>`;
-  if (aba === 'duvidas') return `<div class="folha">${d.duvidas.length ? `<div class="hist">${d.duvidas.slice().reverse().map((x) => `
-    <div class="decisao duvida">
-      <div class="dlinha"><span class="quando">${esc(quando(x.em))}</span><b>${esc(x.id)}</b>
-        ${x.enviadaEm ? `<span class="origem" title="Enviada em ${esc(quando(x.enviadaEm))}">✓ No Jira</span>` : ''}</div>
-      <p class="dtexto">${esc(x.texto)}</p>
-      ${x.contexto ? `<div class="dtrecho"><b>Contexto:</b> ${esc(x.contexto)}</div>` : ''}
-      ${x.enviadaEm ? '' : `<div class="acoes-aba"><button class="fb-btn enviar" data-acao="duvidaEnviar" data-id="${esc(x.id)}">Enviar para os comentários do ticket</button></div>`}
-    </div>`).join('')}</div>`
-    : '<div class="vazio-aba">Nenhuma dúvida registrada ainda.<br>No modo refinamento, quando você escolher <b>Tirar dúvida</b> numa pergunta do Claude, ela aparece aqui.</div>'}</div>`;
+  if (aba === 'duvidas') {
+    const card = (x) => {
+      const aberta = !x.resposta, ev = x.enviadaEm;
+      const corpo = `${x.contexto ? `<div class="dtrecho"><b>Contexto:</b> ${esc(x.contexto)}</div>` : ''}
+        ${x.resposta ? `<div class="dtrecho resp"><b>Resposta${x.resposta.origem === 'comentario' ? ` · comentário de ${esc(x.resposta.autor || '')}` : ' · dada por você'}:</b> ${esc(x.resposta.texto)}</div>` : ''}
+        ${aberta && x.sugestao ? `<div class="dtrecho sug"><b>Possível resposta de ${esc(x.sugestao.autor || 'alguém')}:</b> “${esc(String(x.sugestao.texto).slice(0, 600))}”<br><i>${esc(x.sugestao.motivo)}</i>
+          <div class="acoes-aba"><button class="fb-btn enviar" data-acao="duvidaConfirmar" data-id="${esc(x.id)}">Confirmar como resposta</button>
+          <button class="fb-btn" data-acao="duvidaRejeitar" data-id="${esc(x.id)}">Não é a resposta</button></div></div>` : ''}
+        <div class="acoes-aba">${!ev ? `<button class="fb-btn enviar" data-acao="duvidaEnviar" data-id="${esc(x.id)}">Enviar para os comentários do ticket</button>` : ''}
+          ${aberta ? `<button class="fb-btn" data-acao="duvidaResponder" data-id="${esc(x.id)}">Dar resposta</button>` : ''}</div>`;
+      const marca = x.resposta ? '✓ Respondida' : ev ? `Aguardando resposta${x.sugestao ? ' · resposta sugerida' : ''}` : 'Não enviada';
+      return `<details class="decisao duvida${ev ? ' enviada' : ''}"${!ev || x.sugestao ? ' open' : ''}>
+        <summary><span class="quando">${esc(quando(x.em))}</span> <b>${esc(x.id)}</b> <span class="origem">${marca}</span><span class="dtexto">${esc(x.texto)}</span></summary>${corpo}</details>`;
+    };
+    const l = d.duvidas.slice().reverse(), novas = l.filter((x) => !x.enviadaEm), enviadas = l.filter((x) => x.enviadaEm);
+    return `<div class="folha">${l.length ? `${novas.length ? `<div class="hist">${novas.map(card).join('')}</div>` : ''}
+      ${enviadas.length ? `<div class="caixa-enviadas"><div class="titulo-caixa">Enviadas ao ticket (${enviadas.length})</div><div class="hist">${enviadas.map(card).join('')}</div></div>` : ''}`
+      : '<div class="vazio-aba">Nenhuma dúvida registrada ainda.<br>No modo refinamento, quando você escolher <b>Tirar dúvida</b> numa pergunta do Claude, ela aparece aqui.</div>'}</div>`;
+  }
   return '';
 }
 
@@ -632,7 +919,7 @@ const telaTicket = (t, aba, d) => `${estilo}${cabecalho(t, { aba, secao: PRINCIP
 function pagina(nonce, corpo, nota) {
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 0; } button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; } [hidden] { display: none !important; }</style>
+<style>body { font-family: var(--fc-font); margin: 0; } button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; } [hidden] { display: none !important; }</style>
 ${nota ? notas.CSS_NOTAS : ''}</head><body>${corpo}
 ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota.estilo)}</script>` : ''}
 <script nonce="${nonce}">
@@ -655,6 +942,29 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     });
   });
 
+  // Lista de tickets: pesquisa por chave/título/status e ↑↓ inverte a ordem (Sem ticket fica sempre por último).
+  const filtroT = document.getElementById('filtroT');
+  if (filtroT) {
+    const ul = document.getElementById('listaT'), semT = ul.querySelector('.sem-ticket'), nada = document.getElementById('nadaT'), ordem = document.getElementById('ordemT');
+    const itens = [...ul.querySelectorAll('li[data-busca]')];
+    let antigos = !!(vscode.getState() || {}).ticketsAntigos;
+    const aplicar = () => {
+      const q = filtroT.value.trim().toLowerCase();
+      (antigos ? [...itens].reverse() : itens).forEach((li) => { li.hidden = !!q && !li.dataset.busca.includes(q); ul.insertBefore(li, semT); });
+      if (semT) semT.hidden = !!q;
+      nada.hidden = !q || itens.some((li) => !li.hidden);
+      document.querySelectorAll('.meu[data-busca]').forEach((m) => { m.hidden = !!q && !m.dataset.busca.includes(q); });
+      ordem.classList.toggle('is-on', antigos);
+      ordem.title = antigos ? 'Mais antigos primeiro (clique para inverter)' : 'Mais recentes primeiro (clique para inverter)';
+    };
+    filtroT.addEventListener('input', aplicar);
+    filtroT.addEventListener('keydown', (e) => { if (e.key === 'Escape') { filtroT.value = ''; aplicar(); } });
+    ordem.addEventListener('click', () => { antigos = !antigos; vscode.setState({ ...(vscode.getState() || {}), ticketsAntigos: antigos }); aplicar(); });
+    aplicar();
+  }
+
+  document.getElementById('filtroMeus')?.addEventListener('change', (e) => enviar({ acao: 'meusFiltro', id: e.target.value }));
+
   // Pilha de perguntas: ‹ › troca o card de cima, ▦ alterna para a grade com todas. Lembra a pergunta e o modo.
   const pilha = document.getElementById('pilha');
   if (pilha) {
@@ -663,17 +973,23 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     let i = Math.max(0, cards.findIndex((c) => c.dataset.qid === st.pqId));
     if (i === 0 && st.pqId && !cards.some((c) => c.dataset.qid === st.pqId)) i = Math.min(st.pq || 0, cards.length - 1); // respondida: fica na mesma posição
     let grade = !!st.pgrade && cards.length > 1;
+    // Largura mínima do card na grade: o número de colunas se ajusta sozinho (auto-fill) à largura da tela.
+    let largura = st.pw || 240;
+    const tam = document.querySelector('.ptam');
     const mostrar = () => {
       pilha.classList.toggle('grade', grade);
+      pilha.style.setProperty('--pw', largura + 'px');
+      if (tam) tam.hidden = !grade;
       cards.forEach((c, k) => { c.hidden = !grade && k !== i; });
       if (pos) pos.textContent = grade ? cards.length + ' perguntas' : (i + 1) + ' de ' + cards.length;
       document.querySelector('[data-pilha="grade"]')?.classList.toggle('is-on', grade);
-      vscode.setState({ ...(vscode.getState() || {}), pq: i, pqId: cards[i]?.dataset.qid, pgrade: grade });
+      vscode.setState({ ...(vscode.getState() || {}), pq: i, pqId: cards[i]?.dataset.qid, pgrade: grade, pw: largura });
     };
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-pilha]');
       if (!b) return;
-      if (b.dataset.pilha === 'grade') grade = !grade;
+      if (b.dataset.pilha === 'maior' || b.dataset.pilha === 'menor') largura = Math.min(560, Math.max(160, largura + (b.dataset.pilha === 'maior' ? 40 : -40)));
+      else if (b.dataset.pilha === 'grade') grade = !grade;
       else { grade = false; i = (i + (b.dataset.pilha === 'prox' ? 1 : -1) + cards.length) % cards.length; }
       mostrar();
     });
@@ -689,24 +1005,46 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     corpo.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), rolagem: corpo.scrollTop }));
   }
 
-  // TODO (como o painel do Atelier): campo + ＋, quadro ⇄ lista, arrastar entre colunas, caixa = última coluna.
-  const nova = document.getElementById('novaTarefa');
-  if (nova) {
-    const add = () => { const v = nova.value.trim(); if (v) enviar({ acao: 'todo', op: 'add', titulo: v }); };
-    nova.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
-    document.getElementById('addTarefa').addEventListener('click', add);
-    const quadroEl = document.getElementById('todoQuadro'), listaEl = document.getElementById('todoLista'), modo = document.getElementById('modoTodo');
-    const usarModo = (m) => { quadroEl.hidden = m !== 'quadro'; listaEl.hidden = m === 'quadro'; modo.textContent = m; vscode.setState({ ...(vscode.getState() || {}), todo: m }); };
-    usarModo((vscode.getState() || {}).todo || 'lista');
-    modo.addEventListener('click', () => usarModo(quadroEl.hidden ? 'quadro' : 'lista'));
-    document.querySelectorAll('[data-check]').forEach((c) => c.addEventListener('change', () =>
-      enviar({ acao: 'todo', op: 'move', id: c.dataset.check, status: c.checked ? 'ultima' : 'primeira' })));
-    document.querySelectorAll('.todo-card').forEach((card) => card.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', card.dataset.item)));
-    document.querySelectorAll('.todo-column').forEach((col) => {
-      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('is-target'); });
-      col.addEventListener('dragleave', () => col.classList.remove('is-target'));
-      col.addEventListener('drop', (e) => { e.preventDefault(); col.classList.remove('is-target'); enviar({ acao: 'todo', op: 'move', id: e.dataTransfer.getData('text/plain'), status: col.dataset.coluna }); });
+  // Tarefas: clique no card abre o detalhe; Esc/✕/fundo fecha. Campos e ações vão para a extensão.
+  // O detalhe aberto e o rascunho do pedido de alteração sobrevivem ao redesenho.
+  if (document.querySelector('[data-tmodal]')) {
+    const estado = () => vscode.getState() || {};
+    const abrirT = (id) => {
+      document.querySelectorAll('[data-tmodal]').forEach((m) => { m.hidden = m.dataset.tmodal !== id; });
+      vscode.setState({ ...estado(), tmodal: id || null });
+    };
+    const rascunho = (id, texto) => { const r = { ...(estado().talt || {}) }; if (texto === null) delete r[id]; else r[id] = texto; vscode.setState({ ...estado(), talt: r }); };
+    const camposDe = (m) => m.querySelectorAll('[data-tcampo]').forEach((i) =>
+      enviar({ acao: 'tarefaCampo', id: m.dataset.tmodal, campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value }));
+    document.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-tcard]');
+      if (c) return abrirT(c.dataset.tcard);
+      const m = e.target.closest('[data-tmodal]');
+      if (!m) return;
+      const id = m.dataset.tmodal, alt = m.querySelector('.tm-alt');
+      if (e.target === m || e.target.closest('[data-tfechar]')) return abrirT(null);
+      const a = e.target.closest('[data-tacao]');
+      if (a) { camposDe(m); return enviar({ acao: a.dataset.tacao, id }); }
+      if (e.target.closest('[data-talterar]')) { alt.hidden = false; alt.querySelector('textarea').focus(); return; }
+      if (e.target.closest('[data-tcancelar]')) { alt.hidden = true; rascunho(id, null); return; }
+      if (e.target.closest('[data-tenviar]')) {
+        const texto = alt.querySelector('textarea').value.trim();
+        if (!texto) return alt.querySelector('textarea').focus();
+        enviar({ acao: 'tarefaAlterar', id, texto });
+        rascunho(id, null);
+        abrirT(null);
+      }
     });
+    document.querySelectorAll('[data-tcampo]').forEach((i) => i.addEventListener('change', () =>
+      enviar({ acao: 'tarefaCampo', id: i.closest('[data-tmodal]').dataset.tmodal, campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value })));
+    document.querySelectorAll('.tm-alt textarea').forEach((ta) => ta.addEventListener('input', () => rascunho(ta.closest('[data-tmodal]').dataset.tmodal, ta.value)));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirT(null); });
+    const st = estado();
+    for (const [id, texto] of Object.entries(st.talt || {})) {
+      const m = document.querySelector('[data-tmodal="' + id + '"] .tm-alt');
+      if (m) { m.hidden = false; m.querySelector('textarea').value = texto; }
+    }
+    if (st.tmodal && document.querySelector('[data-tmodal="' + st.tmodal + '"]')) abrirT(st.tmodal);
   }
 </script></body></html>`;
 }
@@ -745,8 +1083,114 @@ exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
   const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
   const cacheJira = {}; // chave -> dados do Jira (ou { erro })
+  let meus = null; // { itens, etapas, filtro, erro, carregando, semCredencial, em }: caixa "Vinculados a você"
+  let etapasJira = null; // colunas do board [{ nome, ids }] (buscadas uma vez por sessão)
+  // Configurações (⚙): settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
+  const cfg = () => vscode.workspace.getConfiguration('craftingTable');
+  const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar()[0]?.chave || 'WMS').split('-')[0];
+  let cfgAberta = false, cfgEstado = {};
+  const valoresCfg = () => ({ jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
+    etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
+    repositorios: cfg().get('repositorios') || [],
+    bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
+    bancoSensiveis: cfg().get('bancoColunasSensiveis')?.length ? cfg().get('bancoColunasSensiveis') : banco.SENSIVEIS_PADRAO });
+  const salvarCfg = (k, v) => cfg().update(k, v, vscode.ConfigurationTarget.Global);
+  const exec = (cmd, args, opts = {}) => new Promise((ok) => require('child_process').execFile(cmd, args, { timeout: 20000, ...opts }, (e, out, err) => ok({ ok: !e, out: String(out || '').trim(), err: String(err || e?.message || '').trim() })));
+  const CHECAR = {
+    async agente() {
+      const v = await exec(maestro.claudeBin(), ['--version']);
+      if (!v.ok) return { ok: false, curto: 'Claude não encontrado', texto: 'Instale o Claude Code e faça login (claude no terminal).' };
+      const qa = pluginInstalado('fcx-qa-test-planning@');
+      return { ok: !!sddState(), curto: sddState() ? '' : 'plugin sdd faltando',
+        texto: `${v.out} · plugin sdd ${sddState() ? '✅' : '❌ (claude plugin install sdd@crafting-local)'} · QA (fcx-qa-test-planning) ${qa ? '✅' : '⚠ sem ele o passo 6 segue sem o método de QA'}` };
+    },
+    async jira() {
+      if (!(await ctx.secrets.get('jira.token'))) return { ok: false, curto: 'sem credenciais', texto: 'Clique em Editar na Conta para informar e-mail e API token.' };
+      try {
+        const [eu, p] = await Promise.all([jira.eu(ctx.secrets, siteJira()), jira.projetoInfo(ctx.secrets, siteJira(), projetoJira())]);
+        return { ok: true, conta: eu.nome, texto: `Conectado como ${eu.nome} · projeto ${p.chave} (${p.nome})` };
+      } catch (e) { return { ok: false, curto: 'falhou', texto: e.message }; }
+    },
+    async board() {
+      try {
+        const cols = await jira.etapas(ctx.secrets, siteJira(), projetoJira(), cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []);
+        return { ok: true, colunas: cols.map((c) => c.nome), texto: `${cols.length} etapas no filtro dos vinculados` };
+      } catch (e) { return { ok: false, curto: 'falhou', texto: e.message }; }
+    },
+    async specs() {
+      const dir = cfg().get('specsDir') || SPECS_PADRAO, remoto = cfg().get('specsRemoto') || '';
+      if (!fs.existsSync(dir)) return { ok: false, curto: 'pasta não existe', texto: remoto ? 'A pasta ainda não existe: o clone pelo remoto entra no próximo passo da configuração.' : 'Escolha a pasta local (Editar).' };
+      if (!fs.existsSync(path.join(dir, '.git'))) return { ok: false, curto: 'não é git', texto: `${dir} não é um repositório git.` };
+      const o = await exec('git', ['-C', dir, 'remote', 'get-url', 'origin']);
+      if (remoto) {
+        const r = await exec('git', ['ls-remote', '--heads', remoto], { env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+        if (!r.ok) return { ok: false, curto: 'remoto inacessível', texto: `Sem acesso a ${remoto}: ${r.err.split('\n')[0]}` };
+        if (o.ok && o.out !== remoto) return { ok: false, curto: 'origin diferente', texto: `A pasta aponta para ${o.out}, não para o remoto configurado.` };
+      }
+      return { ok: true, texto: `branch ${(await exec('git', ['-C', dir, 'symbolic-ref', '--short', 'HEAD'])).out || '?'} · ${o.ok ? `origin ${o.out}` : 'sem origin (só local)'}` };
+    },
+    async repos() {
+      const lista = (cfg().get('repositorios') || []).length ? cfg().get('repositorios') : reposAuto(cfg().get('specsDir') || SPECS_PADRAO);
+      const itens = await Promise.all(lista.map(async (r) => {
+        if (!fs.existsSync(r.caminho)) return { ok: false, texto: 'pasta não existe' };
+        if (!(await exec('git', ['-C', r.caminho, 'rev-parse', '--is-inside-work-tree'])).ok) return { ok: false, texto: 'não é um repositório git' };
+        const b = await exec('git', ['-C', r.caminho, 'symbolic-ref', '--short', 'HEAD']);
+        b.out ||= 'HEAD destacado';
+        if (r.refRelease && !(await exec('git', ['-C', r.caminho, 'rev-parse', '--verify', '--quiet', r.refRelease])).ok) return { ok: false, texto: `branch atual ${b.out} · ref ${r.refRelease} não encontrada` };
+        return { ok: true, texto: `branch atual ${b.out}` };
+      }));
+      return { ok: lista.length > 0 && itens.every((i) => i.ok), curto: lista.length ? 'verifique os itens' : 'nenhum', itens, texto: lista.length ? '' : 'Adicione ao menos um repositório.' };
+    },
+    async banco() {
+      const conexao = cfg().get('bancoConexao') || '', ambiente = cfg().get('bancoAmbiente') || '';
+      const sqlcl = banco.acharSqlcl(cfg().get('bancoSqlcl'));
+      if (!conexao) return { ok: false, curto: 'opcional', sqlcl, texto: 'Sem banco: as premissas de dado ficam como pendência (🟡). Clique em Detectar conexões para ligar.' };
+      if (!sqlcl) return { ok: false, curto: 'SQLcl não encontrado', texto: 'Instale o SQLcl ou informe o caminho em SQLcl → Editar.' };
+      if (!ambiente) return { ok: false, curto: 'defina o ambiente', sqlcl, texto: 'Diga o que a conexão é (cópia de produção ou QAS) em Ambiente → Editar.' };
+      if (ambiente === 'producao') return { ok: false, curto: 'produção bloqueada', sqlcl, texto: 'O mapeamento não consulta produção: use a cópia de produção ou o QAS.' };
+      const t = await banco.testar({ conexao, ambiente, sqlcl, sensiveis: cfg().get('bancoColunasSensiveis') });
+      return { ...t, sqlcl, curto: t.ok ? '' : t.curto, texto: [t.texto, t.aviso && `⚠ ${t.aviso}`].filter(Boolean).join('\n') };
+    },
+    async teams() { return (await ctx.secrets.get('cofre:TEAMS_WEBHOOK')) ? { ok: true } : { ok: false, curto: 'opcional', texto: '' }; }
+  };
+  const checar = async (ids = Object.keys(CHECAR)) => {
+    for (const id of ids) delete cfgEstado[id];
+    render();
+    await Promise.all(ids.map(async (id) => { try { cfgEstado[id] = await CHECAR[id](); } catch (e) { cfgEstado[id] = { ok: false, curto: 'erro', texto: e.message }; } render(); }));
+  };
+  // Mudou a configuração (aqui ou nas settings): esquece o que foi buscado com a configuração antiga.
+  ctx.subscriptions?.push(vscode.workspace.onDidChangeConfiguration((ev) => {
+    if (!ev.affectsConfiguration('craftingTable')) return;
+    etapasJira = null; meus = null;
+    if (cfgAberta) render();
+  }));
+  let previa = null; const cachePrevia = {}; // ticket vinculado aberto só para ver (chave) e os dados dele
+  const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
+  const carregarMeus = async (forcar) => {
+    if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
+    if (!forcar && !(await ctx.secrets.get('jira.token'))) { meus = { semCredencial: true, em: Date.now() }; return render(); }
+    meus = { ...(meus || {}), carregando: true, semCredencial: false };
+    render();
+    const filtro = ctx.globalState.get('meusFiltro') || '';
+    const projeto = projetoJira();
+    try {
+      // Etapas = colunas do board Downstream (buscadas uma vez); a escolhida vira os status dela na busca.
+      let avisoBoard = '';
+      if (!etapasJira) etapasJira = await jira.etapas(ctx.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []).catch((e) => { avisoBoard = e.message; return null; });
+      const coluna = (etapasJira || []).find((c) => c.nome === filtro);
+      const itens = await jira.meus(ctx.secrets, siteJira(), coluna?.ids);
+      meus = { itens, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: ctx.globalState.get('meusOcultos') || [], em: Date.now() };
+    } catch (e) { meus = { erro: e.message, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
+    render();
+  };
   const baixando = new Set(); // ids de anexos sendo baixados
   let avisarMoldura = () => {}, pedirSecao = () => {};
+  // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
+  ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
+    if (!require('./grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
+    pedirSecao(PRINCIPAL);
+    acoes.config();
+  }));
 
   const fechar = () => { observador?.close(); observador = null; };
   const render = () => {
@@ -756,7 +1200,15 @@ exports.provider = (ctx) => {
     let t = aberto === SEM_TICKET ? { id: SEM_TICKET, conversas: [] } : aberto && comSpec(ticketDe(aberto));
     // Todos os passos aprovados: o modo refinamento termina sozinho.
     if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
-    if (!t) { aberto = null; sessao.focar(null); view.webview.html = pagina(nonce, telaLista(tickets.listar())); avisarMoldura(); return; }
+    if (!t) {
+      aberto = null; sessao.focar(null);
+      if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
+      if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
+      view.webview.html = pagina(nonce, telaLista(tickets.listar(), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}));
+      avisarMoldura();
+      if (!meus?.carregando) carregarMeus(false);
+      return;
+    }
     if (!(t.id === SEM_TICKET ? ABAS_SEM_TICKET : ABAS).some(([id]) => id === aba)) aba = 'docs';
     // Confere os arquivos da spec antes de desenhar: edição depois de aprovado volta o passo para revisão.
     if (aba === 'spec' && dirSpec(t) && fs.existsSync(path.join(dirSpec(t), 'sdd-state.json')) && sddState()) {
@@ -766,10 +1218,11 @@ exports.provider = (ctx) => {
     const d = {
       dir, lado, abertos,
       docs: docsDe(dir),
-      handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(path.join(dir, HANDOFF.backend)), mobile: lerTexto(path.join(dir, HANDOFF.mobile)) },
-      board: t.id === SEM_TICKET ? null : quadro(t.id),
+      handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
+      tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
       decisoes: decisoesDe(dir),
       duvidas: duvidasDe(dir),
+      impactos: t.id === SEM_TICKET ? [] : impactosDe(dir),
       vivo: t.id === SEM_TICKET ? [] : maestro.aoVivo(dir),
       vivoRodando: t.id !== SEM_TICKET && maestro.rodando(dir),
       estado: dirSpec(t) ? estadoSpec(t) : null,
@@ -817,23 +1270,175 @@ exports.provider = (ctx) => {
   // ── Maestro: o Claude em segundo plano (maestro.js), uma execução por etapa. A extensão decide quando rodar:
   // Dar início/▶, aprovação (execução nova: contexto limpo), respostas e ajuste (mesma sessão). Pausado não roda.
   const binsSdd = () => [sddState(), path.join(os.homedir(), '.claude', 'plugins-locais', 'crafting', 'plugins', 'sdd', 'bin', 'sdd-state')].filter(Boolean);
-  const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), 'Read', 'Write', 'Edit', 'Glob', 'Grep',
+  // Plugin "mapa" (mapeamento do código do passo 3): mora na extensão e só o maestro carrega (--plugin-dir).
+  const MAPA = path.join(__dirname, 'plugins', 'mapa');
+  const FOCO = path.join(__dirname, 'plugins', 'foco'); // texto curto em tudo que o Claude escreve (regras + medição dos .md)
+  const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA}/bin/mapa-git:*)`, `Bash(${MAPA}/bin/mapa-conferir:*)`,
+    `Bash(${MAPA}/bin/mapa-db:*)`, 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill',
     'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)'];
-  const etapa = (t, texto, continuar = false, cwd = t.spec?.repo) => maestro.rodar(pasta(t.chave), {
-    cwd, continuar, ferramentas: FERRAMENTAS(), aoMudar: render,
-    prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-  });
+  // Repositórios de código: ao lado do repositório de specs (…/WMS/specs → …/WMS/novo-wms-backend e …/WMS/wms-mobile).
+  const reposAuto = (specs) => [['backend', 'novo-wms-backend'], ['mobile', 'wms-mobile']]
+    .map(([camada, n]) => ({ caminho: path.join(path.dirname(specs), n), camada })).filter((r) => fs.existsSync(r.caminho));
+  const reposDe = (t) => {
+    const lista = (cfg().get('repositorios') || []).filter((r) => r?.caminho && fs.existsSync(r.caminho));
+    return lista.length ? lista : reposAuto(t?.spec?.repo || cfg().get('specsDir') || SPECS_PADRAO);
+  };
+  // Banco do mapeamento: conexão/ambiente vêm das configurações (o Claude não escolhe a base). Sem isso, mapa-db recusa.
+  const bancoEnv = (t) => {
+    const conexao = cfg().get('bancoConexao') || '', ambiente = cfg().get('bancoAmbiente') || '';
+    return { MAPA_DB_CONEXAO: conexao, MAPA_DB_AMBIENTE: ambiente, MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '',
+      MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(pasta(t.chave), '.mapa-db.jsonl') };
+  };
+  const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo) => {
+    const repos = reposDe(t);
+    const bd = bancoEnv(t);
+    return maestro.rodar(pasta(t.chave), {
+      cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { render(); depoisDaEtapa(t); },
+      // O foco substitui o i-have-adhd global nestas execuções (as regras não entram duas vezes).
+      extras: ['--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
+      prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
+        + (dirSpec(t) ? `\nPasta da spec (grave aqui spec, plano, testes e as análises mapa-backend.md/mapa-mobile.md; ~/.claude é bloqueada para escrita): ${dirSpec(t)}` : '')
+        + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
+        + ` · plugin mapa: ${MAPA} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
+        + `\nBanco de dados: ${bd.MAPA_DB_CONEXAO && bd.MAPA_DB_AMBIENTE && bd.MAPA_DB_AMBIENTE !== 'producao' ? `configurado (${bd.MAPA_DB_AMBIENTE === 'qas' ? 'QAS' : 'cópia de produção'}): use mapa-db (só leitura)` : 'NÃO configurado: não consulte banco; liste as consultas como pendência'}`
+    });
+  };
+  // Execução terminou: card que o Claude não confirmou (sdd-state card editar) volta a Pendente; depois, a fila.
+  const alterando = new Set();
+  const depoisDaEtapa = (t) => {
+    if (maestro.rodando(pasta(t.chave))) return;
+    if (alterando.size) {
+      const l = tarefasDe(pasta(t.chave));
+      let mudou = false;
+      for (const c of l) if (alterando.has(c.id) && c.status === 'em_alteracao' && !c.fila) {
+        c.status = 'pendente';
+        (c.historico ||= []).push({ em: new Date().toISOString(), evento: 'alteracao', texto: 'O Claude não confirmou a alteração: confira e peça de novo se precisar' });
+        mudou = true;
+      }
+      alterando.clear();
+      if (mudou) gravar(t.chave, TAREFAS, l);
+    }
+    const rl = ler(path.join(pasta(t.chave), RESPOSTAS), []);
+    if (rl.some((c) => c.status === 'analisando')) { rl.forEach((c) => { if (c.status === 'analisando') c.status = 'erro'; }); gravar(t.chave, RESPOSTAS, rl); }
+    avisarImpactos(t);
+    filaDuvidas(t);
+    filaImpactos(t);
+    filaTarefas(t);
+  };
+  // Comentário analisado: avisa quem iniciou o refinamento (esta máquina) com o nível; não analisado vira erro.
+  const avisarImpactos = (t) => {
+    const l = impactosDe(pasta(t.chave));
+    let mudou = false;
+    for (const i of l) {
+      if (i.status === 'analisando') { i.status = 'erro'; i.resumo = 'O Claude não registrou a análise deste comentário (sdd-state impacto registrar).'; mudou = true; }
+      if (i.status === 'analisado' && !i.avisado) {
+        i.avisado = true; mudou = true;
+        if (i.nivel === 'nenhum') continue;
+        const quem = tickets.ler(t.chave)?.refinamento?.iniciadoPor;
+        vscode.window.showWarningMessage(`${t.chave}: comentário de ${i.autor} — impacto ${(NIVEL[i.nivel] || [i.nivel])[0]}.${quem ? ` (refinamento de ${quem})` : ''}`,
+          { detail: `${i.resumo}${i.passo !== null && i.passo !== undefined ? `\nA spec voltou ao passo ${i.passo}.` : ''}${(i.cards || []).length ? `\nSubtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
+          .then((b) => { if (b) { this_abrir(t.chave, 'spec'); } });
+      }
+    }
+    if (mudou) gravar(t.chave, IMPACTOS, l);
+  };
+  // Comentário novo + dúvida enviada ao ticket sem resposta: o Claude avalia se responde alguma e só SUGERE
+  // (sdd-state duvida avaliar); o humano confirma na aba Dúvidas. Roda antes da análise de impacto.
+  const filaDuvidas = (t) => {
+    if (maestro.rodando(pasta(t.chave))) return;
+    const abertas = duvidasDe(pasta(t.chave)).filter((x) => x.enviadaEm && !x.resposta);
+    const l = ler(path.join(pasta(t.chave), RESPOSTAS), []), c = l.find((x) => x.status === 'na_fila');
+    if (!c) return;
+    if (!abertas.length) { c.status = 'analisado'; gravar(t.chave, RESPOSTAS, l); return; }
+    c.status = 'analisando';
+    gravar(t.chave, RESPOSTAS, l);
+    etapa(ticketDe(t.chave), `[duvida] Comentário novo no ticket ${t.chave}: ele responde alguma dúvida enviada? Siga a seção "Comentário novo que pode responder uma dúvida" da skill sdd.\n`
+      + `Dúvidas enviadas sem resposta:\n${abertas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma: avalie sem --duvida)'}\n`
+      + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Avaliando comentário de ${c.autor}`);
+  };
+  // Um comentário por vez, numa execução nova (o Claude lê o refinamento inteiro do disco).
+  const filaImpactos = (t) => {
+    if (maestro.rodando(pasta(t.chave)) || !estadoSpec(ticketDe(t.chave) || t)) return;
+    const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.status === 'na_fila');
+    if (!i) return;
+    i.status = 'analisando';
+    gravar(t.chave, IMPACTOS, l);
+    etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do Jira" da skill sdd.\n`
+      + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`);
+  };
+  // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
+  let vigiando = false;
+  const vigiarComentarios = async () => {
+    if (vigiando || !(await ctx.secrets.get('jira.token'))) return;
+    vigiando = true;
+    try {
+      for (const t0 of tickets.listar().filter((x) => x.spec?.dir)) {
+        let cs, eu;
+        try { [cs, eu] = await Promise.all([jira.comentarios(ctx.secrets, { key: t0.chave, site: t0.site }), jira.eu(ctx.secrets, t0.site)]); } catch { continue; }
+        const t = tickets.ler(t0.chave);
+        const v = t.vigiaComentarios;
+        if (!v) { tickets.gravar({ ...t, vigiaComentarios: { desde: new Date().toISOString(), vistos: cs.map((c) => c.id) } }); continue; }
+        const novos = cs.filter((c) => !v.vistos.includes(c.id) && c.autorId !== eu.id && Date.parse(c.data) >= Date.parse(v.desde) - 60000);
+        if (!novos.length) continue;
+        const l = impactosDe(pasta(t.chave));
+        for (const c of novos) {
+          if (!l.some((i) => i.id === c.id)) l.push({ ...c, status: 'na_fila' });
+          notificar(t.chave, 'impacto', `Comentário novo de ${c.autor}: analisando o impacto no refinamento`);
+        }
+        gravar(t.chave, IMPACTOS, l);
+        if (duvidasDe(pasta(t.chave)).some((x) => x.enviadaEm && !x.resposta)) {
+          const rl = ler(path.join(pasta(t.chave), RESPOSTAS), []);
+          for (const c of novos) if (!rl.some((i) => i.id === c.id)) rl.push({ ...c, status: 'na_fila' });
+          gravar(t.chave, RESPOSTAS, rl);
+        }
+        tickets.gravar({ ...tickets.ler(t.chave), vigiaComentarios: { ...v, vistos: [...new Set([...v.vistos, ...novos.map((c) => c.id)])] } });
+        filaDuvidas(t);
+        filaImpactos(t);
+      }
+    } finally { vigiando = false; }
+  };
+  const relogio = setInterval(vigiarComentarios, 5 * 60 * 1000);
+  setTimeout(vigiarComentarios, 20000);
+  ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
+  // Pedidos de alteração esperando: uma execução só para todos (mesma sessão do passo 4).
+  const filaTarefas = (t) => {
+    if (maestro.rodando(pasta(t.chave))) return;
+    const l = tarefasDe(pasta(t.chave)), fila = l.filter((c) => c.status === 'em_alteracao' && c.fila);
+    if (!fila.length) return;
+    fila.forEach((c) => { c.fila = false; alterando.add(c.id); });
+    gravar(t.chave, TAREFAS, l);
+    etapa(t, `Pedidos de alteração nos cards da aba Tarefas: ${fila.map((c) => `${c.id}: "${c.alteracao}"`).join('; ')}. `
+      + 'Para cada tNN: ajuste a linha em tasks.md e o card com sdd-state card editar <id> (só os campos que mudam). '
+      + 'Para o card qa: ajuste testes.md (plano de testes) e rode sdd-state card editar qa (com --estimativa/--resumo se mudarem). '
+      + 'Não mexa em outras tarefas, não conclua nem inicie passos.', true, undefined, `Alterando ${fila.map((c) => c.id).join(', ')}`);
+  };
+  const QA_EXISTENTE = /^\[QA\]\s*(Planejamento|Teste de Qualidade)/i; // subtarefa de QA que já existe no ticket
+  const descricaoJira = (t, c) => [c.descricao || '', '',
+    c.pronto && `Pronto quando: ${c.pronto}`, (c.rf || []).length && `Requisitos: ${c.rf.join(', ')}`,
+    (c.depende || []).length && `Depende de: ${c.depende.join(', ')}`, c.camada && `Camada: ${c.camada}`,
+    `Origem: spec ${t.spec?.dir || ''} · tarefa ${c.id} (Crafting Table)`].filter((x) => x !== false && x !== undefined && x !== 0).join('\n');
   const estadoDe = (chave) => tickets.ler(chave)?.refinamento?.estado;
   // Rodando e sem nada esperando o humano → próxima etapa numa execução nova (true se começou).
+  // Passo 6: o método do plugin fcx-qa-test-planning (jira-qa-planner + test-estimation), lido do plugin instalado.
+  const qaCaminhos = () => {
+    const qa = pluginInstalado('fcx-qa-test-planning@');
+    if (!qa) return ' Plugin fcx-qa-test-planning não instalado: siga as regras do passo 6 da skill sdd sem ele.';
+    return ` Método de QA: ${path.join(qa, 'skills', 'jira-qa-planner', 'SKILL.md')} (Passos 3, 6 e 7) e ${path.join(qa, 'skills', 'jira-qa-planner', 'reference', 'test-plan-templates.md')};`
+      + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado). Não use twg nem Jira: o card [QA] é criado no Jira pela extensão.`;
+  };
   const seguir = (t) => {
     const est = estadoSpec(t);
-    if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || est.proximoPasso > 6) return false;
+    if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || est.proximoPasso > 6) return false;
     const novas = respondidas.splice(0).join('; ');
+    const reprovadas = est.proximoPasso === 5 ? tarefasDe(pasta(t.chave)).filter((c) => c.status === 'reprovada') : [];
     return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${est.proximoPasso} (${est.passos[est.proximoPasso].titulo}).`
-      + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : ''));
+      + (est.proximoPasso === 6 ? qaCaminhos() : '')
+      + (est.proximoPasso === 3 ? ' Comece pelo mapeamento do código com a skill mapa:mapear (camadas, ref de leitura, análises mapa-backend.md/mapa-mobile.md na pasta da spec, mapa-conferir) e só depois escreva o plan.md.' : '')
+      + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
+      + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : ''), false, undefined, `Passo ${est.proximoPasso} · ${est.passos[est.proximoPasso].titulo}`);
   };
   const pedido = (t) => `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${pasta(t.chave)} (documentos, notas em ${NOTAS}, `
-    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile}, TODO em ${TODO}: quadro do Atelier, colunas todo/doing/done)\n`;
+    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`;
   // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
   const abrirConversa = async (t, texto) => {
     const sid = ultimaConversa(t);
@@ -847,7 +1452,157 @@ exports.provider = (ctx) => {
     if (e) vscode.window.showErrorMessage(String(err || e.message).replace(/^sdd-state: /, ''));
     ok(!e);
   }) : ok(false)));
+  const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
+  // Liga uma conexão ao mapeamento e pergunta o ambiente. Função interna (não é ação da tela): só aceita o nome como texto.
+  const escolherBanco = async (nome) => {
+  if (typeof nome !== 'string' || !nome) return;
+    const amb = await vscode.window.showQuickPick([
+      { label: 'Cópia de produção', description: 'recomendado para tirar dúvidas de dado', v: 'copia-producao' },
+      { label: 'QAS', description: 'ambiente de testes (massa parcial: não conclui regra de negócio)', v: 'qas' },
+      { label: 'Produção', description: 'bloqueada: o mapeamento não consulta produção', v: 'producao' }], { title: `${nome} é…`, placeHolder: 'O que é esta conexão?' });
+    if (!amb) return;
+    await salvarCfg('bancoConexao', nome); await salvarCfg('bancoAmbiente', amb.v);
+    if (amb.v === 'producao') vscode.window.showWarningMessage('Marcada como produção: o mapeamento vai recusar consultar. Escolha a cópia de produção ou o QAS.');
+    checar(['banco']);
+  };
   const acoes = {
+    meusAtualizar() { carregarMeus(true); },
+    config() { cfgAberta = true; previa = null; aberto = null; sessao.focar(null); checar(); },
+    configFechar() { cfgAberta = false; render(); },
+    cfgTestar({ id }) { if (CHECAR[id]) checar([id]); },
+    async cfgEditar({ id }) {
+      const site = siteJira(), proj = projetoJira();
+      if (id === 'jiraSite') {
+        const v = await vscode.window.showInputBox({ title: 'Site do Jira', value: site, prompt: 'https://<org>.atlassian.net', ignoreFocusOut: true,
+          validateInput: (x) => (/^https:\/\/[\w-]+\.atlassian\.net\/?$/.test(x.trim()) ? null : 'Use https://<org>.atlassian.net') });
+        if (v) { await salvarCfg('jiraSite', v.trim().replace(/\/+$/, '')); checar(['jira', 'board']); }
+      } else if (id === 'jiraProjeto') {
+        const v = await vscode.window.showInputBox({ title: 'Projeto do Jira', value: proj, prompt: 'Chave do projeto (ex.: WMS)', ignoreFocusOut: true,
+          validateInput: (x) => (/^[A-Z][A-Z0-9_]+$/.test(x.trim().toUpperCase()) ? null : 'Chave do projeto, ex.: WMS') });
+        if (v) { await salvarCfg('jiraProjeto', v.trim().toUpperCase()); checar(['jira', 'board']); }
+      } else if (id === 'jiraConta') {
+        await ctx.secrets.delete('jira.email'); await ctx.secrets.delete('jira.token');
+        if (await jira.credenciais(ctx.secrets)) checar(['jira', 'board']);
+      } else if (id === 'jiraBoard') {
+        let lista;
+        try { lista = await jira.boards(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os boards: ${e.message}`); }
+        if (!lista.length) return vscode.window.showWarningMessage(`O projeto ${proj} não tem boards visíveis para você.`);
+        const p = await vscode.window.showQuickPick(lista.map((b) => ({ label: b.nome, description: b.tipo })), { title: `Board principal de ${proj}`, placeHolder: 'As colunas dele viram as etapas do filtro' });
+        if (p) { await salvarCfg('jiraBoard', p.label); checar(['board']); }
+      } else if (id === 'etapasExtras') {
+        let nomes;
+        try { nomes = await jira.statusDoProjeto(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os status: ${e.message}`); }
+        const atuais = new Set(cfg().get('etapasExtras') || []);
+        const p = await vscode.window.showQuickPick(nomes.map((n) => ({ label: n, picked: atuais.has(n) })), { canPickMany: true, title: 'Etapas extras', placeHolder: 'Status fora das colunas do board que também entram no filtro' });
+        if (p) { await salvarCfg('etapasExtras', p.map((x) => x.label)); checar(['board']); }
+      } else if (id === 'specsDir') {
+        const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Pasta local do repositório de specs', openLabel: 'Usar esta pasta' });
+        if (u) { await salvarCfg('specsDir', u[0].fsPath); checar(['specs', 'repos']); }
+      } else if (id === 'bancoConexao') { return this.cfgBancoDetectar();
+      } else if (id === 'bancoAmbiente') { return escolherBanco(cfg().get('bancoConexao'));
+      } else if (id === 'bancoSqlcl') {
+        const u = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, title: 'Executável do SQLcl (…/sqlcl/bin/sql)', openLabel: 'Usar este' });
+        if (u) { await salvarCfg('bancoSqlcl', u[0].fsPath); checar(['banco']); }
+      } else if (id === 'bancoSensiveis') {
+        const atual = (cfg().get('bancoColunasSensiveis')?.length ? cfg().get('bancoColunasSensiveis') : banco.SENSIVEIS_PADRAO).join(', ');
+        const v = await vscode.window.showInputBox({ title: 'Colunas com dados pessoais', value: atual, ignoreFocusOut: true,
+          prompt: 'Separadas por vírgula. Reconhece pelo nome da coluna (ex.: cpf casa com NR_CPF). O valor vira *** antes da IA ver.' });
+        if (v !== undefined) { await salvarCfg('bancoColunasSensiveis', v.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)); checar(['banco']); }
+      } else if (id === 'specsRemoto') {
+        const v = await vscode.window.showInputBox({ title: 'Repositório de specs no GitLab', value: cfg().get('specsRemoto') || '', prompt: 'URL do git (ssh ou https)', ignoreFocusOut: true });
+        if (v !== undefined) { await salvarCfg('specsRemoto', v.trim()); checar(['specs']); }
+      }
+    },
+    // Lista as conexões da máquina (arquivos do SQLcl e tnsnames; sem IA) e liga uma delas ao mapeamento.
+    async cfgBancoDetectar() {
+      const lista = banco.detectar();
+      if (!lista.length) return vscode.window.showWarningMessage('Nenhuma conexão encontrada (SQLcl salvas em ~/.dbtools ou tnsnames.ora). Use ＋ Nova conexão.');
+      const itens = lista.map((c) => ({ label: c.nome, description: [c.conexao, c.usuario && `usuário ${c.usuario}`].filter(Boolean).join(' · '),
+        detail: c.usavel ? 'conexão salva do SQLcl: pronta para usar' : 'só o endereço (tnsnames): crie a conexão com ＋ Nova conexão', c }));
+      const p = await vscode.window.showQuickPick(itens, { title: 'Banco de dados para o mapeamento', placeHolder: 'Escolha a conexão (só leitura)' });
+      if (!p) return;
+      if (!p.c.usavel) return vscode.window.showInformationMessage(`${p.c.nome} só tem o endereço. Use ＋ Nova conexão para informar usuário e senha.`);
+      await escolherBanco(p.c.nome);
+    },
+    async cfgBancoLimpar() { await salvarCfg('bancoConexao', ''); await salvarCfg('bancoAmbiente', ''); checar(['banco']); },
+    // Cria a conexão no próprio SQLcl (ele guarda a senha cifrada; a extensão não guarda nem registra senha).
+    async cfgBancoAdicionar() {
+      const sqlcl = banco.acharSqlcl(cfg().get('bancoSqlcl'));
+      if (!sqlcl) return vscode.window.showWarningMessage('SQLcl não encontrado: informe o caminho em SQLcl → Editar.');
+      const nome = await vscode.window.showInputBox({ title: 'Nova conexão (1/4): nome', prompt: 'Ex.: Staging', ignoreFocusOut: true, validateInput: (x) => (/^[\w .-]{2,40}$/.test(x.trim()) ? null : 'Letras, números, espaço, ponto, hífen') });
+      if (!nome) return;
+      const alvo = await vscode.window.showInputBox({ title: 'Nova conexão (2/4): endereço', prompt: 'host:porta/serviço (ex.: 10.0.0.1:1521/fctst)', ignoreFocusOut: true, validateInput: (x) => (/^[\w.-]+:\d+\/[\w.-]+$/.test(x.trim()) ? null : 'Use host:porta/serviço') });
+      if (!alvo) return;
+      const usuario = await vscode.window.showInputBox({ title: 'Nova conexão (3/4): usuário', ignoreFocusOut: true, validateInput: (x) => (/^[\w$#]{1,30}$/.test(x.trim()) ? null : 'Usuário inválido') });
+      if (!usuario) return;
+      const senha = await vscode.window.showInputBox({ title: 'Nova conexão (4/4): senha', prompt: 'Fica cifrada no SQLcl; a Crafting Table não a guarda', password: true, ignoreFocusOut: true });
+      if (!senha) return;
+      const r = await banco.criarConexao({ sqlcl, nome: nome.trim(), alvo: alvo.trim(), usuario: usuario.trim(), senha });
+      if (!r.ok) return vscode.window.showErrorMessage(`Conexão não criada: ${r.erro}`);
+      vscode.window.showInformationMessage(`Conexão ${nome.trim()} criada no SQLcl.`);
+      await escolherBanco(nome.trim());
+    },
+    async cfgRepoAdicionar() {
+      const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Repositório de código', openLabel: 'Adicionar' });
+      if (!u) return;
+      const r = await this.cfgRepoPerguntar({ caminho: u[0].fsPath });
+      if (!r) return;
+      const atual = cfg().get('repositorios') || [];
+      // Primeira vez: os detectados automaticamente entram na lista junto, para não sumirem.
+      const base = atual.length ? atual : reposAuto(cfg().get('specsDir') || SPECS_PADRAO);
+      await salvarCfg('repositorios', [...base.filter((x) => x.caminho !== r.caminho), r]);
+      checar(['repos']);
+    },
+    async cfgRepoPerguntar(r) {
+      const c = await vscode.window.showQuickPick(['backend', 'mobile', 'web', 'outro'], { title: `Camada de ${path.basename(r.caminho)}`, placeHolder: r.camada || 'Onde este repositório entra no sistema' });
+      if (!c) return null;
+      const ref = await vscode.window.showInputBox({ title: 'Ref de release (opcional)', value: r.refRelease || '', prompt: 'Ex.: origin/master-md — onde o código em produção está. Vazio: a branch atual.', ignoreFocusOut: true });
+      if (ref === undefined) return null;
+      return { caminho: r.caminho, camada: c, ...(ref.trim() ? { refRelease: ref.trim() } : {}) };
+    },
+    async cfgRepoEditar({ id }) {
+      const l = [...(cfg().get('repositorios') || [])], i = Number(id);
+      if (!l[i]) return;
+      const r = await this.cfgRepoPerguntar(l[i]);
+      if (r) { l[i] = r; await salvarCfg('repositorios', l); checar(['repos']); }
+    },
+    async cfgRepoRemover({ id }) {
+      const l = [...(cfg().get('repositorios') || [])], i = Number(id);
+      if (!l[i]) return;
+      const ok = await vscode.window.showWarningMessage(`Tirar ${path.basename(l[i].caminho)} da lista?`, { modal: true, detail: 'O Claude deixa de ler este repositório no refinamento. A pasta não é apagada.' }, 'Remover');
+      if (!ok) return;
+      l.splice(i, 1);
+      await salvarCfg('repositorios', l);
+      checar(['repos']);
+    },
+    async meusFiltro({ id }) { await ctx.globalState.update('meusFiltro', id || ''); carregarMeus(true); },
+    // Vinculado: clique só mostra o ticket; Puxar traz para a lista (e já busca título, status e anexos); Remover esconde.
+    async meuVer({ id }) {
+      previa = id;
+      render();
+      if (cachePrevia[id] && !cachePrevia[id].erro) return;
+      try { cachePrevia[id] = await jira.buscar(ctx.secrets, { key: id, site: siteJira() }); }
+      catch (e) { cachePrevia[id] = { erro: e.message }; }
+      if (previa === id) render();
+    },
+    previaFechar() { previa = null; render(); },
+    previaJira({ id }) { vscode.env.openExternal(vscode.Uri.parse(`${siteJira()}/browse/${id}`)); },
+    meuPuxar({ id }) {
+      if (!tickets.ler(id)) {
+        try { tickets.criar(`${siteJira()}/browse/${id}`); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      }
+      if (cachePrevia[id] && !cachePrevia[id].erro) cacheJira[id] = cachePrevia[id];
+      previa = null;
+      render();
+      atualizarJira(id); // título, status e anexos (a aba Docs mostra os que faltam baixar)
+      vscode.window.setStatusBarMessage(`$(arrow-up) ${id} foi para a lista de tickets`, 4000);
+    },
+    async meuRemover({ id }) {
+      await ctx.globalState.update('meusOcultos', [...new Set([...(ctx.globalState.get('meusOcultos') || []), id])]);
+      if (previa === id) previa = null;
+      render();
+    },
+    async meusMostrar() { await ctx.globalState.update('meusOcultos', []); render(); },
     abrir({ id, key }) {
       if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(`${t.site}/browse/${key}`)); } // subtarefa
       aberto = id;
@@ -869,13 +1624,14 @@ exports.provider = (ctx) => {
     async excluir({ id }) {
       const t = tickets.ler(id);
       const ok = t && await vscode.window.showWarningMessage(`Excluir o ticket ${id}?`, { modal: true,
-        detail: `Sai da lista. A pasta (documentos, notas, TODO, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
+        detail: `Sai da lista. A pasta (documentos, notas, tarefas, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
       if (!ok) return;
       tickets.arquivar(id);
       if (aberto === id) { aberto = null; sessao.focar(null); }
       render();
     },
-    atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); } },
+    atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); vigiarComentarios(); } },
+    vigiarAgora() { return vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
     notifLidas() { if (aberto) gravar(aberto, LIDAS, new Date().toISOString()); },
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
@@ -891,6 +1647,32 @@ exports.provider = (ctx) => {
       gravar(t.chave, DUVIDAS, l);
       vscode.window.showInformationMessage(`${x.id} enviada para os comentários do ${t.chave}.`);
       atualizarJira(t.chave);
+    },
+    // Fecha a dúvida (só o humano) e, se era a última, a spec pode seguir.
+    fecharDuvida(t, id, resposta) {
+      const l = duvidasDe(pasta(t.chave)), x = l.find((y) => y.id === id);
+      if (!x || x.resposta) return;
+      x.resposta = { ...resposta, em: new Date().toISOString() }; x.sugestao = null;
+      gravar(t.chave, DUVIDAS, l);
+      respondidas.push(`${id} (dúvida) → ${resposta.texto}`);
+      render();
+      if (!l.some((y) => !y.resposta)) seguir(ticketDe(t.chave));
+    },
+    async duvidaResponder({ id }) {
+      const t = ticketAberto(), x = t && duvidasDe(pasta(t.chave)).find((y) => y.id === id);
+      if (!x || x.resposta) return;
+      const texto = (await vscode.window.showInputBox({ title: `${id}: ${x.texto}`.slice(0, 120), prompt: 'Resposta da dúvida', ignoreFocusOut: true }))?.trim();
+      if (texto) this.fecharDuvida(t, id, { texto, origem: 'manual' });
+    },
+    duvidaConfirmar({ id }) {
+      const t = ticketAberto(), s = t && duvidasDe(pasta(t.chave)).find((y) => y.id === id)?.sugestao;
+      if (s) this.fecharDuvida(t, id, { texto: s.texto, origem: 'comentario', autor: s.autor, comentarioId: s.comentarioId, link: s.link });
+    },
+    duvidaRejeitar({ id }) {
+      const t = ticketAberto(), l = t ? duvidasDe(pasta(t.chave)) : [], x = l.find((y) => y.id === id);
+      if (!x?.sugestao) return;
+      (x.descartados ||= []).push(x.sugestao.comentarioId); x.sugestao = null;
+      gravar(t.chave, DUVIDAS, l); render();
     },
     jira() { const t = ticketAberto(); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); },
     async claude() {
@@ -912,10 +1694,11 @@ exports.provider = (ctx) => {
         repo = uri[0].fsPath;
       }
       modo(t.chave, 'aguardando_inicio');
+      tickets.gravar({ ...tickets.ler(t.chave), refinamento: { ...tickets.ler(t.chave).refinamento, iniciadoPor: os.userInfo().username } });
       aba = 'spec'; // o refinamento acontece na aba Spec
       atualizarJira(t.chave); // anexos do ticket aparecem em Docs para baixar
       // Maestro (prova): o Claude roda em segundo plano e a caixa Ao vivo da aba Spec mostra o que ele faz.
-      etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo);
+      etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo, 'Criando a spec do ticket');
       render();
     },
     darInicio() { return this.retomar(); },
@@ -947,6 +1730,10 @@ exports.provider = (ctx) => {
     async specAprovar({ id }) {
       const r = ticketAberto(), n = Number(id), est = estadoSpec(r);
       if (maestro.rodando(pasta(r.id))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
+      const cards = tarefasDe(pasta(r.id));
+      const semDecisao = [4, 6].includes(n) ? semDecisaoDo(n, cards) : [];
+      if (semDecisao.length) { aba = 'tarefas'; render(); return vscode.window.showWarningMessage(n === 4 ? `Decida as tarefas antes de aprovar o passo 4: ${semDecisao.length} sem decisão (${semDecisao.map((x) => x.id).join(', ')}).` : 'Decida o card [QA] na aba Tarefas antes de aprovar o passo 6.'); }
+      if (n === 6 && !cards.some((x) => x.tipo === 'qa')) return vscode.window.showWarningMessage('O Claude ainda não criou o card [QA] com o plano de testes: peça ajuste no passo 6.');
       if (!abertos.has(`${r.id}:${n}:${est?.passos[n]?.hash}`)) return vscode.window.showWarningMessage('Abra e leia o arquivo antes de aprovar.');
       const ok = await vscode.window.showInformationMessage(`Aprovar o passo ${n} (${est.passos[n].titulo})?`, { modal: true, detail: 'Depois de aprovado, o Claude pode seguir para o próximo passo.' }, 'Aprovar');
       if (!ok) return;
@@ -966,7 +1753,7 @@ exports.provider = (ctx) => {
       const texto = await vscode.window.showInputBox({ title: `Ajuste no passo ${n} (${estadoSpec(r)?.passos[n]?.titulo})`, prompt: 'O que o Claude deve mudar?', ignoreFocusOut: true });
       if (!texto?.trim()) return;
       await sdd(['ajuste', String(n), '--ref', pasta(r.id), '--motivo', texto.trim()]);
-      etapa(r, `O humano pediu ajuste no passo ${n}: "${texto.trim()}". Faça o ajuste no arquivo do passo e rode concluir ${n} de novo.`, true);
+      etapa(r, `O humano pediu ajuste no passo ${n}: "${texto.trim()}". Faça o ajuste no arquivo do passo e rode concluir ${n} de novo.`, true, undefined, `Ajuste no passo ${n} · ${estadoSpec(r)?.passos[n]?.titulo || ''}`);
     },
     // Pergunta do Claude respondida na aba (id = Qnn, op = índice da opção | 'outra' | 'duvida').
     // Todas respondidas e refinamento rodando → o Claude continua na mesma sessão com as respostas.
@@ -987,7 +1774,7 @@ exports.provider = (ctx) => {
       respondidas.push(`${id} → ${resposta}`);
       const est = estadoSpec(r);
       if (!est.perguntas.some((x) => x.status === 'aberta') && estadoDe(r.id) === 'rodando' && !maestro.rodando(pasta(r.id))) {
-        etapa(r, `Respostas do humano na aba: ${respondidas.join('; ')}. Continue o passo ${est.proximoPasso} com elas.`, true);
+        etapa(r, `Respostas do humano na aba: ${respondidas.join('; ')}. Continue o passo ${est.proximoPasso} com elas.`, true, undefined, `Aplicando suas respostas · passo ${est.proximoPasso}`);
         respondidas.length = 0;
       }
       render();
@@ -1004,12 +1791,15 @@ exports.provider = (ctx) => {
       const d = docsDe(pastaDe(aberto)).find((x) => x.nome === id);
       if (d && !d.quebrado) mencionar(`@${d.origem || d.full}`);
     },
-    handoffMencionar({ id }) { mencionar(`@${path.join(pasta(aberto), HANDOFF[id])}`); },
-    handoffPrevia({ id }) { vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(path.join(pasta(aberto), HANDOFF[id]))); },
-    handoffEditar({ id }) { vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path.join(pasta(aberto), HANDOFF[id]))); },
+    handoffMencionar({ id }) { if (HANDOFF[id]) mencionar(`@${arqHandoff(ticketDe(aberto), id)}`); },
+    handoffPrevia({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arqHandoff(ticketDe(aberto), id))); },
+    handoffEditar({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('vscode.open', vscode.Uri.file(arqHandoff(ticketDe(aberto), id))); },
     handoffCriar({ id }) {
       const t = ticketAberto();
-      gravar(t.id, HANDOFF[id], `# Análise ${id} — ${t.chave} ${t.titulo || ''}\n\n## O que foi analisado\n\n## Arquivos e pontos de alteração\n\n## Riscos e dúvidas\n`);
+      if (!t || !HANDOFF[id]) return;
+      const arq = arqHandoff(t, id);
+      fs.mkdirSync(path.dirname(arq), { recursive: true });
+      fs.writeFileSync(arq, `# Análise ${id} — ${t.chave} ${t.titulo || ''}\n\n## O que foi analisado\n\n## Arquivos e pontos de alteração\n\n## Riscos e dúvidas\n`);
       acoes.handoffEditar({ id });
     },
     // Anexo do Jira → pasta do ticket (nome repetido ganha sufixo), marcado em .origem.json como vindo do Jira.
@@ -1036,15 +1826,146 @@ exports.provider = (ctx) => {
         render();
       }
     },
+    // ── Tarefas ──
+    tarefaCampo({ id, campo, valor }) {
+      const l = tarefasDe(pasta(aberto)), c = l.find((x) => x.id === id);
+      if (!c || c.status !== 'pendente') return;
+      if (campo === 'estimativa') {
+        const v = String(valor || '').trim();
+        if (v && !/^(\d+(\.\d+)?[wdhm]\s*)+$/i.test(v)) return vscode.window.showWarningMessage('Estimativa no formato do Jira: 30m, 2h, 1d ou 1d 4h.');
+        if ((c.estimativa || '') === v) return;
+        c.estimativa = v;
+      } else if (campo === 'vinculado') {
+        if (!!c.vinculado === !!valor) return;
+        c.vinculado = !!valor;
+      } else return;
+      gravar(aberto, TAREFAS, l);
+    },
+    // Aprovar = criar a subtarefa no Jira (com confirmação). Só então o card vai para Aprovadas.
+    async tarefaAprovar({ id }) {
+      const t = ticketAberto();
+      const c0 = t && tarefasDe(pasta(t.chave)).find((x) => x.id === id);
+      if (!c0 || c0.status !== 'pendente') return;
+      await new Promise((ok) => setTimeout(ok, 150)); // os campos do detalhe chegam antes
+      const c = tarefasDe(pasta(t.chave)).find((x) => x.id === id);
+      if (c.tipo === 'qa') return this.qaAprovar(t, c);
+      const ok = await vscode.window.showWarningMessage(`Aprovar ${c.id}? A subtarefa será criada no Jira, no ticket ${t.chave}.`, { modal: true,
+        detail: `“${c.titulo}”\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` }, 'Aprovar e criar no Jira');
+      if (!ok) return;
+      let r;
+      try {
+        r = await jira.criarSubtarefa(ctx.secrets, { key: t.chave, site: t.site }, { resumo: c.titulo, descricao: descricaoJira(t, c), estimativa: c.estimativa, atribuirAMim: c.vinculado });
+      } catch (e) { return vscode.window.showErrorMessage(`Subtarefa não criada: ${e.message}`); }
+      const l = tarefasDe(pasta(t.chave)), x = l.find((y) => y.id === id);
+      Object.assign(x, { status: 'aprovada', jira: r.key });
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: `Aprovada: subtarefa ${r.key} criada no Jira` });
+      gravar(t.chave, TAREFAS, l);
+      notificar(t.chave, 'jira', `subtarefa ${r.key} criada`);
+      vscode.window.showInformationMessage(`${id} aprovada: subtarefa ${r.key} criada em ${t.chave}.${r.aviso ? ` Atenção: ${r.aviso}.` : ''}`);
+      render();
+    },
+    async qaAprovar(t, c) {
+      if (!t?.chave || c?.tipo !== 'qa') return; // só pelo tarefaAprovar
+      const plano = lerTexto(c.arquivo || '');
+      if (!plano) return vscode.window.showErrorMessage(`Plano de testes não encontrado: ${c.arquivo || '(sem arquivo)'}`);
+      let existente = null;
+      try {
+        const j = cacheJira[t.chave] || await jira.buscar(ctx.secrets, { key: t.chave, site: t.site });
+        existente = (j.subtarefas || []).find((s) => QA_EXISTENTE.test(s.resumo || ''));
+      } catch (e) { return vscode.window.showErrorMessage(`Não consegui ler as subtarefas de ${t.chave}: ${e.message}`); }
+      const ok = await vscode.window.showWarningMessage(existente
+        ? `Aprovar o plano de testes? A subtarefa ${existente.key} (“${existente.resumo}”) já existe em ${t.chave}: a descrição dela será substituída pelo plano.`
+        : `Aprovar o plano de testes? A subtarefa “${c.titulo}” será criada no Jira, no ticket ${t.chave}.`, { modal: true,
+        detail: `${c.resumo || ''}\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` },
+        existente ? 'Aprovar e atualizar no Jira' : 'Aprovar e criar no Jira');
+      if (!ok) return;
+      let key, aviso;
+      try {
+        if (existente) { await jira.atualizarDescricao(ctx.secrets, { site: t.site }, existente.key, plano); key = existente.key; }
+        else ({ key, aviso } = await jira.criarSubtarefa(ctx.secrets, { key: t.chave, site: t.site }, { resumo: c.titulo, descricao: plano, estimativa: c.estimativa, atribuirAMim: c.vinculado }));
+      } catch (e) { return vscode.window.showErrorMessage(`Plano de testes não enviado: ${e.message}`); }
+      const l = tarefasDe(pasta(t.chave)), x = l.find((y) => y.id === c.id);
+      Object.assign(x, { status: 'aprovada', jira: key });
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: existente ? `Aprovada: descrição de ${key} atualizada` : `Aprovada: subtarefa ${key} criada no Jira` });
+      gravar(t.chave, TAREFAS, l);
+      notificar(t.chave, 'jira', `subtarefa ${key} [QA] ${existente ? 'atualizada' : 'criada'}`);
+      vscode.window.showInformationMessage(`Plano de testes aprovado: ${existente ? `${key} atualizada` : `${key} criada`} em ${t.chave}.${aviso ? ` Atenção: ${aviso}.` : ''}`);
+      delete cacheJira[t.chave];
+      render();
+    },
+    async impactoCiente({ id }) {
+      const l = impactosDe(pasta(aberto)), i = l.find((x) => x.id === id);
+      if (!i) return;
+      i.status = 'ciente';
+      gravar(aberto, IMPACTOS, l);
+      render();
+    },
+    // Revisão de card já no Jira: aplica o texto novo (descrição/título/estimativa) e comenta na subtarefa o motivo,
+    // quem pediu a mudança (autor do comentário, com o link) e quem aplicou.
+    async revisaoAplicar({ id }) {
+      const t = ticketAberto();
+      const c = t && tarefasDe(pasta(t.chave)).find((x) => x.id === id);
+      if (!c?.revisao || !c.jira) return;
+      const novo = { ...c, ...c.revisao.campos };
+      const descricao = c.tipo === 'qa' ? lerTexto(c.arquivo || '') : descricaoJira(t, novo);
+      const origem = impactosDe(pasta(t.chave)).find((i) => i.link === c.revisao.comentario);
+      const ok = await vscode.window.showWarningMessage(`Aplicar a alteração em ${c.jira}?`, { modal: true,
+        detail: `A descrição de ${c.jira} será substituída${c.revisao.campos.titulo ? ' (e o título)' : ''} e um comentário vai registrar o motivo.\n\nMotivo: ${c.revisao.motivo}${origem ? `\nMudança pedida por: ${origem.autor}` : ''}` }, 'Aplicar no Jira');
+      if (!ok) return;
+      let r = {}, eu = { nome: os.userInfo().username };
+      try {
+        r = await jira.atualizarDescricao(ctx.secrets, { site: t.site }, c.jira, descricao, { titulo: c.revisao.campos.titulo, estimativa: c.revisao.campos.estimativa });
+        try { eu = await jira.eu(ctx.secrets, t.site); } catch {}
+        await jira.comentar(ctx.secrets, { key: c.jira, site: t.site }, ['🔄 **Descrição atualizada pela Crafting Table**', '',
+          `**Motivo:** ${c.revisao.motivo}`,
+          origem ? `**Mudança pedida por:** ${origem.autor} — [comentário em ${t.chave}](${origem.link})` : c.revisao.comentario ? `**Origem:** [comentário](${c.revisao.comentario})` : null,
+          `**Alteração feita por:** ${eu.nome}`].filter((x) => x !== null).join('\n'));
+      } catch (e) { return vscode.window.showErrorMessage(`Alteração não aplicada em ${c.jira}: ${e.message}`); }
+      const l = tarefasDe(pasta(t.chave)), x = l.find((y) => y.id === id);
+      Object.assign(x, x.revisao.campos);
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração aplicada em ${c.jira} (${x.revisao.motivo.slice(0, 120)})` });
+      delete x.revisao;
+      gravar(t.chave, TAREFAS, l);
+      notificar(t.chave, 'jira', `subtarefa ${c.jira} atualizada${origem ? ` por mudança de ${origem.autor}` : ''}`);
+      vscode.window.showInformationMessage(`${c.jira} atualizada e comentada.${r.aviso ? ` Atenção: ${r.aviso}.` : ''}`);
+      render();
+    },
+    async revisaoDescartar({ id }) {
+      const t = ticketAberto();
+      const l = t ? tarefasDe(pasta(t.chave)) : [], x = l.find((y) => y.id === id);
+      if (!x?.revisao) return;
+      const ok = await vscode.window.showWarningMessage(`Descartar a alteração proposta para ${x.jira || id}?`, { modal: true, detail: 'A subtarefa no Jira fica como está.' }, 'Descartar');
+      if (!ok) return;
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração descartada (${x.revisao.motivo.slice(0, 120)})` });
+      delete x.revisao;
+      gravar(t.chave, TAREFAS, l);
+      render();
+    },
+    async tarefaReprovar({ id }) {
+      const t = ticketAberto();
+      if (!t?.chave || tarefasDe(pasta(t.chave)).find((x) => x.id === id)?.status !== 'pendente') return;
+      const motivo = await vscode.window.showInputBox({ title: `Reprovar ${id}`, prompt: 'Motivo (opcional): vai para o Claude na análise de consistência', ignoreFocusOut: true });
+      if (motivo === undefined) return;
+      const l = tarefasDe(pasta(t.chave)), x = l.find((y) => y.id === id);
+      Object.assign(x, { status: 'reprovada', motivo: motivo.trim() });
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'reprovada', texto: `Reprovada${motivo.trim() ? `: ${motivo.trim()}` : ''}` });
+      gravar(t.chave, TAREFAS, l);
+      render();
+    },
+    // Pedido de alteração: o card fica "Claude alterando" e entra na fila; o Claude roda assim que estiver livre.
+    tarefaAlterar({ id, texto }) {
+      const t = ticketAberto();
+      const l = t ? tarefasDe(pasta(t.chave)) : [], x = l.find((y) => y.id === id);
+      if (!x || x.status !== 'pendente' || !String(texto || '').trim()) return;
+      Object.assign(x, { status: 'em_alteracao', alteracao: texto.trim(), fila: true });
+      (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'alteracao', texto: `Alteração pedida: ${texto.trim()}` });
+      gravar(t.chave, TAREFAS, l);
+      render();
+      filaTarefas(t);
+    },
     async anexoTodos() {
       const baixados = new Set(Object.values(ler(path.join(pasta(aberto), ORIGEM), {})).map((o) => o.id));
       for (const a of cacheJira[aberto]?.anexos || []) if (!baixados.has(a.id)) await this.anexoBaixar({ id: a.id });
-    },
-    todo(m) {
-      const b = quadro(aberto);
-      const status = m.status === 'ultima' ? b.columns.at(-1).id : m.status === 'primeira' ? b.columns[0].id : m.status;
-      gravar(aberto, TODO, aplicarTodo(b, { type: m.op, title: m.titulo, id: m.id, status }));
-      render();
     }
   };
 
@@ -1054,7 +1975,10 @@ exports.provider = (ctx) => {
     const dir = m.sid && pastaDe(m.sid);
     if (!dir) return;
     fs.mkdirSync(dir, { recursive: true });
-    if (m.tipo === 'salvar' || m.tipo === 'mencionar') fs.writeFileSync(path.join(dir, NOTAS), m.html);
+    if (m.tipo === 'salvar' || m.tipo === 'mencionar') {
+      try { fs.writeFileSync(path.join(dir, NOTAS), m.html); view?.webview.postMessage({ tipo: 'salvo', sid: m.sid, seq: m.seq }); }
+      catch (e) { view?.webview.postMessage({ tipo: 'salvo', sid: m.sid, seq: m.seq, erro: e.message }); }
+    }
     if (m.tipo === 'estilo') fs.writeFileSync(path.join(dir, '.notas.json'), JSON.stringify(m.estilo));
     if (m.tipo === 'mencionar') mencionar(`@${path.join(dir, NOTAS)}${m.trecho ? ` (trecho: "${m.trecho.slice(0, 300)}")` : ''}`);
     if (m.tipo === 'colar') vscode.env.clipboard.readText().then((texto) => view?.webview.postMessage({ tipo: 'colado', texto }));
@@ -1105,4 +2029,4 @@ exports.provider = (ctx) => {
   );
 };
 
-exports._teste = { aplicarTodo, quadro, markdown, telaLista, telaTicket, cabecalho, pagina, COLUNAS, SEM_TICKET };
+exports._teste = { markdown, telaLista, telaTicket, cabecalho, pagina, SEM_TICKET };

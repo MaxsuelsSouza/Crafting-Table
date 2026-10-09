@@ -14,7 +14,13 @@
 //   pergunta  add --texto T [--rf RF03] [--opcoes '["A","B"]'] [--contexto C] | responder Qnn --resposta X | descartar Qnn      (--ref R)
 //   achado    add --severidade bloqueante|aviso --tipo T --descricao D [--refs t05,RF02]
 //             | resolver Ann | aceitar Ann --justificativa J                             (--ref R)
+//   card      add|editar tNN|qa --titulo T --descricao D [--rf RF01,RF02] [--depende t01] [--pronto P] [--arquivo testes.md (qa)]
+//             [--camada backend|mobile] [--estimativa 2h] --ref R      card da tarefa em <ref>/.tarefas.json (aba Tarefas)
+//   impacto   registrar <id comentário> --nivel nenhum|baixo|medio|alto --resumo R [--passo N] [--cards t01,qa]   (.impactos.json)
+//   card      revisar tNN|qa --motivo M [--descricao …]   card já no Jira: texto novo para o humano aplicar
 //   duvida    add --texto T [--contexto C] --ref R              grava em <ref>/.duvidas.json (aba Dúvidas do ticket)
+//   duvida    avaliar <id do comentário> [--duvida Dnn --motivo M] --ref R   comentário novo do Jira: resposta de alguma dúvida?
+//             (só sugere; quem confirma é o humano na aba Dúvidas). iniciar/aprovar recusam com dúvida sem resposta.
 //   tarefa    tNN --status pendente|em_andamento|feita [--commit SHA] --ref R
 //   aprovar   N --ref R --por NOME [--editorial]   SÓ PELA EXTENSÃO (hook do plugin bloqueia o Claude)
 //   aguardar  N --ref R [--intervalo 2] [--horas 12]      espera o humano aprovar/pedir ajuste (rodar em segundo plano)
@@ -31,7 +37,7 @@ const PASSOS = [
   { n: 3, nome: 'planejamento', titulo: 'Planejamento técnico', arquivo: 'plan.md' },
   { n: 4, nome: 'tarefas', titulo: 'Tarefas', arquivo: 'tasks.md' },
   { n: 5, nome: 'analise', titulo: 'Análise de qualidade', arquivo: 'analise.md', portao: 2 },
-  { n: 6, nome: 'implementacao', titulo: 'Implementação', arquivo: 'tasks.md' }
+  { n: 6, nome: 'testes', titulo: 'Plano de testes (QA)', arquivo: 'testes.md', portao: 3 } // o código fica com quem pegar a atividade
 ];
 // Quem depende de quem (a spec não cita tecnologia, então a constituição só pesa a partir do plano).
 const DEPENDENTES = { 0: [3, 4, 5, 6], 1: [2, 3, 4, 5, 6], 2: [3, 4, 5, 6], 3: [4, 5, 6], 4: [5, 6], 5: [6], 6: [] };
@@ -82,7 +88,12 @@ function hashDe(f) {
     return 'sha256:' + crypto.createHash('sha256').update(t).digest('hex').slice(0, 16);
   } catch { return null; }
 }
-const carregar = (L) => lerJson(L.estado, null) || falhar(`estado não encontrado: ${L.estado}`);
+function carregar(L) {
+  const e = lerJson(L.estado, null) || falhar(`estado não encontrado: ${L.estado}`);
+  const p6 = e.passos?.[6];
+  if (p6 && p6.nome !== PASSOS[6].nome) Object.assign(p6, { nome: PASSOS[6].nome, titulo: PASSOS[6].titulo, portao: 3, arquivo: path.join(path.relative(L.repo, L.dir), PASSOS[6].arquivo) });
+  return e;
+}
 const salvar = (L, e) => { e.atualizadoEm = agora(); gravarJson(L.estado, e); };
 const hist = (e, evento, extra = {}) => e.historico.push({ em: agora(), evento, ...extra });
 const PROXIMA_ACAO = {
@@ -92,7 +103,7 @@ const PROXIMA_ACAO = {
   3: 'planejar: gerar plan.md e checar contra a constituição',
   4: 'tarefas: quebrar o plano em t01..tNN',
   5: 'analisar: cruzar constituição × spec × plano × tarefas',
-  6: 'implementar: próxima tarefa pendente com dependências feitas',
+  6: 'testes: plano de testes (QA) em testes.md a partir de todo o refinamento + card [QA]',
   7: 'concluído: todos os passos aprovados'
 };
 function apontar(e) {
@@ -108,10 +119,8 @@ function contar(L, p) {
   const unicos = (re) => new Set(t.match(re) || []).size;
   if (p.n === 0) return { regras: (t.match(/^\s*[-*] /gm) || []).length, proibicoes: (t.match(/^\s*[-*] .*\b(nunca|proibido|não\s+(?:use|usar|pode|deve))/gim) || []).length };
   if (p.n === 1 || p.n === 2) return { rfs: unicos(/\bRF\d{2,}\b/g), historias: (t.match(/^#{2,4}\s*Hist[óo]ria/gim) || []).length, bordas: (t.match(/^\s*[-*] .*\bborda\b|^#{2,4} .*borda/gim) || []).length };
-  if (p.n === 4 || p.n === 6) {
-    const tarefas = unicos(/\bt\d{2,}\b/g);
-    return { tarefas, feitas: (t.match(/^\s*[-*] \[x\] .*\bt\d{2,}\b/gim) || []).length };
-  }
+  if (p.n === 4) return { tarefas: unicos(/\bt\d{2,}\b/g) };
+  if (p.n === 6) return { cts: unicos(/\bCT\d{2,}\b/g), rfs: unicos(/\bRF\d{2,}\b/g) };
   return {};
 }
 
@@ -136,7 +145,6 @@ function check(L, e) {
     if (p.status !== 'aprovado' || !p.hashAprovado || h === p.hashAprovado) continue;
     // spec.md e tasks.md são de dois passos: depois que o passo seguinte começou, o arquivo é dele.
     if (p.n === 1 && e.passos[2].status !== 'pendente') continue;
-    if (p.n === 4 && e.passos[6].status !== 'pendente') continue;
     p.status = 'aguardando_revisao';
     p.versao = bump(p.versao);
     mudancas.push(p.n);
@@ -155,11 +163,34 @@ function check(L, e) {
 }
 const bump = (v) => { if (!v) return '1.1'; const [a, b] = String(v).split('.').map(Number); return `${a}.${(b || 0) + 1}`; };
 
+// Dúvida sem resposta (do humano, na aba Dúvidas) segura a spec: iniciar e aprovar recusam.
+const duvidasAbertas = () => lerJson(path.join(refDir(), '.duvidas.json'), []).filter((d) => !d.resposta);
+const barrarDuvidas = (acao) => {
+  const ab = duvidasAbertas();
+  if (ab.length) falhar(`${acao} bloqueado: ${ab.length} dúvida(s) sem resposta (${ab.map((d) => d.id).join(', ')}). Elas só fecham pela aba Dúvidas (comentário do ticket confirmado ou Dar resposta); espere o humano.`, 4);
+};
+
 const passoN = () => {
   const n = Number(pos[0]);
   if (!Number.isInteger(n) || n < 0 || n > 6) falhar('informe o número do passo (0 a 6)');
   return n;
 };
+
+// Card já aprovado (subtarefa já no Jira) que uma mudança atingiu: o Claude propõe o texto novo; quem aplica no
+// Jira é o humano, pela aba Tarefas. card revisar tNN|qa --motivo M [--titulo --descricao --pronto --estimativa --resumo] --ref R
+function revisarCard(id) {
+  const arq = path.join(refDir(), '.tarefas.json');
+  const l = lerJson(arq, []);
+  const c = l.find((x) => x.id === id) || falhar(`card ${id} não existe`);
+  if (c.status !== 'aprovada') falhar(`${id} está ${c.status}: use card editar (revisar é para card já aprovado/no Jira)`);
+  if (!opt.motivo) falhar('--motivo obrigatório (qual mudança e de onde veio)');
+  const campos = {};
+  for (const k of ['titulo', 'descricao', 'pronto', 'estimativa', 'resumo']) if (opt[k] !== undefined && opt[k] !== true) campos[k] = String(opt[k]);
+  if (id !== 'qa' && !Object.keys(campos).length) falhar('informe o que muda (--descricao, --titulo, --pronto…)');
+  c.revisao = { campos, motivo: String(opt.motivo), comentario: opt.comentario ? String(opt.comentario) : null, em: agora() };
+  (c.historico ||= []).push({ em: agora(), evento: 'revisao', texto: `Revisão proposta: ${String(opt.motivo).slice(0, 160)}` });
+  gravarJson(arq, l); console.log(`${id}: revisão proposta (aplicar no Jira pela aba Tarefas)`);
+}
 
 // ── comandos ──
 const comandos = {
@@ -207,11 +238,14 @@ const comandos = {
     console.log(`Aprovados: ${aprov.join(' · ') || 'nenhum'}`);
     console.log(`Mudou desde a última sessão: ${m.length ? `passo(s) ${m.join(', ')} editado(s) após aprovação` : 'nada'}${desat.length ? ` · desatualizados: ${desat.join(', ')}` : ''}`);
     console.log(`Pendências: ${abertas} pergunta(s) aberta(s) · ${bloq} achado(s) bloqueante(s)`);
+    const dv = lerJson(path.join(refDir(), '.duvidas.json'), []);
+    if (dv.length) console.log(`Dúvidas: ${dv.filter((d) => !d.resposta).map((d) => d.id).join(', ') || 'nenhuma'} sem resposta (a spec não segue) · respondidas: ${dv.filter((d) => d.resposta).map((d) => `${d.id} → ${d.resposta.texto.slice(0, 100)}`).join(' | ') || 'nenhuma'}`);
     console.log(`Próxima ação: ${e.proximaAcao}`);
     console.log(`Pasta: ${L.dir}`);
   },
   iniciar() {
     const n = passoN(); const L = locais(); const e = carregar(L); check(L, e);
+    barrarDuvidas(`iniciar ${n}`);
     const antes = e.passos.slice(0, n).filter((p) => p.status !== 'aprovado');
     if (antes.length) falhar(`passo ${n} bloqueado: aprove antes ${antes.map((p) => `${p.n} ${p.titulo} (${p.status})`).join(', ')}`, 3);
     const p = e.passos[n];
@@ -245,6 +279,7 @@ const comandos = {
     const n = passoN(); const L = locais(); const e = carregar(L); check(L, e);
     const p = e.passos[n];
     if (!opt.por) falhar('informe --por <quem aprova>');
+    barrarDuvidas(`aprovar ${n}`);
     if (opt.editorial && p.status === 'aguardando_revisao' && p.hashAprovado) {
       // edição declarada como não semântica: atualiza o hash aprovado sem cascata
     } else if (p.status !== 'aguardando_revisao') falhar(`passo ${n} está ${p.status}; só um passo aguardando revisão pode ser aprovado`, 3);
@@ -256,7 +291,6 @@ const comandos = {
     // Cópia da versão aprovada: a extensão mostra o diff quando o arquivo mudar depois (o repo pode nem ter git).
     try { fs.mkdirSync(path.join(refDir(), 'aprovados'), { recursive: true }); fs.copyFileSync(arquivoDo(L, p), path.join(refDir(), 'aprovados', `${n}-${path.basename(arquivoDo(L, p))}`)); } catch {}
     p.aprovadoPor = String(opt.por); p.aprovadoEm = agora(); p.motivoDesatualizado = null;
-    if (n === 6) e.passos[4].hashAprovado = hashDe(arquivoDo(L, e.passos[4])); // tasks.md marcado como feito na implementação
     hist(e, opt.editorial ? 'aprovado_editorial' : 'aprovado', { passo: n, por: p.aprovadoPor, versao: p.versao });
     apontar(e); salvar(L, e);
     console.log(`passo ${n} ${p.titulo} aprovado por ${p.aprovadoPor}`);
@@ -294,12 +328,69 @@ const comandos = {
     salvar(L, e); console.log(`${a.id}: ${a.status}`);
   },
   // Dúvida para levar ao time (aba Dúvidas da Crafting Table): mora na pasta do ticket, não depende da spec.
+  // Cards das tarefas (aba Tarefas da Crafting Table): <ref>/.tarefas.json. O Claude cria e edita o conteúdo;
+  // aprovar/reprovar (e criar a subtarefa no Jira) é só do humano, pela aba.
+  card() {
+    const sub = pos[0], id = pos[1];
+    if (sub === 'revisar') return revisarCard(id);
+    if (!['add', 'editar'].includes(sub) || !/^(t\d{2,}|qa)$/.test(id || '')) falhar('use: card add|editar tNN --titulo T --descricao D [--rf RF01,RF02] [--depende t01] [--pronto P] [--camada backend|mobile] [--estimativa 2h] --ref R');
+    const arq = path.join(refDir(), '.tarefas.json');
+    const l = lerJson(arq, []);
+    let c = l.find((x) => x.id === id);
+    if (sub === 'add' && c && !['pendente', 'em_alteracao'].includes(c.status)) falhar(`${id} já foi ${c.status}: não muda mais`);
+    if (sub === 'editar' && !c) falhar(`card ${id} não existe`);
+    if (!c) { c = { id, status: 'pendente', jira: null, vinculado: false, historico: [], em: agora() }; l.push(c); }
+    if (c.status === 'aprovada' || c.status === 'reprovada') falhar(`${id} já foi ${c.status}: não muda mais`);
+    const lista = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
+    for (const k of ['titulo', 'descricao', 'pronto', 'camada', 'estimativa', 'resumo']) if (opt[k] !== undefined && opt[k] !== true) c[k] = String(opt[k]);
+    if (id === 'qa') {
+      c.tipo = 'qa';
+      if (opt.arquivo) c.arquivo = path.resolve(String(opt.arquivo));
+      if (!c.arquivo || !fs.existsSync(c.arquivo)) falhar('card qa: --arquivo <testes.md> obrigatório (o plano vira a descrição da subtarefa)');
+    }
+    if (opt.rf) c.rf = lista(opt.rf);
+    if (opt.depende) c.depende = lista(opt.depende);
+    if (!c.titulo) falhar('--titulo obrigatório');
+    if (c.status === 'em_alteracao') { c.status = 'pendente'; c.historico.push({ em: agora(), evento: 'alterada', texto: 'Claude aplicou a alteração pedida' }); }
+    l.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+    gravarJson(arq, l); console.log(`${id}: ${c.status}`);
+  },
+  // Impacto de um comentário do Jira (o vigia da Crafting Table cria a entrada; o Claude registra a análise).
+  //   impacto registrar <id do comentário> --nivel nenhum|baixo|medio|alto --resumo R [--passo N] [--cards t01,qa] --ref R
+  impacto() {
+    const cid = pos[1];
+    if (pos[0] !== 'registrar' || !cid || !['nenhum', 'baixo', 'medio', 'alto'].includes(opt.nivel) || !opt.resumo)
+      falhar('use: impacto registrar <id do comentário> --nivel nenhum|baixo|medio|alto --resumo R [--passo N] [--cards t01,qa] --ref R');
+    const arq = path.join(refDir(), '.impactos.json');
+    const l = lerJson(arq, []);
+    const x = l.find((i) => i.id === String(cid)) || falhar(`comentário ${cid} não está na fila de impactos`);
+    Object.assign(x, { status: 'analisado', nivel: opt.nivel, resumo: String(opt.resumo), passo: opt.passo !== undefined ? Number(opt.passo) : null,
+      cards: opt.cards ? String(opt.cards).split(',').map((c) => c.trim()).filter(Boolean) : [], analisadoEm: agora() });
+    gravarJson(arq, l);
+    notificar('impacto', `Comentário de ${x.autor || 'alguém'}: impacto ${opt.nivel.toUpperCase()} — ${String(opt.resumo).slice(0, 120)}`);
+    console.log(`${cid}: impacto ${opt.nivel}`);
+  },
   duvida() {
-    if (pos[0] !== 'add' || !opt.texto) falhar('use: duvida add --texto T [--contexto C] --ref R');
     const arq = path.join(refDir(), '.duvidas.json');
     const l = lerJson(arq, []);
+    if (pos[0] === 'avaliar') {
+      const fila = path.join(refDir(), '.respostas.json');
+      const f = lerJson(fila, []);
+      const c = f.find((x) => x.id === String(pos[1])) || falhar(`comentário ${pos[1]} não está na fila de respostas`);
+      if (opt.duvida) {
+        const d = l.find((x) => x.id === opt.duvida) || falhar(`dúvida ${opt.duvida} não existe`);
+        if (d.resposta) falhar(`${d.id} já foi respondida`);
+        if (!opt.motivo) falhar('--motivo obrigatório (por que o comentário responde a dúvida)');
+        d.sugestao = { comentarioId: c.id, autor: c.autor, texto: c.texto, link: c.link, motivo: String(opt.motivo), em: agora() };
+        gravarJson(arq, l);
+        notificar('duvida', `${d.id}: o comentário de ${c.autor} parece responder — confirme na aba Dúvidas`);
+      }
+      c.status = 'analisado'; c.duvida = opt.duvida || null;
+      gravarJson(fila, f); console.log(opt.duvida ? `${c.id}: sugerido para ${opt.duvida} (o humano confirma na aba)` : `${c.id}: não responde nenhuma dúvida`); return;
+    }
+    if (pos[0] !== 'add' || !opt.texto) falhar('use: duvida add --texto T [--contexto C] --ref R | duvida avaliar <comentário> [--duvida Dnn --motivo M] --ref R');
     const id = 'D' + String(l.length + 1).padStart(2, '0');
-    l.push({ id, texto: String(opt.texto), contexto: opt.contexto ? String(opt.contexto) : '', em: agora(), enviadaEm: null });
+    l.push({ id, texto: String(opt.texto), contexto: opt.contexto ? String(opt.contexto) : '', em: agora(), enviadaEm: null, resposta: null, sugestao: null });
     gravarJson(arq, l); notificar('duvida', `Dúvida ${id} registrada: ${l.at(-1).texto.slice(0, 120)}`); console.log(id);
   },
   tarefa() {
@@ -342,7 +433,7 @@ const comandos = {
 };
 
 if (!comandos[cmd]) {
-  console.error('uso: sdd-state <init|status|check|iniciar|concluir|aguardar|ajuste|pergunta|achado|duvida|tarefa|aprovar|json> --ref <pasta do refinamento>');
+  console.error('uso: sdd-state <init|status|check|iniciar|concluir|aguardar|ajuste|pergunta|achado|card|impacto|duvida|tarefa|aprovar|json> --ref <pasta do refinamento>');
   process.exit(2);
 }
 comandos[cmd]();

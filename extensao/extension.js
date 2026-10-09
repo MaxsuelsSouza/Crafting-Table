@@ -16,14 +16,14 @@ exports.activate = (ctx) => {
     require('./cofre').provider(ctx),
     require('./conversas').provider(),
     require('./testes').iniciar(),
-    require('./musica').provider(ctx), // YouTube Music: barra de status (controle principal)
-    require('./espelho').provider(), // YouTube Music: espelho na barra de atividades
+    require('./teams').encaminhar(ctx), // avisos do 🔔 para o Teams (só com TEAMS_WEBHOOK no Cofre)
     require('./grupo').provider(ctx), // Tickets: painel + Comandos, Emulador, Evidências, Cofre e Conversas dentro do ticket
     ...Object.entries({
       abrirClaude: 'craftingTable',
       abrirTickets: 'claudeAbas-tickets'
     }).map(([cmd, container]) => vscode.commands.registerCommand(`claudeAbas.${cmd}`,
       () => vscode.commands.executeCommand(`workbench.view.extension.${container}`))),
-    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./teams').abrir)
+    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./teams').abrir),
+    vscode.commands.registerCommand('claudeAbas.testarTeams', () => require('./teams').testar(ctx))
   );
 };

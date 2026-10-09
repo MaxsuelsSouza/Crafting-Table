@@ -46,56 +46,56 @@ function listar(dir) {
 const adb = (args) => new Promise((resolve) => execFile(ADB, args, { timeout: 30000 }, (err, out, errOut) => resolve({ ok: !err, msg: String(errOut || err?.message || '') })));
 
 const estilo = `
-  body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--vscode-foreground); margin: 0; }
+  body { font-family: var(--fc-font); color: var(--text); margin: 0; }
   button { font: inherit; cursor: pointer; }
   .topo { display: flex; align-items: center; gap: 8px; }
   .titulo { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ticket { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
-    color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 14%, transparent); }
-  .pasta { font-size: 10.5px; color: var(--vscode-descriptionForeground); margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ticket { flex: none; font-family: var(--fc-font); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-pill);
+    color: var(--accent-soft); background: color-mix(in srgb, var(--accent-soft) 14%, transparent); }
+  .pasta { font-size: 10.5px; color: var(--text-dim); margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acoes { display: flex; align-items: center; gap: 4px; margin: 14px 0 4px; }
   .acoes .espaco { flex: 1; }
-  .primario { background: var(--vscode-button-background); color: var(--vscode-button-foreground); font-weight: 600; }
-  .primario:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
-  .gravar:hover, .icone:hover { background: var(--vscode-toolbar-hoverBackground); }
-  .gravar::before, .gravando::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e5484d; margin-right: 7px; vertical-align: 0; }
-  .gravando { color: #e5484d; font-weight: 600; background: color-mix(in srgb, #e5484d 12%, transparent); }
+  .primario { background: var(--accent); color: var(--on-cor); font-weight: 600; }
+  .primario:hover { background: var(--accent-soft); }
+  .gravar:hover, .icone:hover { background: var(--surface-2); }
+  .gravar::before, .gravando::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 7px; vertical-align: 0; }
+  .gravando { color: var(--danger); font-weight: 600; background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .gravando::before { animation: pulso 1.1s infinite; }
   @keyframes pulso { 50% { opacity: .2; } }
-  #relogio { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-left: 6px; font-weight: 500; }
-  .icone { padding: 5px 7px; color: var(--vscode-descriptionForeground); display: flex; }
-  .icone:hover { color: var(--vscode-foreground); }
+  #relogio { font-family: var(--fc-font); margin-left: 6px; font-weight: 500; }
+  .icone { padding: 5px 7px; color: var(--text-dim); display: flex; }
+  .icone:hover { color: var(--text); }
   .icone svg { width: 15px; height: 15px; }
-  .erro { color: var(--vscode-errorForeground); font-size: 12px; }
-  .contagem { font-size: 11px; color: var(--vscode-descriptionForeground); margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; }
-  .tag { font-size: 10px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--vscode-widget-border, rgba(128,128,128,.35)); }
+  .erro { color: var(--danger); font-size: 12px; }
+  .contagem { font-size: 11px; color: var(--text-dim); margin: 16px 0 8px; display: flex; align-items: center; gap: 6px; }
+  .tag { font-size: 10px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); }
   .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
-  .item { position: relative; cursor: pointer; border-radius: 10px; overflow: hidden; aspect-ratio: 9 / 16;
-    background: var(--vscode-editorWidget-background); box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .15s, box-shadow .15s; }
+  .item { position: relative; cursor: pointer; border-radius: var(--r-lg); overflow: hidden; aspect-ratio: 9 / 16;
+    background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .15s, box-shadow .15s; }
   .item:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.45); }
   .thumb { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
   .play { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; padding-left: 3px; box-sizing: border-box;
-    color: #fff; background: #e5484d; box-shadow: 0 2px 8px rgba(229,72,77,.45); }
-  .ext { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--vscode-descriptionForeground); }
-  .legenda { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 7px 6px; font-size: 10px; color: #fff;
+    color: var(--on-cor); background: var(--danger); box-shadow: 0 2px 8px color-mix(in srgb, var(--danger) 45%, transparent); }
+  .ext { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text-dim); }
+  .legenda { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 7px 6px; font-size: 10px; color: var(--on-cor);
     background: linear-gradient(transparent, rgba(0,0,0,.8)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0; transition: opacity .15s; }
   .item:hover .legenda { opacity: 1; }
   .del { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 11px;
-    background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity .15s; }
+    background: rgba(0,0,0,.55); color: var(--on-cor); opacity: 0; transition: opacity .15s; }
   .item:hover .del, .item:hover .arroba { opacity: 1; }
   .arroba { position: absolute; top: 6px; left: 6px; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; font-size: 12px;
-    background: rgba(0,0,0,.55); color: #fff; opacity: 0; transition: opacity .15s; cursor: pointer; }
-  .arroba:hover { background: #007aff; }
-  .del:hover { background: #e5484d; }
-  .vazio { color: var(--vscode-descriptionForeground); }
+    background: rgba(0,0,0,.55); color: var(--on-cor); opacity: 0; transition: opacity .15s; cursor: pointer; }
+  .arroba:hover { background: var(--accent); }
+  .del:hover { background: var(--danger); }
+  .vazio { color: var(--text-dim); }
   .centro { text-align: center; margin-top: 28px; line-height: 1.6; font-size: 12.5px; }
   .centro .icone-grande { font-size: 26px; opacity: .5; }
 `;
 
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const estiloEvid = `<style>
-  .ticket { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 9px;
+  .ticket { font-family: var(--fc-font); font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-pill);
     color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
   .fb-btn.gravar::before, .fb-btn.gravando::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--perigo); }
   .fb-btn.gravando { color: var(--perigo); font-weight: 600; background: color-mix(in srgb, var(--perigo) 12%, transparent); }

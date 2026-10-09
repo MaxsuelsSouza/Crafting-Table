@@ -1,6 +1,6 @@
 ---
 name: sdd
-description: Spec Driven Development guiado em 7 passos (0 Constituição, 1 Especificação, 2 Clarificação, 3 Planejamento técnico, 4 Tarefas, 5 Análise de qualidade, 6 Implementação), com estado em specs/<feature>/sdd-state.json para retomar de onde parou e portões de revisão humana. Use quando o usuário rodar /sdd:iniciar ou /sdd:continuar, pedir para "iniciar/continuar a spec", ou estiver numa conversa de refinamento do tipo Spec da Crafting Table.
+description: Spec Driven Development guiado em 7 passos (0 Constituição, 1 Especificação, 2 Clarificação, 3 Planejamento técnico, 4 Tarefas, 5 Análise de qualidade, 6 Plano de testes (QA)), com estado em specs/<feature>/sdd-state.json para retomar de onde parou e portões de revisão humana. Use quando o usuário rodar /sdd:iniciar ou /sdd:continuar, pedir para "iniciar/continuar a spec", ou estiver numa conversa de refinamento do tipo Spec da Crafting Table.
 ---
 
 # SDD — Spec Driven Development
@@ -21,13 +21,16 @@ que alimenta o próximo. Você conduz; **o humano aprova** — sempre pela aba *
 3. **Nunca pule passo** nem comece um passo com anteriores não aprovados (`iniciar N` recusa — respeite).
 4. **A Constituição prevalece** sobre spec e plano. Divergência → a constituição vence; aponte o conflito.
 5. **Contexto explícito**: nada de regra só na conversa. Toda decisão vai para o arquivo do passo.
-6. **Sem commit automático.** Deixe os arquivos prontos; quem commita é o humano (exceção: passo 6, ver abaixo).
+6. **Sem commit automático.** Deixe os arquivos prontos; quem commita é o humano.
 7. Um pedido do humano de "mudar o comportamento" exige **atualizar a spec antes do código**.
 8. **Tirar dúvida (ticket em modo refinamento)**: toda pergunta com `AskUserQuestion` leva, como última opção,
    `Tirar dúvida` (descrição: "Não sei responder agora: levar a dúvida para o time/PO"). Use no máximo 3 opções
    próprias. Escolhida → `sdd-state duvida add --ref <pasta> --texto '<pergunta>' --contexto '<passo N, opções
    oferecidas e por que importa>'`; no passo 2 registre também com `pergunta add` (ela fica `aberta`). Diga
-   "Registrada como Dnn na aba Dúvidas" e siga com o que não depende dela.
+   "Registrada como Dnn na aba Dúvidas" e siga com o que não depende dela. **Dúvida sem resposta segura a spec**:
+   `sdd-state iniciar` e a aprovação do passo recusam até o humano responder na aba Dúvidas (comentário do ticket
+   confirmado ou "Dar resposta"). Você pode terminar o passo atual (`concluir`), mas não inicia o próximo. Respondida →
+   a resposta aparece no `status` e vira regra no arquivo do passo.
 
 ## Modo segundo plano (mensagem com `[segundo plano]`)
 
@@ -37,10 +40,48 @@ responde por botões. Nessas execuções:
 - **Pergunta** = `sdd-state pergunta add --ref <pasta> --texto '<pergunta>' --opcoes '["opção 1","opção 2"]'
   --contexto '<por que importa, 1 linha>'` (até 4 opções, a recomendada primeiro, terminando com "(Recomendado)").
   Pode registrar várias; depois **termine a execução** dizendo quantas registrou. A próxima execução traz as
-  respostas (ou "Tirar dúvida": siga sem ela e registre o ponto como em aberto no arquivo do passo).
+  respostas (ou "Tirar dúvida": registre o ponto como em aberto no arquivo do passo e termine o passo; a spec só segue quando a dúvida for respondida).
 - Trabalhe **só o passo atual**. Ao terminar: `concluir N` e **termine a execução** (não comece o passo seguinte:
   a extensão abre uma execução nova quando o humano aprovar).
 - Prefira as ferramentas Read/Glob/Grep a comandos de shell para ler arquivos; um comando por chamada de Bash.
+- **Narre para o humano** (ele lê a caixa "Ao vivo"; só a 1ª frase de cada texto aparece): antes de cada bloco de
+  trabalho, **uma frase curta** em português dizendo o que vai fazer e para quê — "Vou ler o mapeamento para montar
+  as regras do backend.", "Vou comparar o plano com a constituição." Sem markdown, sem caminho de arquivo, sem jargão
+  de ferramenta. Ao terminar a execução, uma frase dizendo o que ficou pronto e o que o humano faz agora.
+
+## Mudança vinda de comentário do Jira (mensagem com `[impacto]`)
+
+O vigia da Crafting Table viu um comentário novo de outra pessoa (PO, QA, dev) no ticket e te passa id, autor,
+data, link e texto. Seu trabalho: medir o impacto, regredir a spec se precisar e propor o texto novo das
+subtarefas que já estão no Jira. **Você não escreve no Jira**: quem aplica é o humano, pela aba Tarefas.
+
+1. Compare o comentário com `spec.md` (RFs, critérios, fora de escopo, clarificações), `plan.md`, `tasks.md`,
+   `testes.md` e os cards (os aprovados têm a chave do Jira).
+2. **Nível**: `nenhum` (conversa, status, agradecimento) · `baixo` (ajuste pontual sem mudar RF: texto, exemplo,
+   nome) · `medio` (muda um RF, critério de aceite, campo ou contrato) · `alto` (muda escopo, regra central ou
+   fluxo; inclui/remove RF; troca camada).
+3. `sdd-state impacto registrar <id> --ref <pasta> --nivel … --resumo '<o que muda, 1–2 frases>'
+   --passo <primeiro passo afetado> --cards <ids afetados, ex. t02,t05,qa>`. Nível `nenhum` → termine aqui.
+4. **Regrida** aplicando a mudança no **primeiro artefato afetado** (spec.md se muda RF/regra; plan.md se só a
+   parte técnica; tasks.md/testes.md se só tarefa/teste), com nota datada: `> Mudança de <data> — comentário de
+   <autor> (<link>): <o que mudou>`. Rode `sdd-state check`: o passo editado volta para revisão e os seguintes
+   ficam desatualizados. **Não** reconcilie os passos seguintes agora (isso acontece quando o humano reaprovar).
+5. Cards atingidos: ainda pendentes → `card editar`; **já aprovados (no Jira)** → `card revisar tNN --ref <pasta>
+   --motivo '<a mudança> (comentário de <autor>)' --comentario <link> --descricao '<descrição nova completa>'`
+   (e `--titulo`/`--pronto`/`--estimativa` se mudarem). Card `qa` aprovado → ajuste `testes.md` e
+   `card revisar qa --motivo … --comentario <link>`.
+6. Termine com uma frase: nível, o que mudou, quais passos voltaram e quais subtarefas precisam ser atualizadas.
+
+## Comentário novo que pode responder uma dúvida (mensagem com `[duvida]`)
+
+A mensagem traz as dúvidas já enviadas ao ticket e ainda sem resposta, e um comentário novo (id, autor, link, texto).
+Você só **sugere**: quem confirma é o humano, na aba Dúvidas.
+
+1. O comentário responde, de fato, alguma dessas dúvidas (mesmo assunto e decide o ponto perguntado)? Conversa,
+   status, agradecimento ou resposta parcial/vaga **não** contam.
+2. Sim → `sdd-state duvida avaliar <id do comentário> --ref <pasta> --duvida Dnn --motivo '<1 frase: o que o comentário decide>'`.
+   Não → `sdd-state duvida avaliar <id do comentário> --ref <pasta>`.
+3. Não edite a spec nem avance nada: termine com uma frase.
 
 ## Protocolo de início (`/sdd:iniciar <pasta> [repo]`)
 
@@ -106,7 +147,7 @@ Feche com a cláusula: "Em divergência com spec.md ou plan.md, esta Constituiç
 ## Passo 1 — Especificação (`spec.md` v1.0)
 
 O **o quê** e o **porquê**. **Proibido citar tecnologia**: framework, linguagem, banco, tabela, endpoint, fila,
-biblioteca, nome de classe. Use como insumo o ticket, `notas.html` e os handoffs da pasta do refinamento.
+biblioteca, nome de classe. Use como insumo o ticket, `notas.html` e as análises (`mapa-*.md`) se existirem.
 
 Estrutura: `# <título> — Especificação v1.0` · `## Intenção` (problema, para quem, por quê) ·
 `## Histórias de usuário` (`### História N`: Como <papel>, quero <ação>, para <benefício>) ·
@@ -128,8 +169,17 @@ Antes de `concluir 1`, releia procurando nome de tecnologia e RF sem critério d
 
 ## Passo 3 — Planejamento técnico (`plan.md`)
 
+**Primeiro o mapeamento do código** (obrigatório, antes de escrever o plano): decida as camadas (backend,
+mobile ou as duas) pela spec, leia o código real e grave uma análise por camada na **pasta da spec** (`~/.claude` é bloqueada para gravação)
+(`mapa-backend.md` / `mapa-mobile.md`, aba Análise). No modo refinamento em segundo plano o maestro
+carrega o plugin **`mapa`**: siga a skill **`mapa:mapear`** (camadas, ref de leitura, inventário invertido por
+RF, escada de mudança, chamadores, verificações e evidência conferida com `mapa-conferir`). Sem o plugin,
+faça o mesmo à mão: nada de plano sem ter lido onde a spec toca o código.
+
 O **como**: tecnologias, contratos de API, modelo de dados, componentes por camada (backend/mobile), riscos.
-Toda decisão referencia o RF que atende. Não altere requisito aqui — se faltar algo, diga e volte ao passo 2.
+O `plan.md` **abre** com `## Mapeamento do código` (camadas, ref de leitura, resumo e os arquivos `mapa-*.md`)
+e cada decisão cita o RF que atende e o `arquivo:linha` que reaproveita ou altera.
+Não altere requisito aqui — se faltar algo, diga e volte ao passo 2.
 
 Obrigatório no fim: `## Conformidade com a Constituição` — tabela `Regra | Conforme/Viola | Evidência no plano`.
 Qualquer **Viola** impede `concluir 3`: corrija o plano (a constituição prevalece).
@@ -141,7 +191,15 @@ Unidades pequenas, ordenadas e verificáveis, uma por linha de checklist:
 `- [ ] t01 <objetivo> — RF01, RF02 — depende de: — pronto quando: <teste/comando que comprova>`
 
 Cada tarefa cabe em **um commit**. Ordem topológica, sem ciclo. Todo RF coberto por ao menos uma tarefa;
-toda tarefa aponta um RF (senão é órfã). `concluir 4`.
+toda tarefa aponta um RF (senão é órfã).
+
+**Ticket da Crafting Table**: cada tarefa também vira um **card** (vira subtarefa no Jira quando o humano aprova):
+`sdd-state card add tNN --ref <pasta> --titulo '<objetivo curto, até 80 caracteres>' --descricao '<o que fazer, onde
+(arquivos/módulos), regras da spec que se aplicam; texto corrido em português>' --rf RF01,RF02 --depende t01
+--pronto '<critério verificável>' --camada backend|mobile --estimativa <sugestão: 30m, 2h, 1d>`.
+Depois `concluir 4`. O humano aprova, reprova ou **pede alteração** card por card; um pedido de alteração chega
+como "Pedido de alteração na tarefa tNN: …" → ajuste a linha em `tasks.md` **e** o card com
+`sdd-state card editar tNN …` (só os campos que mudam) e termine a execução. Nunca mexa em card aprovado/reprovado.
 
 ## Passo 5 — Análise de qualidade (`analise.md`) — **Portão Humano 2**
 
@@ -154,18 +212,31 @@ Corrija o que der (`achado resolver Ann`) e reconcilie os arquivos afetados. O h
 com justificativa (na conversa → `achado aceitar Ann --justificativa "..."`). `concluir 5`.
 A aprovação só abre com **zero bloqueantes abertos**.
 
-## Passo 6 — Implementação
+## Passo 6 — Plano de testes (QA) (`testes.md`) — **Portão Humano 3**
 
-Só com o passo 5 aprovado. Execute **uma tarefa por vez, na ordem**, sem pular dependência:
+Só com o passo 5 aprovado. **Não se implementa código aqui**: o refinamento é distribuído e quem pegar cada
+subtarefa implementa a partir da spec. Este passo entrega o **plano de testes** da atividade inteira, que vira a
+subtarefa `[QA]` no Jira quando o humano aprovar o card na aba Tarefas.
 
-1. `sdd-state tarefa tNN --status em_andamento`.
-2. Implemente seguindo plano e constituição; rode o "pronto quando" da tarefa.
-3. Marque `- [x]` em `tasks.md` e faça **um commit por tarefa** (`feat(<escopo>): <objetivo> [tNN]`), com spec/tasks
-   atualizados no mesmo commit — é a única exceção à regra de não commitar, e só se o humano autorizou commits
-   nesta implementação (pergunte na primeira tarefa).
-4. `sdd-state tarefa tNN --status feita --commit <sha>`.
-5. Se a tarefa exigir comportamento que **não está na spec**: pare, registre `pergunta add`, e diga que é preciso
-   voltar à clarificação. Spec antes do código.
+**Método:** o do plugin **`fcx-qa-test-planning:jira-qa-planner`** — leia o `SKILL.md` dele (Passos 3, 6 e 7) e
+`reference/test-plan-templates.md` nos caminhos que a mensagem do maestro informa. **Não** execute os passos de
+Jira/twg dele (2, 4, 5, 8): quem fala com o Jira é a extensão.
 
-Retomada: a próxima tarefa é a primeira não feita com dependências feitas; confira `git log --grep "\[tNN\]"`
-para não refazer o que já foi commitado. Ao terminar todas: `concluir 6` → revisão humana final do código.
+**Insumo é todo o refinamento**, não só a história: `spec.md` (RFs e Dado/Quando/Então), `plan.md` (endpoints,
+contratos, dados), `mapa-backend.md`/`mapa-mobile.md` (chamadores → regressão), os cards de dev aprovados
+(arquivo de cards da pasta do ticket: subtarefas com a chave do Jira) e as dúvidas em aberto (viram riscos).
+
+1. **Modelo** (Passo 6 do jira-qa-planner): fluxo/tela/regra → Template A; endpoint/API/contrato → Template B;
+   os dois → Template A com a seção de API do B.
+2. **Escreva `testes.md`** no padrão do Passo 7: PT-BR, `CT01…` sequencial, Gherkin com **Dado que**/**Quando**/**Então**
+   em negrito, `📌 Validações:` com `✔`, mínimo 1 positivo + 1 negativo + 1 borda **por RF**. Cada CT cita o
+   **RF** que prova e a **subtarefa de dev** (WMS-xxxx ou tNN). Acrescente **regressão nomeada** a partir dos
+   chamadores do mapeamento. Item sem base na spec: `⚠️ (inferido)`. O arquivo **se sustenta sozinho**: ele é a
+   descrição da subtarefa [QA] (quem testa não vê a spec).
+3. **Estimativa** (modo detalhado do `fcx-qa-test-planning:test-estimation`, `reference/modelo-estimativa.md`):
+   horas de teste a partir dos CTs, no formato do Jira (ex.: `6h`).
+4. **Card [QA]**: `sdd-state card add qa --ref <pasta> --titulo '<nome>' --arquivo <spec>/testes.md --estimativa <h>
+   --resumo '<2 linhas: nº de CTs, RFs cobertos, camadas>'`. Nome pelo tipo do ticket (Passo 3 do jira-qa-planner):
+   História → `[QA] Planejamento dos Casos de Testes`; outros → `[QA] Teste de Qualidade`.
+5. `concluir 6`. Pedido de alteração no card `qa` → ajuste `testes.md` e rode `sdd-state card editar qa --ref <pasta>`
+   (com `--estimativa`/`--resumo` se mudarem).

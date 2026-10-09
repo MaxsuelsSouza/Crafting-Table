@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+// Confere as evidências de um mapeamento: cada `caminho:linha` (ou `caminho:ini-fim`) citado entre crases
+// precisa existir — no working tree do repositório ou, com --ref, naquela ref (git show).
+// uso: mapa-conferir <arquivo.md> --repo <raiz> [--repo <raiz2>] [--ref <ref>]
+// Saída: uma linha por evidência com problema e o resumo; código 1 se faltar alguma.
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const argv = process.argv.slice(2);
+const md = argv[0];
+const repos = [], refs = []; let dbLog = null;
+for (let i = 1; i < argv.length; i++) {
+  if (argv[i] === '--repo') repos.push(argv[++i]);
+  else if (argv[i] === '--ref') refs.push(argv[++i]);
+  else if (argv[i] === '--db-log') dbLog = argv[++i];
+}
+if (!md || !fs.existsSync(md) || !repos.length) { console.error('uso: mapa-conferir <arquivo.md> --repo <raiz> [--repo ...] [--ref <ref>]'); process.exit(2); }
+const texto = fs.readFileSync(md, 'utf8');
+// `algum/caminho/Arquivo.ext:12` ou `...:12-30` (dentro de crases)
+const citadas = [...new Set([...texto.matchAll(/`([^`\s]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?`/g)].map((m) => m[0]))]
+  .map((c) => { const m = c.match(/`([^`\s]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?`/); return { cit: c, arq: m[1], ini: Number(m[2]), fim: Number(m[3] || m[2]) }; });
+
+function linhasDe(arq) {
+  const abs = path.isAbsolute(arq) ? [arq] : repos.map((r) => path.join(r, arq));
+  for (const a of abs) if (fs.existsSync(a) && fs.statSync(a).isFile()) return { onde: a, n: fs.readFileSync(a, 'utf8').split('\n').length };
+  for (const ref of refs) for (const r of repos) {
+    const rel = path.isAbsolute(arq) ? path.relative(r, arq) : arq;
+    if (rel.startsWith('..')) continue;
+    const g = spawnSync('git', ['-C', r, 'show', `${ref}:${rel}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    if (g.status === 0) return { onde: `${ref}:${rel} (${path.basename(r)})`, n: g.stdout.split('\n').length };
+  }
+  return null;
+}
+
+let ruins = 0;
+// [db:xxxxxxxx] = consulta que o mapa-db executou: só vale se o id estiver no log (o Claude não afirma o que não rodou).
+const citadasDb = [...new Set([...texto.matchAll(/\[db:([0-9a-f]{8})\]/g)].map((m) => m[1]))];
+if (citadasDb.length) {
+  const logArq = dbLog || path.join(path.dirname(md), '.mapa-db.jsonl');
+  let feitas = new Map();
+  try { for (const l of fs.readFileSync(logArq, 'utf8').split('\n').filter(Boolean)) { const j = JSON.parse(l); if (j.ok) feitas.set(j.id, j); } } catch {}
+  for (const id of citadasDb) if (!feitas.has(id)) { ruins++; console.log(`DB-FALTA [db:${id}]  não há consulta bem-sucedida com este id em ${logArq}`); }
+}
+for (const c of citadas) {
+  const l = linhasDe(c.arq);
+  if (!l) { ruins++; console.log(`FALTA   ${c.cit}  arquivo não encontrado`); continue; }
+  if (c.fim > l.n) { ruins++; console.log(`LINHA   ${c.cit}  o arquivo tem ${l.n} linhas (${l.onde})`); }
+}
+console.log(`${citadas.length} evidência(s) e ${citadasDb.length} consulta(s) de banco conferida(s), ${ruins} com problema.`);
+process.exit(ruins ? 1 : 0);

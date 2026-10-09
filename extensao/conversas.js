@@ -70,7 +70,7 @@ const estiloConversas = ESTILO_NOTAS + `<style>
   .corpo { flex: 1; min-width: 0; }
   .titulo { font-size: 12.5px; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
   .titulo span { overflow: hidden; text-overflow: ellipsis; }
-  .agora { flex: none; font-style: normal; font-size: 9.5px; font-weight: 600; padding: 0 6px; border-radius: 8px; color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+  .agora { flex: none; font-style: normal; font-size: 9.5px; font-weight: 600; padding: 0 6px; border-radius: var(--r-pill); color: var(--ok); background: color-mix(in srgb, var(--ok) 15%, transparent); }
   .meta { display: flex; align-items: center; gap: 10px; margin-top: 3px; font-size: 10.5px; color: var(--text-dim); }
   .meta .n { display: inline-flex; align-items: center; gap: 3px; }
   .meta svg { width: 12px; height: 12px; }
@@ -79,11 +79,11 @@ const estiloConversas = ESTILO_NOTAS + `<style>
     opacity: 0; transition: opacity 140ms; }
   ul.conversas > li:hover .del { opacity: 1; }
   .del:hover { background: color-mix(in srgb, var(--perigo) 14%, transparent); color: var(--perigo); }
-  .marca { flex: none; width: 16px; height: 16px; border-radius: var(--r-sm); border: 1.5px solid var(--text-dim); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; }
+  .marca { flex: none; width: 16px; height: 16px; border-radius: var(--r-sm); border: 1.5px solid var(--text-dim); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--on-cor); }
   li.sel .marca { background: var(--accent); border-color: var(--accent); }
   ul.conversas > li.sel { background: color-mix(in srgb, var(--accent) 14%, transparent); }
   li.bloqueada .marca { opacity: .25; }
-  .primario.perigo { background: #d13f3f; }
+  .primario.perigo { background: var(--danger); }
   .primario.perigo:hover { background: var(--perigo); }
   .primario:disabled { opacity: .4; cursor: default; box-shadow: none; }
   .fb-btn.contador { font-weight: 600; cursor: default; }
