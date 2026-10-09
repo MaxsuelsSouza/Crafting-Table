@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { trazerParaFrente } = require('./emulador');
@@ -20,7 +21,7 @@ exports.abrir = async () => {
 // ── Avisos para o Teams (Workflows/webhook) ──
 // Lê as linhas novas de <pasta do ticket>/.notificacoes.jsonl e faz POST de um Adaptive Card na URL guardada no Cofre
 // (TEAMS_WEBHOOK). A URL é segredo: nunca entra em log, mensagem de erro nem notificação.
-const TIPOS = ['sdd', 'pergunta', 'jira']; // ajuste aqui o que vai para o Teams (impacto tem regra própria, abaixo)
+const TIPOS = ['sdd', 'pergunta', 'jira']; // ajuste aqui o que vai para o Teams (mudanca tem regra própria, abaixo)
 const NIVEIS = ['MEDIO', 'ALTO']; // impacto abaixo disso não vai
 const COR = { ALTO: 'Attention', MEDIO: 'Warning' };
 const JANELA = 60e3; // linhas do mesmo ticket e tipo dentro disso viram uma mensagem
@@ -49,15 +50,17 @@ function mensagens(t, linhas, impactos = [], tarefas = []) {
   const abrir = ['Abrir no Jira', `${t.site}/browse/${t.chave}`];
   const out = [], grupos = [];
   for (const l of linhas) {
-    if (l.tipo === 'impacto') {
+    if (l.tipo === 'mudanca') { // mudança pedida em comentário do Jira, esperando decisão no painel
+      const quem = t.refinamento?.iniciadoPor;
+      if (quem && quem !== os.userInfo().username) continue; // o aviso é de quem iniciou o refinamento
       const nivel = /impacto (\w+)/i.exec(l.texto)?.[1].toUpperCase(); // "analisando o impacto" não casa
       if (!NIVEIS.includes(nivel)) continue;
       const autor = /^Comentário de (.+?): impacto/.exec(l.texto)?.[1];
       const i = impactos.slice().reverse().find((x) => x.nivel?.toUpperCase() === nivel && (!autor || x.autor === autor));
       const cards = (i?.cards || []).map((id) => tarefas.find((c) => c.id === id)?.jira || id);
-      out.push({ em: ms(l.em), msg: card({ titulo: `${t.chave} · Impacto ${nivel}`, texto: i ? `Comentário de ${i.autor}: ${i.resumo}` : l.texto,
+      out.push({ em: ms(l.em), msg: card({ titulo: `${t.chave} · Mudança pedida · ${nivel}`, texto: `${i ? `Comentário de ${i.autor}: ${i.resumo}` : l.texto}\nNada foi alterado: decida no painel.`,
         cor: COR[nivel], links: [abrir, ...(i?.link ? [['Ver comentário', i.link]] : [])],
-        fatos: [...(i && i.passo != null ? [['Spec', `voltou ao passo ${i.passo}`]] : []), ...(cards.length ? [['Revisar', cards.join(', ')]] : [])] }) });
+        fatos: [...(i && i.passo != null ? [['Spec', `passo ${i.passo} afetado`]] : []), ...(cards.length ? [['Revisar', cards.join(', ')]] : []), ...(quem ? [['Refinamento de', quem]] : [])] }) });
     } else if (TIPOS.includes(l.tipo)) {
       const g = grupos.find((x) => x.tipo === l.tipo && ms(l.em) - x.fim <= JANELA);
       if (g) { g.linhas.push(l); g.fim = ms(l.em); } else grupos.push({ tipo: l.tipo, linhas: [l], fim: ms(l.em) });

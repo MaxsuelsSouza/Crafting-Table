@@ -9,6 +9,7 @@ const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
 const maestro = require('./maestro');
+const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 
@@ -105,7 +106,6 @@ const DUVIDAS = '.duvidas.json'; // gravado pelo `sdd-state duvida add` (opção
 const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : []; return Array.isArray(l) ? l : []; };
 const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.contexto ? `\nContexto: ${x.contexto}` : ''}`;
 const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l : []; };
-const RESPOSTAS = '.respostas.json'; // fila de comentários a avaliar como resposta de dúvida (sdd-state duvida avaliar)
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
@@ -238,7 +238,7 @@ function cabecalho(t, { aba, secao, dentro }) {
 // Notificações: .notificacoes.jsonl da pasta (hook notificacoes.py e sdd-state); lidas = mais antigas que .notificacoes.lidas.
 // Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
 const NOTIF = '.notificacoes.jsonl', LIDAS = '.notificacoes.lidas';
-const ICONE_NOTIF = { fim: '✓', permissao: '⚠', sdd: '◆', duvida: '?', aviso: '•', jira: '◇' };
+const ICONE_NOTIF = { fim: '✓', permissao: '⚠', sdd: '◆', duvida: '?', aviso: '•', jira: '◇', mudanca: '⚠' };
 // Grava uma linha no 🔔 do ticket (o encaminhador do Teams lê as mesmas linhas).
 const notificar = (chave, tipo, texto) => { try { fs.appendFileSync(path.join(pasta(chave), NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo, texto }) + '\n'); } catch {} };
 const notifsDe = (dir) => {
@@ -425,6 +425,19 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .mud-q { color: var(--text-dim); } .mud-l1 a { color: var(--accent-soft); margin-left: auto; }
   .mud-tx { margin-top: 4px; line-height: 1.45; }
   .mud-ef { margin-top: 4px; font-size: 11px; color: var(--text-dim); }
+  .decisao { margin: 0 12px 12px; padding: 10px 12px; border-radius: var(--r-lg); border: 2px solid var(--perigo); background: color-mix(in srgb, var(--perigo) 7%, var(--surface)); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .dec-t { display: flex; align-items: center; gap: 8px; font-size: 12.5px; } .dec-ic { color: var(--perigo); }
+  .dec-fila { margin-left: auto; font-size: 10.5px; color: var(--text-dim); }
+  .dec-cm { padding: 6px 8px; border-radius: var(--r-md); background: var(--surface-2); font-style: italic; line-height: 1.45; word-break: break-word; }
+  .dec-op { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .dec-op button { padding: 4px 10px; border-radius: var(--r-md); font-size: 11.5px; font-weight: 600; border: 1px solid var(--border) !important; background: var(--surface) !important; color: var(--text); }
+  .dec-op button:first-child { background: var(--accent) !important; color: var(--on-cor); border-color: transparent !important; }
+  .dec-op .dec-nao { margin-left: auto; color: var(--perigo); border-color: color-mix(in srgb, var(--perigo) 50%, transparent) !important; }
+  .passo.s-atencao { border-color: #f58a1f; background: color-mix(in srgb, #f58a1f 12%, var(--surface-2)); opacity: 1; filter: none; }
+  .passo.s-atencao .num { background: #f58a1f; color: var(--on-cor); }
+  .aten { flex: none; color: #f58a1f; font-size: 13px; cursor: help; }
+  .tcard.tatencao { border-color: #f58a1f; background: color-mix(in srgb, #f58a1f 10%, var(--surface)); }
+  .tcard .taten { color: #f58a1f; margin-right: 4px; cursor: help; }
   .mud-ok { margin-top: 6px; padding: 2px 10px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
   .trev { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: color-mix(in srgb, var(--ia) 25%, transparent); color: var(--ia); }
   .tm-rev { padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--ia); background: color-mix(in srgb, var(--ia) 8%, transparent); }
@@ -666,7 +679,7 @@ const telaLista = (lista, erro, meus) => `${estilo}
   </div>
   ${caixaMeus(meus, lista)}`;
 
-function telaConstituicao(r, est, abertos) {
+function telaConstituicao(r, est, abertos, impactos = []) {
   if (!est) return `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>specs/NNN-…/</code> em ${esc(path.basename(r.spec?.repo || 'repositório'))} e começa pelo passo 0.</div>`;
   const abertas = est.perguntas.filter((q) => q.status === 'aberta');
   const bloq = est.achados.filter((a) => a.severidade === 'bloqueante' && a.status === 'aberto');
@@ -674,6 +687,7 @@ function telaConstituicao(r, est, abertos) {
     tecnologias: 'tecnologias', endpoints: 'endpoints', entidades: 'entidades', violacoes: 'violações', tarefas: 'tarefas', feitas: 'feitas',
     ultimaTarefa: 'última tarefa', ultimoCommit: 'último commit' };
   const vivo = !maestro.rodando(pasta(r.id)); // Aprovar só com o Claude parado
+  const atencao = mudancas.passosAfetados(impactos), decide = mudancas.pendentes(impactos).length > 0; // mudança pedida em comentário, ainda sem decisão
   const chip = (k, v, alerta) => `<span class="chip ${alerta ? 'alerta' : ''}">${esc(ROTULO[k] || k)}: ${esc(Array.isArray(v) ? v.join(', ') : v)}</span>`;
   return `<div class="sdd-topo"><b>${esc(est.feature)}</b> · ${esc(path.basename(r.spec.repo))}<br>Próxima ação: ${esc(est.proximaAcao || '')}</div>
   <div class="passos">${est.passos.map((p) => {
@@ -683,8 +697,9 @@ function telaConstituicao(r, est, abertos) {
     const extra = p.n === 2 && est.perguntas.length ? `<ul class="lista-mini">${est.perguntas.map((q) => `<li><b>${esc(q.id)}</b> ${esc(q.pergunta)} — ${q.status === 'respondida' ? esc(q.resposta) : `<i>${esc(q.status)}</i>`}</li>`).join('')}</ul>`
       : p.n === 5 && est.achados.length ? `<ul class="lista-mini">${est.achados.map((a) => `<li><b>${esc(a.id)}</b> [${esc(a.severidade)}] ${esc(a.descricao)} — <i>${esc(a.status)}</i></li>`).join('')}</ul>`
       : '';
-    return `<div class="passo s-${esc(p.status)}">
-      <div class="cab"><span class="num">${p.n}</span><span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
+    const aten = atencao.has(p.n) && p.status !== 'pendente';
+    return `<div class="passo s-${esc(p.status)}${aten ? ' s-atencao' : ''}">
+      <div class="cab"><span class="num">${p.n}</span>${aten ? '<span class="aten" title="Um comentário do Jira pediu uma mudança que pode atingir este passo. Nada foi alterado: decida na caixa vermelha acima.">⚠</span>' : ''}<span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
         <span class="st">${STATUS[p.status] || esc(p.status)}${p.versao ? ` · v${esc(p.versao)}` : ''}</span></div>
       ${p.status === 'pendente' ? '' : `<div class="corpo-passo">
         ${resumo.length ? `<div class="chips">${resumo.map(([k, v]) => chip(k, v, /viola|bloque|abertas/.test(k) && Number(v) > 0)).join('')}</div>` : ''}
@@ -700,8 +715,8 @@ function telaConstituicao(r, est, abertos) {
           ${p.hashAprovado && p.hash !== p.hashAprovado && fs.existsSync(copiaAprovada(r, p.n)) ? `<button class="fb-btn" data-acao="specMudancas" data-id="${p.n}" title="Diferença para a versão aprovada">Ver mudanças</button>` : ''}
         </div>
         ${p.status === 'aguardando_revisao' ? `<div class="acoes-passo">
-          <button class="aprovar ${vivo ? '' : 'travado'}" data-acao="specAprovar" data-id="${p.n}" ${!vivo || (lido && !portaoFechado) ? '' : 'disabled'}
-            title="${!vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
+          <button class="aprovar ${vivo && !decide ? '' : 'travado'}" data-acao="specAprovar" data-id="${p.n}" ${decide ? 'disabled' : !vivo || (lido && !portaoFechado) ? '' : 'disabled'}
+            title="${decide ? 'Decida primeiro a mudança pedida em comentário do Jira (caixa vermelha acima)' : !vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
           <button data-acao="specAjuste" data-id="${p.n}">Pedir ajuste</button></div>` : ''}
         ${p.status === 'desatualizado' ? `<div class="acoes-passo"><button data-acao="specContinuar">Reconciliar</button></div>` : ''}
       </div>`}
@@ -717,7 +732,7 @@ const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') 
 // Cards que ainda esperam decisão para o passo poder ser aprovado: dev (tNN) no passo 4, o [QA] no passo 6.
 const semDecisaoDo = (n, l) => l.filter((c) => (n === 6 ? c.tipo === 'qa' : c.tipo !== 'qa') && ['pendente', 'em_alteracao'].includes(c.status));
 
-function cartaoAgora(t, est, rodandoAgora, tarefas = []) {
+function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   const modo = t.refinamento?.estado;
   const passo = est && est.proximoPasso <= 6 ? est.passos[est.proximoPasso] : null;
   const abertas = est ? est.perguntas.filter((q) => q.status === 'aberta') : [];
@@ -728,10 +743,13 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = []) {
     // Perguntas em pilha: um card por vez, as outras como bordas atrás. ‹ › passa sem responder; ▦ mostra todas em grade
     // (a navegação é só na página: script "Pilha de perguntas" em pagina()). Respondeu, o card sai e a pilha anda.
     const resto = Math.min(abertas.length - 1, 2);
+    // Comentário do Jira que a triagem achou que responde a pergunta: só sugere, quem responde é você.
+    const sugestaoDe = (id) => { const i = impactos.find((x) => x.pergunta?.id === id); return i ? `<div class="pctx">💬 Comentário de <b>${esc(i.autor)}</b> parece responder: ${esc(i.pergunta.motivo)} <a href="${esc(i.link)}">ver comentário</a></div>` : ''; };
     const card = (q, i) => `<div class="pcard" data-pq="${i}" data-qid="${esc(q.id)}" ${i ? 'hidden' : ''}>
       <div class="pcab"><b>${esc(q.id)}</b>${q.passo !== undefined ? `<span>passo ${esc(q.passo)}</span>` : ''}</div>
       <div class="ptexto">${esc(q.pergunta)}</div>
       ${q.contexto ? `<div class="pctx">${esc(q.contexto)}</div>` : ''}
+      ${sugestaoDe(q.id)}
       <div class="popcoes">${(q.opcoes || []).map((o, k) => `<button data-acao="responder" data-id="${esc(q.id)}" data-op="${k}">${esc(o)}</button>`).join('')}</div>
       <div class="prod"><button data-acao="responder" data-id="${esc(q.id)}" data-op="outra">Outra resposta…</button>
         <button class="duv" data-acao="responder" data-id="${esc(q.id)}" data-op="duvida">Tirar dúvida</button></div>
@@ -774,15 +792,16 @@ const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>$
 const STATUS_T = { pendente: 'Pendente', em_alteracao: 'Claude alterando', aprovada: 'Aprovada', reprovada: 'Reprovada' };
 const COLUNAS_T = [['Pendentes', ['pendente', 'em_alteracao']], ['Aprovadas', ['aprovada']], ['Reprovadas', ['reprovada']]];
 const iniciais = () => (os.userInfo().username.split(/[._-]/).map((x) => x[0]).join('').slice(0, 2) || 'EU').toUpperCase();
-function telaTarefas(t, l) {
+function telaTarefas(t, l, impactos = []) {
+  const atencao = mudancas.cardsAfetados(impactos);
   if (!l.length) return `<div class="folha"><div class="vazio-aba">Nenhuma tarefa ainda.<br>No passo 4 da spec o Claude cria as tarefas e elas aparecem aqui como cards,
     para você aprovar (vira subtarefa no Jira em ${esc(t.chave)}), reprovar ou pedir alteração.</div></div>`;
   const chip = (c) => `${c.camada ? `<span class="tcam cam-${esc(c.camada)}">${esc(c.camada)}</span>` : ''}
     ${c.estimativa ? `<span class="test" title="Estimativa original">⏱ ${esc(c.estimativa)}</span>` : ''}
     ${c.jira ? `<span class="tjira">${esc(c.jira)}</span>` : ''}
     ${c.vinculado ? `<span class="tav" title="Vinculada a você">${esc(iniciais())}</span>` : ''}`;
-  const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
-    <div class="ttit">${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
+  const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''} ${atencao.has(c.id) ? 'tatencao' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
+    <div class="ttit">${atencao.has(c.id) ? '<span class="taten" title="Uma mudança pedida em comentário do Jira pode atingir este card (aguarda sua decisão na aba Spec)">⚠</span>' : ''}${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
     ${c.tipo === 'qa' && c.resumo ? `<div class="tres">${esc(c.resumo)}</div>` : ''}
     ${c.status === 'em_alteracao' ? '<div class="tproc"><span class="vivo-bola"></span>Claude alterando…</div>' : ''}
     <div class="tpe"><span class="tid">${esc(c.id)}</span>${chip(c)}</div></div>`;
@@ -828,17 +847,34 @@ function telaTarefas(t, l) {
 
 // Mudanças vindas de comentários do Jira: o vigia acha, o Claude mede (nível) e regride a spec; aqui você vê e dá ciência.
 const NIVEL = { alto: ['ALTO', 'var(--danger)'], medio: ['MÉDIO', 'var(--warn)'], baixo: ['BAIXO', 'var(--ok)'], nenhum: ['SEM IMPACTO', 'var(--text-dim)'] };
+// Mudança pedida em comentário que espera você: a spec NÃO foi alterada. Uma por vez, a mais antiga primeiro.
+function caixaDecisao(l) {
+  const p = mudancas.pendentes(l);
+  if (!p.length) return '';
+  const i = p[0], [rot, cor] = NIVEL[i.nivel] || [i.nivel, 'var(--perigo)'];
+  const bt = (op, texto, cls = '') => `<button class="${cls}" data-acao="mudancaDecidir" data-id="${esc(i.id)}" data-op="${op}">${esc(texto)}</button>`;
+  return `<div class="decisao"><div class="dec-t"><span class="dec-ic">⚠</span><b>Mudança pedida no ticket</b>
+      <span class="mud-niv" style="--cor:${cor}">${esc(rot)}</span>${p.length > 1 ? `<span class="dec-fila">+${p.length - 1} na fila</span>` : ''}</div>
+    <div class="mud-l1"><b>${esc(i.autor || 'alguém')}</b><span class="mud-q">${esc(quando(i.data))}</span><a href="${esc(i.link)}">ver comentário</a></div>
+    <div class="dec-cm">${esc((i.texto || '').slice(0, 300))}</div>
+    <div class="mud-tx">${esc(i.resumo || '')}</div>
+    <div class="mud-ef"><b>A spec ainda não foi alterada.</b> ${Number.isInteger(i.passo) ? `Passo afetado: ${esc(i.passo)} (e os que dependem dele). ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))}.` : ''}</div>
+    <div class="dec-op">${(i.opcoes || []).map((o, k) => bt(k, o.rotulo)).join('')}${bt('nao', 'Não prosseguir', 'dec-nao')}</div></div>`;
+}
+
+const VISIVEIS = ['na_fila', 'triagem', 'triando', 'analisando', 'aplicando', 'aplicado', 'erro', 'analisado']; // os demais já foram decididos
 function caixaMudancas(l) {
-  const vis = l.filter((i) => i.status !== 'ciente' && !(i.status === 'analisado' && i.nivel === 'nenhum')).slice().reverse().slice(0, 5);
+  const vis = l.filter((i) => VISIVEIS.includes(i.status) && !(i.status === 'analisado' && i.nivel === 'nenhum')).slice().reverse().slice(0, 5);
   if (!vis.length) return '';
   return `<div class="caixa-t">Mudanças por comentário<span>${vis.length}</span></div><div class="mudancas">${vis.map((i) => {
     const [rot, cor] = NIVEL[i.nivel] || ['ANALISANDO', 'var(--ia)'];
     return `<div class="mud" style="--cor:${cor}">
-      <div class="mud-l1"><span class="mud-niv">${i.status === 'analisado' ? rot : i.status === 'erro' ? 'NÃO ANALISADO' : '<span class="vivo-bola"></span>ANALISANDO'}</span>
+      <div class="mud-l1"><span class="mud-niv">${i.status === 'analisado' ? rot : i.status === 'aplicado' ? 'APLICADA' : i.status === 'erro' ? 'NÃO CONCLUÍDO' : `<span class="vivo-bola"></span>${i.status === 'aplicando' ? 'APLICANDO' : i.status === 'triagem' || i.status === 'triando' ? 'TRIANDO' : 'ANALISANDO'}`}</span>
         <b>${esc(i.autor || 'alguém')}</b><span class="mud-q">${esc(quando(i.data))}</span><a href="${esc(i.link)}">ver comentário</a></div>
       <div class="mud-tx">${esc(i.resumo || (i.texto || '').slice(0, 220))}</div>
-      ${i.status === 'analisado' && i.nivel !== 'nenhum' ? `<div class="mud-ef">${i.passo !== null && i.passo !== undefined ? `Spec voltou ao passo ${esc(i.passo)}. ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))} (revise na aba Tarefas).` : ''}</div>` : ''}
-      ${i.status !== 'na_fila' && i.status !== 'analisando' ? `<button class="mud-ok" data-acao="impactoCiente" data-id="${esc(i.id)}">Ciente</button>` : ''}
+      ${['analisado', 'aplicado'].includes(i.status) && i.nivel !== 'nenhum' ? `<div class="mud-ef">${i.passo !== null && i.passo !== undefined ? `Spec voltou ao passo ${esc(i.passo)}. ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))} (revise na aba Tarefas).` : ''}</div>` : ''}
+      ${!['na_fila', 'triagem', 'triando', 'analisando', 'aplicando'].includes(i.status) ? `<button class="mud-ok" data-acao="impactoCiente" data-id="${esc(i.id)}">Ciente</button>` : ''}
+      ${['aplicado', 'erro'].includes(i.status) && i.snapshot ? `<button class="mud-ok" data-acao="mudancaDesfazer" data-id="${esc(i.id)}" title="Volta a spec e os cards ao estado de antes da aplicação">Desfazer</button>` : ''}
     </div>`;
   }).join('')}</div>`;
 }
@@ -864,7 +900,7 @@ function corpoAba(t, aba, d) {
     <div class="caixa-t">Notas</div>
     <div class="notas-caixa">${notas.corpoNotas(semTicket ? 'Notas desta conversa…' : 'Notas do ticket…')}</div>`;
   }
-  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas) : ''}${caixaMudancas(d.impactos)}${aoVivoHtml(d.vivo, d.vivoRodando)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos)
+  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${aoVivoHtml(d.vivo, d.vivoRodando)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
@@ -880,7 +916,7 @@ function corpoAba(t, aba, d) {
           : `<span class="fb-sep"></span><button class="fb-btn" data-acao="handoffCriar" data-id="${d.lado}">Criar arquivo</button>`}
       </div></div></div>`;
   }
-  if (aba === 'tarefas') return telaTarefas(t, d.tarefas);
+  if (aba === 'tarefas') return telaTarefas(t, d.tarefas, d.impactos);
   if (aba === 'decisoes') return `<div class="folha">${d.decisoes.length ? `<div class="hist">${d.decisoes.map((x) => `
     <details class="decisao" data-dec="${esc(x.id)}">
       <summary><span class="quando">${esc(quando(x.data))}</span><span class="dtitulo">${esc(x.titulo)}</span>
@@ -1318,43 +1354,60 @@ exports.provider = (ctx) => {
       alterando.clear();
       if (mudou) gravar(t.chave, TAREFAS, l);
     }
-    const rl = ler(path.join(pasta(t.chave), RESPOSTAS), []);
-    if (rl.some((c) => c.status === 'analisando')) { rl.forEach((c) => { if (c.status === 'analisando') c.status = 'erro'; }); gravar(t.chave, RESPOSTAS, rl); }
     avisarImpactos(t);
-    filaDuvidas(t);
+    filaTriagem(t);
     filaImpactos(t);
     filaTarefas(t);
   };
-  // Comentário analisado: avisa quem iniciou o refinamento (esta máquina) com o nível; não analisado vira erro.
+  // Execução terminou: o que ficou sem registro vira erro; a análise que mexeu na spec é desfeita; decisão pendente e
+  // aplicação concluída avisam quem iniciou o refinamento (esta máquina).
   const avisarImpactos = (t) => {
     const l = impactosDe(pasta(t.chave));
     let mudou = false;
+    const spec = dirSpec(ticketDe(t.chave) || t);
     for (const i of l) {
-      if (i.status === 'analisando') { i.status = 'erro'; i.resumo = 'O Claude não registrou a análise deste comentário (sdd-state impacto registrar).'; mudou = true; }
-      if (i.status === 'analisado' && !i.avisado) {
+      const falta = { triando: 'a triagem (sdd-state comentario classificar)', analisando: 'a análise (sdd-state impacto registrar)', aplicando: 'a aplicação (sdd-state impacto aplicado): confira os arquivos ou desfaça' }[i.status];
+      if (falta) { i.resumo = `O Claude não registrou ${falta} deste comentário.`; i.status = 'erro'; mudou = true; }
+      if (i.snapAnalise) { // a análise é só leitura: se a spec mudou, volta ao que era
+        const id = `a${i.id}`;
+        if (mudancas.alterou(pasta(t.chave), spec, id) && mudancas.restaurar(pasta(t.chave), spec, id)) {
+          Object.assign(i, { status: 'erro', resumo: 'A análise alterou a spec (era só para medir): desfeito automaticamente. Peça a análise de novo.' });
+        }
+        fs.rmSync(path.join(pasta(t.chave), 'snapshots', id), { recursive: true, force: true });
+        delete i.snapAnalise; mudou = true;
+      }
+      if (['analisado', 'aguardando_decisao', 'aplicado'].includes(i.status) && !i.avisado) {
         i.avisado = true; mudou = true;
         if (i.nivel === 'nenhum') continue;
         const quem = tickets.ler(t.chave)?.refinamento?.iniciadoPor;
-        vscode.window.showWarningMessage(`${t.chave}: comentário de ${i.autor} — impacto ${(NIVEL[i.nivel] || [i.nivel])[0]}.${quem ? ` (refinamento de ${quem})` : ''}`,
-          { detail: `${i.resumo}${i.passo !== null && i.passo !== undefined ? `\nA spec voltou ao passo ${i.passo}.` : ''}${(i.cards || []).length ? `\nSubtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
+        const decide = i.status === 'aguardando_decisao';
+        vscode.window.showWarningMessage(`${t.chave}: comentário de ${i.autor} — impacto ${(NIVEL[i.nivel] || [i.nivel])[0]}.${decide ? ' Nada foi alterado: decida na aba Spec.' : ''}${quem ? ` (refinamento de ${quem})` : ''}`,
+          { detail: `${i.resumo}${i.passo !== null && i.passo !== undefined ? `
+${decide ? 'Passo afetado' : 'A spec voltou ao passo'} ${i.passo}.` : ''}${(i.cards || []).length ? `
+Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
           .then((b) => { if (b) { this_abrir(t.chave, 'spec'); } });
       }
     }
     if (mudou) gravar(t.chave, IMPACTOS, l);
   };
-  // Comentário novo + dúvida enviada ao ticket sem resposta: o Claude avalia se responde alguma e só SUGERE
-  // (sdd-state duvida avaliar); o humano confirma na aba Dúvidas. Roda antes da análise de impacto.
-  const filaDuvidas = (t) => {
+  // Etapa 0: comentário novo que pode responder uma dúvida enviada ao ticket ou uma pergunta aberta do Claude.
+  // O Claude classifica (sdd-state comentario classificar): resposta (só sugere; o humano confirma), mudança (segue para
+  // o impacto) ou ruído. Sem dúvida nem pergunta abertas não há o que responder: o comentário vai direto ao impacto.
+  const abertasDe = (t) => ({
+    duvidas: duvidasDe(pasta(t.chave)).filter((x) => x.enviadaEm && !x.resposta),
+    perguntas: (estadoSpec(ticketDe(t.chave) || t)?.perguntas || []).filter((q) => q.status === 'aberta')
+  });
+  const filaTriagem = (t) => {
     if (maestro.rodando(pasta(t.chave))) return;
-    const abertas = duvidasDe(pasta(t.chave)).filter((x) => x.enviadaEm && !x.resposta);
-    const l = ler(path.join(pasta(t.chave), RESPOSTAS), []), c = l.find((x) => x.status === 'na_fila');
+    const l = impactosDe(pasta(t.chave)), c = l.find((x) => x.status === 'triagem');
     if (!c) return;
-    if (!abertas.length) { c.status = 'analisado'; gravar(t.chave, RESPOSTAS, l); return; }
-    c.status = 'analisando';
-    gravar(t.chave, RESPOSTAS, l);
-    etapa(ticketDe(t.chave), `[duvida] Comentário novo no ticket ${t.chave}: ele responde alguma dúvida enviada? Siga a seção "Comentário novo que pode responder uma dúvida" da skill sdd.\n`
-      + `Dúvidas enviadas sem resposta:\n${abertas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma: avalie sem --duvida)'}\n`
-      + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Avaliando comentário de ${c.autor}`);
+    const { duvidas, perguntas } = abertasDe(t);
+    c.status = 'triando';
+    gravar(t.chave, IMPACTOS, l);
+    etapa(ticketDe(t.chave), `[triagem] Comentário novo no ticket ${t.chave}: resposta, mudança ou ruído? Siga a seção "Triagem de comentário novo do Jira" da skill sdd.\n`
+      + `Dúvidas enviadas sem resposta:\n${duvidas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma)'}\n`
+      + `Perguntas abertas do Claude:\n${perguntas.map((q) => `- ${q.id}: ${q.pergunta}${q.opcoes?.length ? ` (opções: ${q.opcoes.join(' / ')})` : ''}`).join('\n') || '(nenhuma)'}\n`
+      + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Triando comentário de ${c.autor}`);
   };
   // Um comentário por vez, numa execução nova (o Claude lê o refinamento inteiro do disco).
   const filaImpactos = (t) => {
@@ -1362,8 +1415,9 @@ exports.provider = (ctx) => {
     const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.status === 'na_fila');
     if (!i) return;
     i.status = 'analisando';
+    try { mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), `a${i.id}`); i.snapAnalise = true; } catch {}
     gravar(t.chave, IMPACTOS, l);
-    etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do Jira" da skill sdd.\n`
+    etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do Jira" da skill sdd: SÓ ANÁLISE, não edite a spec nem os cards.\n`
       + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`);
   };
   // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
@@ -1380,19 +1434,14 @@ exports.provider = (ctx) => {
         if (!v) { tickets.gravar({ ...t, vigiaComentarios: { desde: new Date().toISOString(), vistos: cs.map((c) => c.id) } }); continue; }
         const novos = cs.filter((c) => !v.vistos.includes(c.id) && c.autorId !== eu.id && Date.parse(c.data) >= Date.parse(v.desde) - 60000);
         if (!novos.length) continue;
-        const l = impactosDe(pasta(t.chave));
+        const l = impactosDe(pasta(t.chave)), ab = abertasDe(t), temAberta = ab.duvidas.length || ab.perguntas.length;
         for (const c of novos) {
-          if (!l.some((i) => i.id === c.id)) l.push({ ...c, status: 'na_fila' });
+          if (!l.some((i) => i.id === c.id)) l.push({ ...c, status: temAberta ? 'triagem' : 'na_fila' });
           notificar(t.chave, 'impacto', `Comentário novo de ${c.autor}: analisando o impacto no refinamento`);
         }
         gravar(t.chave, IMPACTOS, l);
-        if (duvidasDe(pasta(t.chave)).some((x) => x.enviadaEm && !x.resposta)) {
-          const rl = ler(path.join(pasta(t.chave), RESPOSTAS), []);
-          for (const c of novos) if (!rl.some((i) => i.id === c.id)) rl.push({ ...c, status: 'na_fila' });
-          gravar(t.chave, RESPOSTAS, rl);
-        }
         tickets.gravar({ ...tickets.ler(t.chave), vigiaComentarios: { ...v, vistos: [...new Set([...v.vistos, ...novos.map((c) => c.id)])] } });
-        filaDuvidas(t);
+        filaTriagem(t);
         filaImpactos(t);
       }
     } finally { vigiando = false; }
@@ -1428,7 +1477,7 @@ exports.provider = (ctx) => {
   };
   const seguir = (t) => {
     const est = estadoSpec(t);
-    if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || est.proximoPasso > 6) return false;
+    if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(pasta(t.chave))).length || est.proximoPasso > 6) return false;
     const novas = respondidas.splice(0).join('; ');
     const reprovadas = est.proximoPasso === 5 ? tarefasDe(pasta(t.chave)).filter((c) => c.status === 'reprovada') : [];
     return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${est.proximoPasso} (${est.passos[est.proximoPasso].titulo}).`
@@ -1730,6 +1779,7 @@ exports.provider = (ctx) => {
     async specAprovar({ id }) {
       const r = ticketAberto(), n = Number(id), est = estadoSpec(r);
       if (maestro.rodando(pasta(r.id))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
+      if (mudancas.pendentes(impactosDe(pasta(r.id))).length) return vscode.window.showWarningMessage('Há uma mudança pedida em comentário do Jira esperando sua decisão (caixa vermelha acima): decida antes de aprovar.');
       const cards = tarefasDe(pasta(r.id));
       const semDecisao = [4, 6].includes(n) ? semDecisaoDo(n, cards) : [];
       if (semDecisao.length) { aba = 'tarefas'; render(); return vscode.window.showWarningMessage(n === 4 ? `Decida as tarefas antes de aprovar o passo 4: ${semDecisao.length} sem decisão (${semDecisao.map((x) => x.id).join(', ')}).` : 'Decida o card [QA] na aba Tarefas antes de aprovar o passo 6.'); }
@@ -1893,6 +1943,48 @@ exports.provider = (ctx) => {
       delete cacheJira[t.chave];
       render();
     },
+    // Decisão sobre a mudança pedida em comentário. "Não prosseguir" descarta (a spec nunca foi tocada); manter só registra;
+    // consultar vira uma dúvida para o PO; aplicar guarda um snapshot e manda o Claude regredir ([aplicar]).
+    async mudancaDecidir({ id, op }) {
+      const t = ticketAberto();
+      if (!t) return;
+      const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.id === id && x.status === 'aguardando_decisao');
+      const o = op === 'nao' ? null : (i?.opcoes || [])[Number(op)];
+      if (!i || (op !== 'nao' && !o)) return;
+      if (o?.tipo === 'aplicar' && maestro.rodando(pasta(t.chave))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar para aplicar.');
+      const ok = await vscode.window.showWarningMessage(`${o ? o.rotulo : 'Não prosseguir'}?`, { modal: true, detail: !o ? 'A mudança do comentário é descartada e a spec segue como estava (nada foi alterado).'
+        : o.tipo === 'aplicar' ? `O Claude vai regredir a spec: ${o.instrucao || o.rotulo}
+Um snapshot é guardado: dá para desfazer depois.`
+        : o.tipo === 'consultar' ? 'Vira uma dúvida (aba Dúvidas) para você enviar ao ticket; a spec espera a resposta.' : 'Nada muda na spec.' }, 'Confirmar');
+      if (!ok) return;
+      i.decisao = { opcao: o ? o.rotulo : 'Não prosseguir', tipo: o ? o.tipo : 'nao_prosseguir', por: os.userInfo().username, em: new Date().toISOString() };
+      if (!o) i.status = 'descartado';
+      else if (o.tipo === 'aplicar') {
+        mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), i.id);
+        Object.assign(i, { snapshot: true, status: 'aplicando' });
+      } else i.status = 'decidido';
+      gravar(t.chave, IMPACTOS, l);
+      if (o?.tipo === 'consultar') await sdd(['duvida', 'add', '--ref', pasta(t.chave), '--texto', o.instrucao || o.rotulo, '--contexto', `Comentário de ${i.autor}: ${i.resumo}`]);
+      if (o?.tipo === 'aplicar') etapa(ticketDe(t.chave), `[aplicar] Mudança escolhida no ticket ${t.chave}. Siga a seção "Aplicar a mudança escolhida" da skill sdd.\n`
+        + `Opção escolhida: ${o.rotulo}\nInstrução: ${o.instrucao || o.rotulo}\nImpacto: ${i.nivel} — ${i.resumo} (passo ${i.passo ?? '?'}; cards ${(i.cards || []).join(', ') || 'nenhum'})\n`
+        + `Comentário id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Aplicando mudança de ${i.autor}`);
+      render();
+    },
+    // "Não prosseguir" depois de aplicar: volta a spec e os cards ao snapshot de antes da aplicação.
+    async mudancaDesfazer({ id }) {
+      const t = ticketAberto();
+      if (!t) return;
+      const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.id === id && ['aplicado', 'erro'].includes(x.status) && x.snapshot);
+      if (!i) return;
+      if (maestro.rodando(pasta(t.chave))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
+      const ok = await vscode.window.showWarningMessage('Desfazer a mudança?', { modal: true, detail: 'A spec e os cards voltam ao estado de antes de aplicar. Subtarefas já atualizadas no Jira não são mexidas.' }, 'Desfazer');
+      if (!ok) return;
+      if (!mudancas.restaurar(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), i.id)) return vscode.window.showErrorMessage('Snapshot não encontrado: nada foi desfeito.');
+      i.status = 'desfeito';
+      gravar(t.chave, IMPACTOS, l);
+      vscode.window.showInformationMessage('Mudança desfeita: spec e cards voltaram ao estado anterior.');
+      render();
+    },
     async impactoCiente({ id }) {
       const l = impactosDe(pasta(aberto)), i = l.find((x) => x.id === id);
       if (!i) return;
@@ -2029,4 +2121,4 @@ exports.provider = (ctx) => {
   );
 };
 
-exports._teste = { markdown, telaLista, telaTicket, cabecalho, pagina, SEM_TICKET };
+exports._teste = { markdown, telaLista, telaTicket, cabecalho, pagina, SEM_TICKET, caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas };

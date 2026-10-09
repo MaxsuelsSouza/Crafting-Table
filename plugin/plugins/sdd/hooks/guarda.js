@@ -19,7 +19,7 @@ const arquivo = entrada.file_path || entrada.notebook_path || '';
 if (dados.hook_event_name === 'PreToolUse') {
   if (/sdd-state\.json$/.test(arquivo)) negar('O estado da spec só muda pelo sdd-state (iniciar/concluir/pergunta/achado/tarefa).');
   if (/\.(tarefas|impactos)\.json$/.test(arquivo)) negar('Cards e impactos só mudam pelo sdd-state (card / impacto registrar); aprovar e aplicar no Jira é do humano, na aba Tarefas.');
-  if (/\.(duvidas|respostas)\.json$/.test(arquivo)) negar('Dúvidas só mudam pelo sdd-state (duvida add / duvida avaliar); responder é do humano, na aba Dúvidas.');
+  if (/\.(duvidas|respostas)\.json$/.test(arquivo)) negar('Dúvidas só mudam pelo sdd-state (duvida add / comentario classificar); responder é do humano, na aba Dúvidas.');
   const cmd = String(entrada.command || '');
   if (/\.(tarefas|impactos)\.json/.test(cmd) &&/(>|\btee\b|sed\s+-i|\bmv\b|\bcp\b|python|node\s+-e|perl|\bjq\b.*>)/.test(cmd)) negar('Não altere .tarefas.json diretamente; use sdd-state card.');
   if (/\.(duvidas|respostas)\.json/.test(cmd) && /(>|\btee\b|sed\s+-i|\bmv\b|\bcp\b|python|node\s+-e|perl|\bjq\b.*>)/.test(cmd)) negar('Não altere as dúvidas diretamente; use sdd-state duvida.');

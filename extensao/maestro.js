@@ -42,6 +42,8 @@ const SDD = {
   ajuste: (a) => `Reabrindo o passo ${a.n} para ajuste`,
   aprovar: () => 'Tentou aprovar um passo (só você aprova)',
   pergunta: (a) => (a.sub === 'add' ? `Pergunta para você: “${a.opt.texto || ''}”` : a.sub === 'responder' ? 'Registrando sua resposta' : 'Descartando uma pergunta'),
+  comentario: (a) => `Comentário classificado: ${({ resposta: 'responde uma pergunta', mudanca: 'pede mudança', ruido: 'sem ação' })[a.opt.tipo] || ''}`,
+  impacto: (a) => (a.sub === 'aplicado' ? 'Mudança aplicada na spec' : `Análise do comentário registrada (impacto ${a.opt.nivel || ''})`),
   duvida: (a) => `Dúvida registrada: “${a.opt.texto || ''}”`,
   achado: (a) => (a.sub === 'add' ? `Achado ${a.opt.severidade || ''}: ${a.opt.descricao || ''}` : a.sub === 'resolver' ? 'Achado resolvido' : 'Achado aceito com justificativa'),
   tarefa: (a) => `Tarefa ${a.sub}: ${STATUS_TAREFA[a.opt.status] || a.opt.status || ''}`

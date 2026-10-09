@@ -132,6 +132,17 @@ Bibliotecas: `@grpc/grpc-js` e `@grpc/proto-loader` (print do emulador).
 - Mudou o `package.json` (abas, ícones, nomes)? Feche o VS Code inteiro (`Ctrl+Q`) e abra de novo. O *Reload Window* não relê o manifesto.
 - Mudou só `.js`? `Ctrl+Shift+P` → **Developer: Reload Window**.
 
+## Comentário do Jira que muda a spec
+
+O vigia olha os comentários dos tickets com spec a cada 5 min. Cada comentário novo passa por:
+
+1. **Triagem** (só se há dúvida enviada ou pergunta aberta): o Claude diz se é *resposta* (só sugere; você confirma na aba Dúvidas ou no card da pergunta), *mudança* ou *ruído*.
+2. **Análise** (só leitura): nível, passos e cards atingidos e até 3 opções. **A spec não é alterada.** Se a análise mexer nos arquivos, a extensão desfaz sozinha.
+3. **Decisão**: caixa de borda vermelha acima do Ao vivo, passos e cards afetados ficam laranja com ⚠, e Aprovar/Continuar ficam travados (também no `sdd-state`). Opções: *aplicar* (snapshot + o Claude regride a spec), *manter*, *consultar* (vira dúvida para o PO) e **Não prosseguir** (descarta; depois de aplicar, **Desfazer** restaura o snapshot).
+4. **Teams**: o card "Mudança pedida" sai para quem iniciou o refinamento (médio/alto). Cofre: `TEAMS_WEBHOOK`; teste pela paleta: *Crafting Table: Testar aviso para o Teams*.
+
+Testes: `node extensao/teste-teams.js`, `node extensao/teste-mudancas.js`, `node plugin/plugins/sdd/teste-triagem.js`.
+
 ## Limitações conhecidas
 
 - O **@** cola pela área de transferência (a extensão do Claude não tem API para escrever na conversa atual). A área de transferência volta ao conteúdo anterior logo depois.

@@ -49,39 +49,60 @@ responde por botões. Nessas execuções:
   as regras do backend.", "Vou comparar o plano com a constituição." Sem markdown, sem caminho de arquivo, sem jargão
   de ferramenta. Ao terminar a execução, uma frase dizendo o que ficou pronto e o que o humano faz agora.
 
-## Mudança vinda de comentário do Jira (mensagem com `[impacto]`)
+## Mudança vinda de comentário do Jira (mensagem com `[impacto]`) — **só análise**
 
-O vigia da Crafting Table viu um comentário novo de outra pessoa (PO, QA, dev) no ticket e te passa id, autor,
-data, link e texto. Seu trabalho: medir o impacto, regredir a spec se precisar e propor o texto novo das
-subtarefas que já estão no Jira. **Você não escreve no Jira**: quem aplica é o humano, pela aba Tarefas.
+O vigia da Crafting Table viu um comentário novo de outra pessoa (PO, QA, dev) no ticket que a triagem classificou como
+mudança (ou que não havia o que triar) e te passa id, autor, data, link e texto. Seu trabalho: medir o impacto e
+**propor opções**. **Não edite spec, plano, tarefas, testes nem cards, e não rode `check`**: nada muda até o humano
+escolher na caixa vermelha da aba Spec. Você também não escreve no Jira.
 
 1. Compare o comentário com `spec.md` (RFs, critérios, fora de escopo, clarificações), `plan.md`, `tasks.md`,
    `testes.md` e os cards (os aprovados têm a chave do Jira).
 2. **Nível**: `nenhum` (conversa, status, agradecimento) · `baixo` (ajuste pontual sem mudar RF: texto, exemplo,
    nome) · `medio` (muda um RF, critério de aceite, campo ou contrato) · `alto` (muda escopo, regra central ou
    fluxo; inclui/remove RF; troca camada).
-3. `sdd-state impacto registrar <id> --ref <pasta> --nivel … --resumo '<o que muda, 1–2 frases>'
-   --passo <primeiro passo afetado> --cards <ids afetados, ex. t02,t05,qa>`. Nível `nenhum` → termine aqui.
-4. **Regrida** aplicando a mudança no **primeiro artefato afetado** (spec.md se muda RF/regra; plan.md se só a
-   parte técnica; tasks.md/testes.md se só tarefa/teste), com nota datada: `> Mudança de <data> — comentário de
-   <autor> (<link>): <o que mudou>`. Rode `sdd-state check`: o passo editado volta para revisão e os seguintes
-   ficam desatualizados. **Não** reconcilie os passos seguintes agora (isso acontece quando o humano reaprovar).
-5. Cards atingidos: ainda pendentes → `card editar`; **já aprovados (no Jira)** → `card revisar tNN --ref <pasta>
+3. Registre: `sdd-state impacto registrar <id> --ref <pasta> --nivel … --resumo '<o que muda, 1–2 frases>'
+   --passo <primeiro passo afetado> --cards <ids afetados, ex. t02,t05,qa> --opcoes '<JSON>'`.
+   Nível `nenhum` → termine aqui (sem `--opcoes`).
+4. `--opcoes`: 1 a 3 itens `{"rotulo":"<texto do botão, ligado ao comentário>","tipo":"aplicar|manter|consultar","instrucao":"<o que fazer>"}`.
+   - `aplicar`: regride a spec com a mudança (a instrução diz como, ex. "trocar a cor do botão para vermelho nos RFs e testes");
+   - `manter`: nada muda na spec (o humano responde no ticket por fora);
+   - `consultar`: vira uma dúvida para o PO (a instrução é o texto da pergunta; a spec espera a resposta).
+   A recomendada primeiro, terminando com "(Recomendado)". "Não prosseguir" **não** entra: a extensão acrescenta.
+5. Termine com uma frase: nível, o que mudaria e quais passos/cards seriam atingidos. Ela aparece no Ao vivo.
+
+## Aplicar a mudança escolhida (mensagem com `[aplicar]`)
+
+O humano escolheu uma opção do tipo `aplicar` (a mensagem traz id, autor, link, texto do comentário, o rótulo e a
+instrução da opção). A extensão já guardou um snapshot para desfazer. Agora sim, regrida:
+
+1. Aplique a mudança no **primeiro artefato afetado** (spec.md se muda RF/regra; plan.md se só a parte técnica;
+   tasks.md/testes.md se só tarefa/teste), com nota datada: `> Mudança de <data> — comentário de <autor> (<link>):
+   <o que mudou>`. Rode `sdd-state check`: o passo editado volta para revisão e os seguintes ficam desatualizados.
+   **Não** reconcilie os passos seguintes agora (isso acontece quando o humano reaprovar).
+2. Cards atingidos: ainda pendentes → `card editar`; **já aprovados (no Jira)** → `card revisar tNN --ref <pasta>
    --motivo '<a mudança> (comentário de <autor>)' --comentario <link> --descricao '<descrição nova completa>'`
    (e `--titulo`/`--pronto`/`--estimativa` se mudarem). Card `qa` aprovado → ajuste `testes.md` e
    `card revisar qa --motivo … --comentario <link>`.
-6. Termine com uma frase: nível, o que mudou, quais passos voltaram e quais subtarefas precisam ser atualizadas.
+3. Feche: `sdd-state impacto aplicado <id> --ref <pasta> --resumo '<o que mudou, quais passos voltaram, quais subtarefas revisar>'`
+   e termine com essa frase.
 
-## Comentário novo que pode responder uma dúvida (mensagem com `[duvida]`)
+## Triagem de comentário novo do Jira (mensagem com `[triagem]`)
 
-A mensagem traz as dúvidas já enviadas ao ticket e ainda sem resposta, e um comentário novo (id, autor, link, texto).
-Você só **sugere**: quem confirma é o humano, na aba Dúvidas.
+A mensagem traz um comentário novo (id, autor, link, texto), as dúvidas `Dnn` já enviadas ao ticket sem resposta e as
+perguntas `Qnn` ainda abertas. **Só leitura**: não edite spec, plano, tarefas nem cards. Seu trabalho é dizer o que o
+comentário é, antes de qualquer análise de impacto.
 
-1. O comentário responde, de fato, alguma dessas dúvidas (mesmo assunto e decide o ponto perguntado)? Conversa,
+1. **resposta** — decide, de fato, o ponto de uma dúvida/pergunta listada (mesmo assunto, resposta clara). Conversa,
    status, agradecimento ou resposta parcial/vaga **não** contam.
-2. Sim → `sdd-state duvida avaliar <id do comentário> --ref <pasta> --duvida Dnn --motivo '<1 frase: o que o comentário decide>'`.
-   Não → `sdd-state duvida avaliar <id do comentário> --ref <pasta>`.
-3. Não edite a spec nem avance nada: termine com uma frase.
+2. **mudanca** — altera algo que a spec já assume (requisito, critério, campo, contrato, regra, escopo), mesmo que
+   também responda uma dúvida. Em caso de dúvida entre resposta e mudança, escolha `mudanca`.
+3. **ruido** — conversa, status, agradecimento, nada a decidir.
+4. Registre uma vez: `sdd-state comentario classificar <id> --ref <pasta> --tipo resposta|mudanca|ruido
+   --motivo '<1 frase>' [--duvida Dnn | --pergunta Qnn]` (`resposta` exige `--duvida` ou `--pergunta`; em `mudanca`
+   que também responde algo, informe o `--duvida`/`--pergunta` para a sugestão não se perder).
+5. Você só **sugere** a resposta: quem confirma é o humano (aba Dúvidas ou card da pergunta). `mudanca` segue sozinha
+   para a análise de impacto em outra execução. Termine com uma frase.
 
 ## Protocolo de início (`/sdd:iniciar <pasta> [repo]`)
 
