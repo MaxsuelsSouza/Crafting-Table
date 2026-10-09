@@ -8,6 +8,7 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
+const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./locais'); // onde cada coisa mora
 const maestro = require('./maestro');
 const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
@@ -34,8 +35,6 @@ const gravar = (id, nome, dado) => {
 };
 // Análise por camada (cards Backend/Mobile da aba Análise): o mapeamento do passo 3 mora na PASTA DA SPEC (versionado, viaja
 // com a spec para quem for implementar). Fora de ~/.claude de propósito: o Claude Code bloqueia a escrita ali ("arquivo sensível").
-const HANDOFF = { backend: 'mapa-backend.md', mobile: 'mapa-mobile.md' };
-const HANDOFF_LEGADO = { backend: '.handoff-backend.md', mobile: '.handoff-mobile.md' }; // antes: pasta do ticket; ainda é lido se existir
 const NOTAS = '.notas.html';
 const ORIGEM = '.origem.json'; // { "arquivo.pdf": { origem: 'jira', id: '123' } }: documentos que vieram de fora
 const TAREFAS = '.tarefas.json'; // cards das tarefas do passo 4 (sdd-state card); aprovar/reprovar é daqui
@@ -54,16 +53,7 @@ function pluginInstalado(prefixo) {
 }
 function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
-const dirSpec = (r) => (r.spec?.repo && r.spec?.dir ? path.join(r.spec.repo, r.spec.dir) : null);
-// Arquivo da análise de uma camada: o da spec; se ainda não existe e há um antigo na pasta do ticket, usa o antigo.
-function arqHandoff(r, lado) {
-  const novo = dirSpec(r) && path.join(dirSpec(r), HANDOFF[lado]);
-  const legado = path.join(pasta(r.id || r.chave), HANDOFF_LEGADO[lado]);
-  return novo && (fs.existsSync(novo) || !fs.existsSync(legado)) ? novo : legado;
-}
 const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.json'), null) : null);
-const arquivoPasso = (r, n) => (n === 0 ? path.join(r.spec.repo, 'constitution.md')
-  : path.join(dirSpec(r), { 1: 'spec.md', 2: 'spec.md', 3: 'plan.md', 4: 'tasks.md', 5: 'analise.md', 6: 'testes.md' }[n]));
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 
 
@@ -109,6 +99,13 @@ const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : 
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
+// Docs do ticket = pasta do ticket + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
+function docsDoTicket(t) {
+  const docs = docsDe(pastaDe(t.id));
+  const vistos = new Set(docs.map((x) => x.origem || x.full));
+  for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
+  return docs.sort((a, b) => b.mtime - a.mtime);
+}
 
 // ── Telas ──
 const IC = {
@@ -1285,7 +1282,7 @@ exports.provider = (ctx) => {
     const dir = pastaDe(t.id);
     const d = {
       dir, lado, abertos,
-      docs: docsDe(dir),
+      docs: t.id === SEM_TICKET ? docsDe(dir) : docsDoTicket(t),
       handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
       tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
       decisoes: decisoesDe(dir),
@@ -1366,7 +1363,7 @@ exports.provider = (ctx) => {
       extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
         '--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
       prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-        + (dirSpec(t) ? `\nPasta da spec (grave aqui spec, plano, testes e as análises mapa-backend.md/mapa-mobile.md; ~/.claude é bloqueada para escrita): ${dirSpec(t)}` : '')
+        + ondeSalvar(t)
         + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
         + ` · plugin mapa: ${MAPA} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
         + `\nBanco de dados: ${bd.MAPA_DB_CONEXAO && bd.MAPA_DB_AMBIENTE && bd.MAPA_DB_AMBIENTE !== 'producao' ? `configurado (${bd.MAPA_DB_AMBIENTE === 'qas' ? 'QAS' : 'cópia de produção'}): use mapa-db (só leitura)` : 'NÃO configurado: não consulte banco; liste as consultas como pendência'}`
@@ -1901,7 +1898,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       render();
     },
     docAbrir({ id }) {
-      const d = docsDe(pastaDe(aberto)).find((x) => x.nome === id);
+      const d = (ticketDe(aberto) ? docsDoTicket(ticketDe(aberto)) : docsDe(pastaDe(aberto))).find((x) => x.nome === id);
       if (!d || d.quebrado) return;
       const uri = vscode.Uri.file(d.origem || d.full);
       if (/\.md$/i.test(d.nome)) vscode.commands.executeCommand('markdown.showPreview', uri);
@@ -1909,7 +1906,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       else vscode.commands.executeCommand('vscode.open', uri);
     },
     docMencionar({ id }) {
-      const d = docsDe(pastaDe(aberto)).find((x) => x.nome === id);
+      const d = (ticketDe(aberto) ? docsDoTicket(ticketDe(aberto)) : docsDe(pastaDe(aberto))).find((x) => x.nome === id);
       if (d && !d.quebrado) mencionar(`@${d.origem || d.full}`);
     },
     handoffMencionar({ id }) { if (HANDOFF[id]) mencionar(`@${arqHandoff(ticketDe(aberto), id)}`); },
