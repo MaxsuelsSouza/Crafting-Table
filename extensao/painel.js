@@ -9,7 +9,7 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida } = require('./refinamento/locais'); // onde cada coisa mora
+const { dirSpec, arquivoPasso, arqHandoff, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida } = require('./refinamento/locais'); // onde cada coisa mora
 const { IC } = require('./componentes/icones');
 const { markdown } = require('./componentes/markdown');
 const { quando, iniciais } = require('./componentes/formato');
@@ -21,11 +21,11 @@ const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anex
 const pill = require('./componentes/pill'); // pills de status (cabeçalho do ticket, cards e vinculados)
 const listaTickets = require('./componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
 const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
-const implementacoes = require('./implementacoes/implementacoes'); // módulo Implementações (rótulo, vinculados, textos)
 const configuracao = require('./configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
 const mudancas = require('./refinamento/mudancas');
 const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
+const conversas = require('./conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 
@@ -104,16 +104,6 @@ function escolherMencoes(t, secrets) {
     qp.onDidHide(() => { clearTimeout(timer); qp.dispose(); if (!fim) resolve(undefined); });
     titulo(); inicio(); qp.show();
   });
-}
-const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
-// Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
-// Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
-function docsDoTicket(t) {
-  const docs = docsDe(pastaAba(t.id));
-  if (!naRaiz()) { const jira = ler(path.join(pasta(t.id), ORIGEM), {}); docs.push(...docsDe(pasta(t.id)).filter((d) => jira[d.nome])); }
-  const vistos = new Set(docs.map((x) => x.origem || x.full));
-  for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
-  return docs.sort((a, b) => b.mtime - a.mtime);
 }
 
 // ── Telas ──
@@ -844,35 +834,6 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
 </script></body></html>`;
 }
 
-// ── Vínculo com as conversas do Claude ──
-const projeto = () => require('./conversas')._teste.projeto();
-// Histórico da conversa: no projeto atual ou em outro (o ticket junta conversas de repositórios diferentes).
-const jsonl = (sid) => require('./conversas')._teste.historico(sid);
-function inicioDa(sid) {
-  const t = (lerTexto(jsonl(sid)) || '').match(/"timestamp":"([^"]+)"/)?.[1];
-  return t ? Date.parse(t) : Date.now();
-}
-// Conversa com histórico, aberta depois do pedido, que menciona a pasta do ticket (está no texto pré-preenchido).
-function localizarConversa(t) {
-  let nomes;
-  try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return null; }
-  const desde = t.pedidoEm - 5000;
-  return nomes.map((n) => path.basename(n, '.jsonl'))
-    .filter((sid) => !tickets.ticketDa(sid))
-    .filter((sid) => { try { return fs.statSync(jsonl(sid)).mtimeMs >= desde; } catch { return false; } })
-    .filter((sid) => (lerTexto(jsonl(sid)) || '').includes(tickets.pasta(t.chave, t.pedidoLista)) && inicioDa(sid) >= desde)
-    .sort((a, b) => inicioDa(a) - inicioDa(b))[0] || null;
-}
-// Título da conversa: a mesma linha que o /rename do Claude grava (custom-title vence o ai-title).
-function titularConversa(sid, titulo, tentativas = 20) {
-  const arq = jsonl(sid);
-  if (!fs.existsSync(arq)) { if (tentativas) setTimeout(() => titularConversa(sid, titulo, tentativas - 1), 1500); return; }
-  const atual = fs.readFileSync(arq, 'utf8');
-  fs.appendFileSync(arq, (atual.endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: titulo }) + '\n');
-}
-const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoLista());
-
-
 exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
   const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
@@ -885,7 +846,6 @@ exports.provider = (ctx) => {
     if (conf.aberta()) render();
   }));
   const conf = configuracao.criar(ctx, { render: () => render(), voltar: IC.voltar, aoAbrir: () => { lista.fecharPrevia(); aberto = null; sessao.focar(null); } });
-  const baixando = new Set(); // ids de anexos sendo baixados
   let avisarMoldura = () => {}, pedirSecao = (/** @type {string} */ _secao) => {};
   for (const m of ['comandos', 'emulador']) require('./' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
@@ -919,7 +879,7 @@ exports.provider = (ctx) => {
     const dir = pastaDe(t.id), dirAba = pastaAba(t.id);
     const d = {
       dir, lado, abertos,
-      docs: t.id === SEM_TICKET ? docsDe(dir) : docsDoTicket(t),
+      docs: t.id === SEM_TICKET ? abaDocs.docsDe(dir) : abaDocs.docsDoTicket(servicos, t),
       handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
       tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
       decisoes: decisoesDe(dirAba),
@@ -929,7 +889,7 @@ exports.provider = (ctx) => {
       estado: dirSpec(t) ? estadoSpec(t) : null,
       jira: cacheJira[t.id],
       origens: dir ? ler(path.join(dir, ORIGEM), {}) : {},
-      baixando
+      baixando: abaDocs.baixando
     };
     view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
       ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
@@ -1149,21 +1109,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
       + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : ''), false, undefined, `Passo ${est.proximoPasso} · ${est.passos[est.proximoPasso].titulo}`);
   };
-  const pedido = (t) => (naRaiz() ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${pasta(t.chave)} (documentos, notas em ${NOTAS}, `
-    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
-    // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : implementacoes.ETAPA}\n${t.link}\n`
-      + `Pasta desta etapa: ${pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
-      + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
-      + `Anexos do Jira em ${pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
-  // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
-  const abrirConversa = async (t, texto) => {
-    const sid = ultimaConversa(t);
-    if (sid) return vscode.commands.executeCommand('claude-vscode.editor.open', sid, texto);
-    tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now(), pedidoLista: sessao.focoLista() });
-    await vscode.commands.executeCommand('claude-vscode.editor.open', undefined, texto || pedido(t));
-  };
-
   const respondidas = []; // respostas ainda não entregues ao Claude
   const sdd = (args) => new Promise((ok) => (sddState() ? require('child_process').execFile(sddState(), args, (e, out, err) => {
     if (e) vscode.window.showErrorMessage(String(err || e.message).replace(/^sdd-state: /, ''));
@@ -1176,7 +1121,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     pasta, pastaAba, gravar, notificar, reposDe, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
@@ -1259,12 +1204,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       gravar(t.chave, DUVIDAS, l); render();
     },
     jira() { const t = ticketAberto(); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); },
-    async claude() {
-      const t = ticketAberto();
-      if (t) return abrirConversa(t);
-      const sid = sessao.conversaAtual();
-      return vscode.commands.executeCommand('claude-vscode.editor.open', sid || undefined);
-    },
     // ▶ Iniciar refinamento: modo aguardando_inicio + conversa nova que o hook do plugin sdd acorda com o /sdd:iniciar.
     // A spec mora no repositório de specs (craftingTable.specsDir), em <CHAVE>-<slug>/. Spec já existente: continua de onde parou.
     async refinar() {
@@ -1370,53 +1309,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
         respondidas.length = 0;
       }
       render();
-    },
-    docAbrir({ id }) {
-      const d = (ticketDe(aberto) ? docsDoTicket(ticketDe(aberto)) : docsDe(pastaDe(aberto))).find((x) => x.nome === id);
-      if (!d || d.quebrado) return;
-      const uri = vscode.Uri.file(d.origem || d.full);
-      if (/\.md$/i.test(d.nome)) vscode.commands.executeCommand('markdown.showPreview', uri);
-      else if (/\.(html?|pdf|docx|xlsx|pptx)$/i.test(d.nome)) vscode.env.openExternal(uri);
-      else vscode.commands.executeCommand('vscode.open', uri);
-    },
-    docMencionar({ id }) {
-      const d = (ticketDe(aberto) ? docsDoTicket(ticketDe(aberto)) : docsDe(pastaDe(aberto))).find((x) => x.nome === id);
-      if (d && !d.quebrado) mencionar(`@${d.origem || d.full}`);
-    },
-    handoffMencionar({ id }) { if (HANDOFF[id]) mencionar(`@${arqHandoff(ticketDe(aberto), id)}`); },
-    handoffPrevia({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arqHandoff(ticketDe(aberto), id))); },
-    handoffEditar({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('vscode.open', vscode.Uri.file(arqHandoff(ticketDe(aberto), id))); },
-    handoffCriar({ id }) {
-      const t = ticketAberto();
-      if (!t || !HANDOFF[id]) return;
-      const arq = arqHandoff(t, id);
-      fs.mkdirSync(path.dirname(arq), { recursive: true });
-      fs.writeFileSync(arq, `# Análise ${id} — ${t.chave} ${t.titulo || ''}\n\n## O que foi analisado\n\n## Arquivos e pontos de alteração\n\n## Riscos e dúvidas\n`);
-      acoes.handoffEditar({ id });
-    },
-    // Anexo do Jira → pasta do ticket (nome repetido ganha sufixo), marcado em .origem.json como vindo do Jira.
-    async anexoBaixar({ id }) {
-      const chave = aberto, a = cacheJira[chave]?.anexos?.find((x) => x.id === id);
-      if (!a || baixando.has(id)) return;
-      baixando.add(id);
-      render();
-      try {
-        const auth = await jira.credenciais(ctx.secrets);
-        if (!auth) throw new Error('credenciais do Jira não informadas');
-        const r = await fetch(a.url, { headers: { Authorization: auth } });
-        if (!r.ok) throw new Error(`Jira respondeu ${r.status}`);
-        const dir = pasta(chave), { name, ext } = path.parse(a.nome);
-        let nome = a.nome;
-        for (let n = 2; fs.existsSync(path.join(dir, nome)); n++) nome = `${name}-${n}${ext}`;
-        fs.writeFileSync(path.join(dir, nome), Buffer.from(await r.arrayBuffer()));
-        const origens = ler(path.join(dir, ORIGEM), {});
-        fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: 'jira', id } }, null, 1));
-      } catch (e) {
-        vscode.window.showErrorMessage(`Não consegui baixar ${a.nome}: ${e.message}`);
-      } finally {
-        baixando.delete(id);
-        render();
-      }
     },
     // ── Tarefas ──
     tarefaCampo({ id, campo, valor }) {
@@ -1596,51 +1488,16 @@ Um snapshot é guardado: dá para desfazer depois.`
       gravar(t.chave, TAREFAS, l);
       render();
       filaTarefas(t);
-    },
-    async anexoTodos() {
-      for (const a of abaDocs.pendentes(cacheJira[aberto]?.anexos, ler(path.join(pasta(aberto), ORIGEM), {}))) await this.anexoBaixar({ id: a.id });
     }
-  };
-
-  // Editor de notas (notas.js): o sid que vem da página é o ticket (ou Sem ticket) em que a nota foi aberta,
-  // então um salvamento atrasado nunca cai em outro ticket.
-  const daNota = (m) => {
-    const dir = m.sid && pastaAba(m.sid);
-    if (!dir) return;
-    fs.mkdirSync(dir, { recursive: true });
-    if (m.tipo === 'salvar' || m.tipo === 'mencionar') {
-      try { fs.writeFileSync(path.join(dir, NOTAS), m.html); view?.webview.postMessage({ tipo: 'salvo', sid: m.sid, seq: m.seq }); }
-      catch (e) { view?.webview.postMessage({ tipo: 'salvo', sid: m.sid, seq: m.seq, erro: e.message }); }
-    }
-    if (m.tipo === 'estilo') fs.writeFileSync(path.join(dir, '.notas.json'), JSON.stringify(m.estilo));
-    if (m.tipo === 'mencionar') mencionar(`@${path.join(dir, NOTAS)}${m.trecho ? ` (trecho: "${m.trecho.slice(0, 300)}")` : ''}`);
-    if (m.tipo === 'colar') vscode.env.clipboard.readText().then((texto) => view?.webview.postMessage({ tipo: 'colado', texto }));
-  };
-
-  // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
-  const reconciliar = () => {
-    let mudou = false;
-    for (const t of tickets.listar()) {
-      if (!t.pedidoEm) continue;
-      const sid = localizarConversa(t);
-      if (sid) {
-        tickets.vincular(sid, t.chave, t.pedidoLista);
-        const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
-        tickets.gravar(resto);
-        titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
-        mudou = true;
-      } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
-    }
-    if (mudou) render();
   };
 
   const provider = {
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? daNota(m) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
-      view.onDidChangeVisibility(() => { if (view.visible) { reconciliar(); render(); } });
-      reconciliar();
+      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.onDidChangeVisibility(() => { if (view.visible) { conversas.reconciliar(servicos); render(); } });
+      conversas.reconciliar(servicos);
       render();
     },
     // Cabeçalho e rodapé do ticket em volta das seções de outros módulos (Comandos, Evidências…).
@@ -1657,7 +1514,7 @@ Um snapshot é guardado: dá para desfazer depois.`
   };
 
   return vscode.Disposable.from(
-    sessao.onDidChange(() => { setTimeout(reconciliar, 1500); if (aberto === SEM_TICKET) render(); }), // dá tempo de o Claude gravar a 1ª mensagem
+    sessao.onDidChange(() => { setTimeout(conversas.reconciliar, 1500, servicos); if (aberto === SEM_TICKET) render(); }), // dá tempo de o Claude gravar a 1ª mensagem
     { dispose: fechar },
     require('./grupo').registrar(PRINCIPAL, provider)
   );

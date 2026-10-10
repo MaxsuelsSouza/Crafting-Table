@@ -1,5 +1,9 @@
 // @ts-check
+const vscode = require('vscode');
+const fs = require('fs');
+const path = require('path');
 const { FC } = require('./marca');
+const { NOTAS } = require('./refinamento/locais');
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // Editor de notas (aba Docs do ticket): <pasta do ticket ou da conversa>/.notas.html e .notas.json (aparência).
@@ -351,4 +355,20 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   });
 })();`;
 
-exports.editor = { CSS_NOTAS, corpoNotas, scriptNotas, ESTILO_PADRAO };
+
+// Mensagens do editor (a página manda { tipo, sid, ... }): o sid é o ticket (ou Sem ticket) em que a nota foi aberta,
+// então um salvamento atrasado nunca cai em outro ticket. pastaAba(sid) dá a pasta; postar manda a resposta à página.
+const receber = (m, { pastaAba, postar, mencionar }) => {
+  const dir = m.sid && pastaAba(m.sid);
+  if (!dir) return;
+  fs.mkdirSync(dir, { recursive: true });
+  if (m.tipo === 'salvar' || m.tipo === 'mencionar') {
+    try { fs.writeFileSync(path.join(dir, NOTAS), m.html); postar({ tipo: 'salvo', sid: m.sid, seq: m.seq }); }
+    catch (e) { postar({ tipo: 'salvo', sid: m.sid, seq: m.seq, erro: e.message }); }
+  }
+  if (m.tipo === 'estilo') fs.writeFileSync(path.join(dir, '.notas.json'), JSON.stringify(m.estilo));
+  if (m.tipo === 'mencionar') mencionar(`@${path.join(dir, NOTAS)}${m.trecho ? ` (trecho: "${m.trecho.slice(0, 300)}")` : ''}`);
+  if (m.tipo === 'colar') vscode.env.clipboard.readText().then((texto) => postar({ tipo: 'colado', texto }));
+};
+
+exports.editor = { CSS_NOTAS, corpoNotas, scriptNotas, ESTILO_PADRAO, receber };

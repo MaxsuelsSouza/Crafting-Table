@@ -215,4 +215,80 @@ exports.provider = () => {
   );
 };
 
+// ── Vínculo com as conversas do Claude (ticket ↔ conversa) ──
+const { HANDOFF, dirSpec, lerTexto, NOTAS, TAREFAS } = require('./refinamento/locais');
+const jsonl = (sid) => historico(sid);
+function inicioDa(sid) {
+  const t = (lerTexto(jsonl(sid)) || '').match(/"timestamp":"([^"]+)"/)?.[1];
+  return t ? Date.parse(t) : Date.now();
+}
+// Conversa com histórico, aberta depois do pedido, que menciona a pasta do ticket (está no texto pré-preenchido).
+function localizarConversa(t) {
+  const tickets = require('./tickets');
+  let nomes;
+  try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return null; }
+  const desde = t.pedidoEm - 5000;
+  return nomes.map((n) => path.basename(n, '.jsonl'))
+    .filter((sid) => !tickets.ticketDa(sid))
+    .filter((sid) => { try { return fs.statSync(jsonl(sid)).mtimeMs >= desde; } catch { return false; } })
+    .filter((sid) => (lerTexto(jsonl(sid)) || '').includes(tickets.pasta(t.chave, t.pedidoLista)) && inicioDa(sid) >= desde)
+    .sort((a, b) => inicioDa(a) - inicioDa(b))[0] || null;
+}
+// Título da conversa: a mesma linha que o /rename do Claude grava (custom-title vence o ai-title).
+function titularConversa(sid, titulo, tentativas = 20) {
+  const arq = jsonl(sid);
+  if (!fs.existsSync(arq)) { if (tentativas) setTimeout(() => titularConversa(sid, titulo, tentativas - 1), 1500); return; }
+  const atual = fs.readFileSync(arq, 'utf8');
+  fs.appendFileSync(arq, (atual.endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: titulo }) + '\n');
+}
+const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoLista());
+
+// Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
+const reconciliar = (s) => {
+  const tickets = require('./tickets'), implementacoes = require('./implementacoes/implementacoes');
+  let mudou = false;
+  for (const t of tickets.listar()) {
+    if (!t.pedidoEm) continue;
+    const sid = localizarConversa(t);
+    if (sid) {
+      tickets.vincular(sid, t.chave, t.pedidoLista);
+      const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
+      tickets.gravar(resto);
+      titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
+      mudou = true;
+    } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
+  }
+  if (mudou) s.render();
+};
+
+const pedido = (s, t) => {
+  const tickets = require('./tickets'), implementacoes = require('./implementacoes/implementacoes');
+  return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
+    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
+    // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : implementacoes.ETAPA}\n${t.link}\n`
+      + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
+      + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
+      + `Anexos do Jira em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
+};
+// Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
+const abrirConversa = async (s, t, texto) => {
+  const tickets = require('./tickets');
+  const sid = ultimaConversa(t);
+  if (sid) return vscode.commands.executeCommand('claude-vscode.editor.open', sid, texto);
+  tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now(), pedidoLista: sessao.focoLista() });
+  await vscode.commands.executeCommand('claude-vscode.editor.open', undefined, texto || pedido(s, t));
+};
+
+const acoes = (s) => ({
+  async claude() {
+    const t = s.ticketAberto();
+    if (t) return abrirConversa(s, t);
+    const sid = sessao.conversaAtual();
+    return vscode.commands.executeCommand('claude-vscode.editor.open', sid || undefined);
+  }
+});
+
+exports.reconciliar = reconciliar;
+exports.acoes = acoes;
 exports._teste = { listar, rastros, titulo, projeto, historico };
