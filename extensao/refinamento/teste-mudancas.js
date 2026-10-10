@@ -7,7 +7,8 @@ const Module = /** @type {any} */ (require('module')); const load = Module._load
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
 const { caixaDecisao, caixaMudancas } = mud;
-const { telaConstituicao, telaTarefas, cabecalho } = require('../painel')._teste;
+const { telaConstituicao, cabecalho } = require('../painel')._teste;
+const { telaTarefas } = require('./tarefas');
 
 // ── mudancas.js: passos em atenção, snapshot, alterou, restaurar ──
 const imp = (o) => ({ id: '9', autor: 'PO Fulano', data: '2026-10-08T10:00:00Z', link: 'https://j/9', texto: 'o botão agora é vermelho', resumo: 'Cor do botão muda', ...o });
