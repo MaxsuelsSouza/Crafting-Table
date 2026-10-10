@@ -1,7 +1,7 @@
 // @ts-check
 const vscode = require('vscode');
-const jira = require('../ticket').jira;
-const { esc } = require('../ticket')._teste;
+const jira = require('../infra/ticket').jira;
+const { esc } = require('../infra/ticket')._teste;
 const { DUVIDAS, duvidasDe, textoDuvida, ticketDe } = require('./locais');
 const { quando } = require('../componentes/formato');
 

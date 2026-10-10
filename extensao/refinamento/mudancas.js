@@ -3,8 +3,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const maestro = require('../maestro');
-const { esc } = require('../ticket')._teste;
+const maestro = require('../painel/maestro');
+const { esc } = require('../infra/ticket')._teste;
 const { quando } = require('../componentes/formato');
 const { dirSpec, IMPACTOS, impactosDe, ticketDe } = require('./locais');
 

@@ -1,5 +1,5 @@
 // @ts-check
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const pill = require('./pill');
 
 // Componente "Card do ticket": um <li> da lista de tickets (componentes/lista-tickets.js) com o nome, a chave, a pill do

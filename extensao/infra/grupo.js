@@ -1,6 +1,7 @@
 // @ts-check
 const { CSS: MARCA, fontesCss } = require('./marca');
 const vscode = require('vscode');
+const rodape = require('../componentes/rodape');
 
 // Junta várias telas numa só view (uma seção visível por vez).
 // Cada módulo continua igual: registra a sua tela por aqui e recebe uma view "de mentira";
@@ -34,10 +35,7 @@ const MENU_CSS = `<style>
 //   [data-painel="cmd"]    manda { acao: cmd, id } para a principal sem trocar de seção (botões da moldura)
 const script = (n) => `<script${n}>(() => {
     const api = acquireVsCodeApi(); window.acquireVsCodeApi = () => api;
-    // Clique fora de uma caixa aberta do rodapé (notificações, comandos) fecha: o clique no <summary> alterna e avisa o painel, como um clique do usuário.
-    document.addEventListener('click', (e) => {
-      document.querySelectorAll('.ct-rod details[open]').forEach((d) => { if (!d.contains(e.target)) d.querySelector('summary').click(); });
-    }, true);
+    ${rodape.script()}
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-secao],[data-painel]');
       if (!b) return;
@@ -112,7 +110,7 @@ function montarGrupo(grupo, real) {
   const vis = {}, msg = {}, htmls = {};
   const alvos = [real]; // a view da barra lateral e, na tela cheia, a aba do editor: todas mostram a mesma coisa
   const desenhar = () => alvos.forEach((a) => { a.webview.html = comMenu(htmls[atual], grupo, atual, moldura, a.webview); });
-  const opcoes = { enableScripts: true, localResourceRoots: [vscode.Uri.file(__dirname)] };
+  const opcoes = { enableScripts: true, localResourceRoots: [vscode.Uri.file(require('path').join(__dirname, '..'))] };
   real.webview.options = opcoes;
 
   for (const id of ids) if (JUNTAS[id]) secoes[id] = { provider: juntar(JUNTAS[id]) };
@@ -180,8 +178,8 @@ async function abrirTelaCheia() {
   if (!montados[g]) return vscode.window.showWarningMessage('Abra a Crafting Table na barra lateral uma vez antes de usar a tela cheia.');
   if (painelCheia) painelCheia.reveal(vscode.ViewColumn.Active);
   else {
-    const p = vscode.window.createWebviewPanel('claudeAbas.cheia', 'Crafting Table', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.file(__dirname)] });
-    p.iconPath = vscode.Uri.file(require('path').join(__dirname, 'icons', 'crafting-table.png'));
+    const p = vscode.window.createWebviewPanel('claudeAbas.cheia', 'Crafting Table', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.file(require('path').join(__dirname, '..'))] });
+    p.iconPath = vscode.Uri.file(require('path').join(__dirname, '..', 'icons', 'crafting-table.png'));
     const alvo = { webview: p.webview, get visible() { return p.visible; }, onDidChangeVisibility: (f) => p.onDidChangeViewState(f), onDidDispose: p.onDidDispose };
     painelCheia = p;
     p.onDidDispose(() => { montados[g]?.remover(alvo); painelCheia = null; vscode.commands.executeCommand('setContext', 'claudeAbas.cheia', false); });

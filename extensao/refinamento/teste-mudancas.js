@@ -7,7 +7,7 @@ const Module = /** @type {any} */ (require('module')); const load = Module._load
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
 const { caixaDecisao, caixaMudancas } = mud;
-const { cabecalho } = require('../moldura');
+const { cabecalho } = require('../painel/moldura');
 const { telaConstituicao } = require('./spec');
 const { telaTarefas } = require('./tarefas');
 
@@ -96,7 +96,7 @@ assert.strictEqual(sdd('impacto', 'registrar', '9', '--nivel', 'nenhum', '--resu
 assert.strictEqual(lerI()[0].status, 'analisado');
 
 // menu do cabeçalho: cada lista com as suas abas (componentes/menu-abas.js); Evidências logo depois de Docs só no QA
-const sessao = require('../sessao');
+const sessao = require('../infra/sessao');
 const abasNa = (lista) => { sessao.focoLista = () => lista; return [...cabecalho({ id: 'WMS-1', chave: 'WMS-1' }, { aba: 'docs', secao: 'claudeAbas.painel', dentro: true })
   .matchAll(/data-(?:id|secao)="([^"]+)"[^>]*>(?:Docs|Spec|Ticket|Análise|Tarefas|Decisões|Dúvidas|Massa|Evidências|Conversas)/g)].map((m) => m[1]); };
 assert.deepStrictEqual(abasNa('refinamento'), ['docs', 'spec', 'ticket', 'analise', 'tarefas', 'decisoes', 'duvidas', 'claudeAbas.conversas']);

@@ -5,7 +5,7 @@ const Module = /** @type {any} */ (require('module')); const load = Module._load
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const impl = require('./implementacoes');
 const { filtrar } = require('../componentes/vinculados');
-const tickets = require('../tickets');
+const tickets = require('../infra/tickets');
 const menu = require('../componentes/menu-modulos');
 
 const itens = ['Buffer', 'Não iniciado', 'In progress', 'em andamento', 'Pronto para QA'].map((status) => ({ status }));

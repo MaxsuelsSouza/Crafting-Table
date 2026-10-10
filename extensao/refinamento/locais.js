@@ -1,7 +1,7 @@
 // @ts-check
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../tickets');
+const tickets = require('../infra/tickets');
 
 // FONTE ÚNICA de "onde cada coisa mora". Mudou um local? Muda só aqui (painel, prompts e abas leem daqui).
 //

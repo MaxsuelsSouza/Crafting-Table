@@ -3,8 +3,8 @@ const vscode = require('vscode');
 const crypto = require('crypto');
 const path = require('path');
 const { execFile } = require('child_process');
-const botao = require('./componentes/botao');
-const cardComando = require('./componentes/card-comando');
+const botao = require('../componentes/botao');
+const cardComando = require('../componentes/card-comando');
 
 // Descendentes do shell do terminal (o shell em si fica de fora: matar ele fecha o terminal).
 function descendentes(raiz) {
@@ -142,7 +142,7 @@ exports.provider = (ctx) => {
       const b = achar(id);
       const shell = await terminalDe(b)?.processId;
       const pids = shell ? (await descendentes(shell)).map((p) => p.pid) : [];
-      require('./claude').mencionar(`[Comando "${b.nome}" da Crafting Table · comando: \`${b.comando}\` · pasta: ${b.pasta} · ${shell ? `rodando no terminal "${b.nome}" (shell PID ${shell}${pids.length ? `, processos ${pids.join(', ')}` : ''})` : 'parado'}]`);
+      require('../infra/claude').mencionar(`[Comando "${b.nome}" da Crafting Table · comando: \`${b.comando}\` · pasta: ${b.pasta} · ${shell ? `rodando no terminal "${b.nome}" (shell PID ${shell}${pids.length ? `, processos ${pids.join(', ')}` : ''})` : 'parado'}]`);
     },
     mostrar: ({ id }) => terminalDe(achar(id))?.show(),
     parar: ({ id }) => terminalDe(achar(id))?.dispose()

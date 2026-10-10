@@ -2,8 +2,8 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const { RAIZ } = require('./sessao');
-const emulador = require('./emulador');
+const { RAIZ } = require('../infra/sessao');
+const emulador = require('../modulos/emulador');
 
 // Ponte com a skill testes-funcionais, sem modificá-la. O hook ~/.claude/hooks/crafting-testes.py
 // deixa pedidos em PEDIDOS; aqui cada um é confirmado (renomeado para .ok, o hook espera por isso)
@@ -22,11 +22,11 @@ async function ambiente(p) {
       vscode.window.showWarningMessage(`${aparelhos.length} aparelhos conectados (${aparelhos.map((a) => a.serial).join(', ')}). A skill chama o adb sem escolher o aparelho e pode falhar: deixe só um ligado.`);
     }
   }
-  for (const b of p.botoes || []) await require('./comandos').garantir(b);
+  for (const b of p.botoes || []) await require('../modulos/comandos').garantir(b);
 }
 
 function gravar(p) {
-  const ev = require('./evidencias');
+  const ev = require('../modulos/evidencias');
   if (p.acao === 'iniciar') ev.gravar({ sid: p.sid, chave: p.chave, continuo: true });
   else ev.pararGravacao();
 }

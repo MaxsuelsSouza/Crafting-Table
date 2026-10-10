@@ -3,10 +3,10 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { esc } = require('../ticket')._teste;
-const jira = require('../ticket').jira;
-const tickets = require('../tickets');
-const maestro = require('../maestro');
+const { esc } = require('../infra/ticket')._teste;
+const jira = require('../infra/ticket').jira;
+const tickets = require('../infra/tickets');
+const maestro = require('../painel/maestro');
 const banco = require('../plugins/mapa/lib/banco');
 const { botao } = require('../componentes/botao');
 const menuAbas = require('../componentes/menu-abas');
@@ -118,7 +118,7 @@ const plugins = (v) => [
 ].join('\n');
 
 // Cofre e Comandos (+ Emuladores) são telas de outros módulos: o clique volta com o prefixo do dono (cofre:, comandos:, emulador:).
-const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('../' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
+const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('..' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
 
 const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
@@ -243,8 +243,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   const acoes = {
     cfgAba({ id }) {
       cfgAba = ['cofre', 'comandos', 'plugins'].includes(id) ? id : 'geral';
-      require('../cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
-      if (cfgAba === 'comandos') { require('../comandos').api?.atualizar(); require('../emulador').api?.atualizar(); }
+      require('../modulos/cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
+      if (cfgAba === 'comandos') { require('../modulos/comandos').api?.atualizar(); require('../modulos/emulador').api?.atualizar(); }
       render();
     },
     atualizarExtensao() {
@@ -348,7 +348,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         'A URL é uma senha: quem tiver consegue postar no chat. Vazou? Apague o fluxo e crie outro.'
       ].join('\n') }, ABRIR, TESTAR);
       if (r === ABRIR) acoes.cfgTeamsAbrir();
-      else if (r === TESTAR) { await require('../teams').testar(ctx); checar(['teams']); }
+      else if (r === TESTAR) { await require('../integracoes/teams').testar(ctx); checar(['teams']); }
     },
     cfgTeamsAbrir() { vscode.env.openExternal(vscode.Uri.parse('https://make.powerautomate.com/manage/flows')); },
     async cfgBancoLimpar() { await salvarCfg('bancoConexao', ''); await salvarCfg('bancoAmbiente', ''); checar(['banco']); },

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { SEM_TICKET } = require('./componentes/card-ticket');
+const { SEM_TICKET } = require('../componentes/card-ticket');
 const pasta = (id) => tickets.pasta(id);
 const pastaDe = (id) => (id === SEM_TICKET ? (sessao.conversaAtual() ? sessao.pasta(sessao.conversaAtual()) : null) : pasta(id));
 // Pasta da aba em que o ticket está aberto (Refinamento = raiz; Implementações e QA = impl/ e qa/, tickets.js): documentos,

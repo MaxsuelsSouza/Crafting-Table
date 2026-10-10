@@ -3,7 +3,7 @@
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
 const assert = require('assert');
-const { lerLink, esc } = require('./ticket')._teste;
+const { lerLink, esc } = require('../infra/ticket')._teste;
 assert.deepStrictEqual(lerLink('https://ferreiracosta.atlassian.net/browse/WMS-123'), { key: 'WMS-123', site: 'https://ferreiracosta.atlassian.net' });
 assert.strictEqual(lerLink(' https://x.atlassian.net/jira/software/projects/WMS/boards/1?selectedIssue=wms-9 ').key, 'WMS-9');
 assert.throws(() => lerLink('https://x.atlassian.net/jira'));
@@ -12,7 +12,7 @@ console.log('ok');
 
 // Abas: o mesmo ticket em Refinamento, Implementações e QA, cada uma com a sua pasta e as suas conversas.
 process.env.HOME = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ct-'));
-const tk = require('./tickets'), path = require('path');
+const tk = require('../infra/tickets'), path = require('path');
 tk.criar('https://x.atlassian.net/browse/WMS-7', { listas: ['refinamento', 'qa'] });
 assert.strictEqual(tk.pasta('WMS-7'), path.join(tk.RAIZ, 'WMS-7'));
 assert.strictEqual(tk.pasta('WMS-7', 'qa'), path.join(tk.RAIZ, 'WMS-7', 'qa'));
@@ -25,7 +25,7 @@ assert.deepStrictEqual(tk.listasDe({ implementacao: true }), ['impl']);
 console.log('ok abas');
 
 // Menu de abas: aba ligada, contador, separador e o alvo do clique dentro da página x na moldura de outra seção.
-const { menu } = require('./componentes/menu-abas');
+const { menu } = require('../componentes/menu-abas');
 const itens = [{ id: 'docs', nome: 'Docs' }, { id: 'duvidas', nome: 'Dúvidas', badge: 2, dica: '2 em aberto' }, '|', { secao: 'outra', nome: 'Outra' }];
 const dentro = menu(itens, { aba: 'docs', secao: 'principal', principal: 'principal', dentro: true });
 assert.ok(dentro.includes('<button data-acao="aba" data-id="docs" class="is-on">Docs</button>'));
@@ -38,7 +38,7 @@ assert.ok(!menu([{ id: 'x', nome: 'X', badge: 0 }], { principal: 'p' }).includes
 console.log('ok menu');
 
 // Aba Docs: anexo já baixado (id no .origem.json) sai de "Encontrados no ticket"; lista vazia mostra o aviso.
-const abaDocs = require('./componentes/aba-docs');
+const abaDocs = require('../componentes/aba-docs');
 assert.deepStrictEqual(abaDocs.pendentes([{ id: '1' }, { id: '2' }], { 'a.pdf': { origem: 'jira', id: '1' } }).map((a) => a.id), ['2']);
 assert.deepStrictEqual(abaDocs.pendentes(undefined, undefined), []);
 assert.strictEqual(abaDocs._teste.kb(2 * 1048576), '2.0 MB');
@@ -52,7 +52,7 @@ assert.ok(abaDocs.corpo({ docs: [], origens: {}, baixando: new Set(), dir: null 
 console.log('ok aba docs');
 
 // Vinculados: filtro de status por módulo (sem acento/caixa, nomes alternativos), texto do vazio e itens fora da lista/ocultos.
-const vinc = require('./componentes/vinculados');
+const vinc = require('../componentes/vinculados');
 const its = ['Em andamento', 'In progress', 'Não iniciado', 'Done', ''].map((status, i) => ({ key: `W-${i}`, status }));
 assert.deepStrictEqual(vinc.filtrar(its, ['Buffer', 'Não iniciado', 'Em andamento|In progress']).map((i) => i.key), ['W-0', 'W-1', 'W-2']);
 assert.strictEqual(vinc.filtrar(its, undefined).length, 5, 'sem status no módulo: todos');
@@ -65,7 +65,7 @@ assert.ok(vinc.caixa({ itens: [], label: '' }, [], { titulo: 'T', seletor: 'labe
 console.log('ok vinculados');
 
 // Lista de tickets: barra sempre presente (mesmo vazia), Sem ticket por último, pills e conversas no card.
-const lista = require('./componentes/lista-tickets');
+const lista = require('../componentes/lista-tickets');
 const vazia = lista.corpo([], {}, { modo: 'qa', vinculados: { titulo: 'T' } });
 assert.ok(vazia.includes('id="filtroT"') && vazia.includes('id="ordemT"') && vazia.includes('data-acao="novo"') && vazia.includes('Nenhum ticket ainda'));
 assert.ok(vazia.includes('class="rotulo is-on" data-acao="listaModo" data-id="qa"'));
@@ -74,11 +74,11 @@ assert.ok(cheia.includes('1 conversa<') && cheia.includes('st-andando') && cheia
 console.log('ok lista');
 
 // Botão e card de comando: variante vira classe, o clique vai por data-* e o escape vale.
-const { botao, mini } = require('./componentes/botao');
+const { botao, mini } = require('../componentes/botao');
 const b = botao('X', { variante: 'contorno', perigo: true, acao: 'matar', id: 'a"b', dados: { pid: 7 }, desligado: true });
 assert.ok(b.startsWith('<button class="bt bt-contorno bt-perigo" data-acao="matar" data-id="a&#34;b" data-pid="7"') && b.includes(' disabled>'));
 assert.ok(!botao('X').includes('data-') && mini('x') === '<span class="bt-mini">x</span>');
-const { comando, procs } = require('./componentes/card-comando');
+const { comando, procs } = require('../componentes/card-comando');
 const cmd = { id: 'i1', nome: 'Metro <x>', comando: 'yarn start', pasta: '/a/b' };
 assert.ok(comando(cmd, false).includes('data-acao="rodar"') && comando(cmd, true).includes('class="bt bt-parar"') && comando(cmd, true).includes('rodando'));
 assert.ok(comando(cmd, true, [{ pid: 1, args: 'node' }]).includes('Matar todos (1)') && procs([], 'i1').includes('Nenhum processo'));

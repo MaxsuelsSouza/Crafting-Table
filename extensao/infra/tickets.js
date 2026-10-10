@@ -14,7 +14,7 @@ const VINCULOS = path.join(RAIZ, '.conversas');
 const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
-const IMPL = require('./implementacoes/implementacoes').ID;
+const IMPL = require('../implementacoes/implementacoes').ID;
 const SUBPASTAS = [IMPL, 'qa'];
 const pasta = (chave, lista) => path.join(RAIZ, chave, SUBPASTAS.includes(lista) ? lista : '');
 // Módulo Refinamento (antes "tickets"): dados gravados com o nome antigo continuam valendo.

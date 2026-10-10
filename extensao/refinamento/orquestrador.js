@@ -3,13 +3,13 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const jira = require('../ticket').jira;
-const tickets = require('../tickets');
-const maestro = require('../maestro');
+const jira = require('../infra/ticket').jira;
+const tickets = require('../infra/tickets');
+const maestro = require('../painel/maestro');
 const mudancas = require('./mudancas');
 const { NIVEL } = mudancas;
 const { cfg, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = require('../configuracao/configuracao');
-const { notificar } = require('../notificacoes');
+const { notificar } = require('../painel/notificacoes');
 const { dirSpec, ondeSalvar, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
 
 // ORQUESTRADOR do refinamento: o Maestro dirigido pela extensão. Monta cada execução do Claude em segundo plano (etapa),

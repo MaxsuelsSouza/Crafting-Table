@@ -3,17 +3,17 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const qa = require('./qa');
-const maestro = require('../maestro');
+const maestro = require('../painel/maestro');
 const aoVivo = require('../componentes/ao-vivo');
-const sessao = require('../sessao');
+const sessao = require('../infra/sessao');
 const { IC } = require('../componentes/icones');
 const { cfg } = require('../configuracao/configuracao');
-const { NOTIF } = require('../notificacoes');
-const jira = require('../ticket').jira;
+const { NOTIF } = require('../painel/notificacoes');
+const jira = require('../infra/ticket').jira;
 const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (moldura.js)
 
 const depsQa = (s, t) => {
-  const dir = s.pastaAba(t.id), emu = require('../emulador');
+  const dir = s.pastaAba(t.id), emu = require('../modulos/emulador');
   return {
     chave: t.chave, backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho, api: (rota) => jira.api(s.secrets, t.site, rota),
     horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: s.render,
@@ -21,14 +21,14 @@ const depsQa = (s, t) => {
       ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
     // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
     comandos: {
-      lista: () => require('../comandos').api?.lista() || [],
-      rodar: (nome) => { const api = require('../comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api?.alternar({ id: b.id }); }
+      lista: () => require('../modulos/comandos').api?.lista() || [],
+      rodar: (nome) => { const api = require('../modulos/comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api?.alternar({ id: b.id }); }
     },
     emulador: { avd: cfg().get('avdPadrao'), aparelhos: () => emu.dispositivos(), ligar: () => emu.ligar(cfg().get('avdPadrao')) },
     adb: path.join(emu.SDK, 'platform-tools', 'adb'),
     confirmar: async (texto) => (await vscode.window.showWarningMessage(texto, { modal: true }, 'Usar')) === 'Usar',
-    gravarTela: (destino) => { if (emu.emuladorRodando()) require('../evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
-    pararTela: () => require('../evidencias').pararGravacao?.(),
+    gravarTela: (destino) => { if (emu.emuladorRodando()) require('../modulos/evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
+    pararTela: () => require('../modulos/evidencias').pararGravacao?.(),
     avisar: (texto) => { try { fs.appendFileSync(path.join(dir, NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo: 'fim', texto: `${t.chave} · ${texto}` }) + '\n'); } catch {} }
   };
 };
@@ -84,7 +84,7 @@ const acoes = (s) => ({
   qaAmbLog() {
     const t = s.ticketAberto();
     if (!t) return;
-    const dir = s.pastaAba(t.id), a = qa.ambiente(dir), cmds = require('../comandos').api;
+    const dir = s.pastaAba(t.id), a = qa.ambiente(dir), cmds = require('../modulos/comandos').api;
     for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds?.acao({ acao: 'mostrar', id: b.id }); }
     const nome = `QA ${t.chave} · log do ambiente`;
     const term = vscode.window.terminals.find((x) => x.name === nome)
@@ -98,7 +98,7 @@ const acoes = (s) => ({
     vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(path.join(s.pastaAba(t.id), v.arquivo)));
     s.render();
   },
-  qaPlanoMencionar() { const t = s.ticketAberto(), v = t && qa.versaoAtual(s.pastaAba(t.id)); if (v) require('../claude').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`); },
+  qaPlanoMencionar() { const t = s.ticketAberto(), v = t && qa.versaoAtual(s.pastaAba(t.id)); if (v) require('../infra/claude').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`); },
   qaPlanoAprovar() { const t = s.ticketAberto(); if (t) { qa.aprovar(s.pastaAba(t.id)); s.render(); } },
   // Pedir mudança: o Claude aplica na subtarefa do Jira; ao terminar, a versão nova volta para aprovação.
   async qaPlanoMudar() {

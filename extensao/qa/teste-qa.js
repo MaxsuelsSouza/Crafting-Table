@@ -128,7 +128,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.throws(() => cli('cenario', 'CT02', 'concluir', '--status', 'passou')); // só cenário em execução
 
   // ▶ inteiro: plano com 2 CTs, ambiente simulado, massa levantada, CT01 passa, pausa durante o CT02 → descartado; retomada termina.
-  const maestro = require('../maestro');
+  const maestro = require('../painel/maestro');
   const back = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-back-'));
   fs.mkdirSync(path.join(back, 'testes-funcionais'));
   fs.writeFileSync(path.join(back, 'testes-funcionais', 'preparar-ambiente.py'),
@@ -210,7 +210,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   filho.kill(); await new Promise((r) => filho.on('exit', r));
   assert.ok(!qa.rodando(d7));
   // maestro: .ao-vivo.pid só conta se o processo vivo for o claude.
-  const mae = require('../maestro'), d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-claude-'));
+  const mae = require('../painel/maestro'), d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-claude-'));
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), String(process.pid));
   assert.ok(!mae.vivo(process.pid)); // node, não claude
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), '999999');

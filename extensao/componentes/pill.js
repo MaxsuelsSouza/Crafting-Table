@@ -1,6 +1,6 @@
 // @ts-check
-const { esc } = require('../ticket')._teste;
-const { corStatus } = require('../ticket').jira;
+const { esc } = require('../infra/ticket')._teste;
+const { corStatus } = require('../infra/ticket').jira;
 
 // Componente "Pill": a etiqueta arredondada de status. Usado no card do ticket e na caixa de vinculados (lista de tickets)
 // e no cabeçalho do ticket aberto (moldura.js: coluna no board, modo refinamento, Sem ticket vinculado).

@@ -1,5 +1,5 @@
 // @ts-check
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 
 // Markdown simples para os handoffs (títulos, listas, código, negrito, código inline).
 function markdown(md) {

@@ -1,6 +1,6 @@
 // @ts-check
 // Aba Decisões: histórico (clique expande o resumo). O CSS (.hist, .decisao, .quando, .origem...) fica no estilo da moldura, junto do de Dúvidas, que o compartilha.
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const { quando } = require('./formato');
 
 const corpoAba = (d) => `<div class="folha">${d.decisoes.length ? `<div class="hist">${d.decisoes.map((x) => `

@@ -9,7 +9,7 @@ const { spawn } = require('child_process');
 // Sem AskUserQuestion (não existe em -p): perguntas passam pelo sdd-state e pela aba.
 // A sessão fica em .ao-vivo.sid para continuar a mesma conversa (--resume) quando precisar.
 const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
-const { anotar } = require('./componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
+const { anotar } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
 // Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
 // Confere que o pid ainda é um claude (o executável, não um caminho com "claude" no meio): pid pode ser reaproveitado.

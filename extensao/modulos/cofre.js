@@ -4,10 +4,10 @@ const fs = require('fs');
 const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
-const { esc } = require('./ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const { ESTILO_NOTAS } = require('./comandos').ui;
-const { botao, mini, icone } = require('./componentes/botao');
-const { RAIZ } = require('./sessao');
+const { botao, mini, icone } = require('../componentes/botao');
+const { RAIZ } = require('../infra/sessao');
 
 // Segredos para o Claude USAR sem receber o valor. Valores no SecretStorage do VS Code (cifrado pelo
 // chaveiro do sistema); só nomes e a flag env ficam no globalState. O Claude roda `bin/cofre '<comando>'`:
@@ -114,7 +114,7 @@ exports.provider = (ctx) => {
     },
     mencionar({ id }) {
       const s = itens().find((x) => x.nome === id);
-      require('./claude').mencionar(s?.env
+      require('../infra/claude').mencionar(s?.env
         ? `$${id} (segredo do Cofre: use rodando ~/.vscode/extensions/crafting-table/bin/cofre '<comando que usa $${id}>'; o valor não aparece)`
         : `$${id} (segredo do Cofre, bloqueado para o Claude: peça para liberar na aba Cofre)`);
     },

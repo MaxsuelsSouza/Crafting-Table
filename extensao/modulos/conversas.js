@@ -4,10 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { esc } = require('./ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const { pagina, ESTILO_NOTAS } = require('./comandos').ui;
-const { icone } = require('./componentes/botao');
-const sessao = require('./sessao');
+const { icone } = require('../componentes/botao');
+const sessao = require('../infra/sessao');
 
 // Conversas do Claude Code deste projeto e tudo o que cada uma deixou na máquina.
 // O Claude guarda o histórico em ~/.claude/projects/<cwd com não-alfanuméricos trocados por ->/<id>.jsonl.
@@ -47,7 +47,7 @@ const contar = (dir) => { try { return fs.readdirSync(dir).filter((n) => !n.star
 function listar() {
   let nomes = [];
   // Com um ticket aberto no painel: só as conversas dele na aba em que foi aberto, de qualquer projeto.
-  const tk = require('./tickets');
+  const tk = require('../infra/tickets');
   const doTicket = sessao.foco() && tk.ler(sessao.foco())?.conversas.filter((sid) => tk.listaDa(sid) === sessao.focoLista());
   if (doTicket) nomes = doTicket.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))));
   else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return []; }
@@ -203,7 +203,7 @@ exports.provider = () => {
 
   return vscode.Disposable.from(
     sessao.onDidChange(() => render()),
-    require('./grupo').registrar('claudeAbas.conversas', {
+    require('../infra/grupo').registrar('claudeAbas.conversas', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };
@@ -216,7 +216,7 @@ exports.provider = () => {
 };
 
 // ── Vínculo com as conversas do Claude (ticket ↔ conversa) ──
-const { HANDOFF, dirSpec, lerTexto, NOTAS, TAREFAS } = require('./refinamento/locais');
+const { HANDOFF, dirSpec, lerTexto, NOTAS, TAREFAS } = require('../refinamento/locais');
 const jsonl = (sid) => historico(sid);
 function inicioDa(sid) {
   const t = (lerTexto(jsonl(sid)) || '').match(/"timestamp":"([^"]+)"/)?.[1];
@@ -224,7 +224,7 @@ function inicioDa(sid) {
 }
 // Conversa com histórico, aberta depois do pedido, que menciona a pasta do ticket (está no texto pré-preenchido).
 function localizarConversa(t) {
-  const tickets = require('./tickets');
+  const tickets = require('../infra/tickets');
   let nomes;
   try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return null; }
   const desde = t.pedidoEm - 5000;
@@ -241,11 +241,11 @@ function titularConversa(sid, titulo, tentativas = 20) {
   const atual = fs.readFileSync(arq, 'utf8');
   fs.appendFileSync(arq, (atual.endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: titulo }) + '\n');
 }
-const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoLista());
+const ultimaConversa = (t) => require('../infra/claude').ultimaConversa(t, sessao.focoLista());
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
 const reconciliar = (s) => {
-  const tickets = require('./tickets'), implementacoes = require('./implementacoes/implementacoes');
+  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes');
   let mudou = false;
   for (const t of tickets.listar()) {
     if (!t.pedidoEm) continue;
@@ -262,7 +262,7 @@ const reconciliar = (s) => {
 };
 
 const pedido = (s, t) => {
-  const tickets = require('./tickets'), implementacoes = require('./implementacoes/implementacoes');
+  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes');
   return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
     + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
@@ -273,7 +273,7 @@ const pedido = (s, t) => {
 };
 // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
 const abrirConversa = async (s, t, texto) => {
-  const tickets = require('./tickets');
+  const tickets = require('../infra/tickets');
   const sid = ultimaConversa(t);
   if (sid) return vscode.commands.executeCommand('claude-vscode.editor.open', sid, texto);
   tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now(), pedidoLista: sessao.focoLista() });

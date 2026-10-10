@@ -6,7 +6,7 @@ process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'orq-home-'));
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => Promise.resolve() }) }) : load(r, ...a));
 const orq = require('./orquestrador');
-const tickets = require('../tickets');
+const tickets = require('../infra/tickets');
 const { NIVEL } = require('./mudancas');
 
 for (const n of ['iniciar', 'etapa', 'seguir', 'filaTarefas', 'vigiarComentarios', 'sdd', 'estadoDe', 'reposDe', 'avisarImpactos']) assert.strictEqual(typeof orq[n], 'function', n);

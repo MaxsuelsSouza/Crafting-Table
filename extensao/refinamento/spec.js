@@ -3,12 +3,12 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { esc } = require('../ticket')._teste;
-const tickets = require('../tickets');
+const { esc } = require('../infra/ticket')._teste;
+const tickets = require('../infra/tickets');
 const { arquivoPasso, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
 const { IC } = require('../componentes/icones');
 const { quando } = require('../componentes/formato');
-const maestro = require('../maestro');
+const maestro = require('../painel/maestro');
 const aoVivo = require('../componentes/ao-vivo');
 const pill = require('../componentes/pill');
 const mudancas = require('./mudancas');
@@ -19,7 +19,7 @@ const { SPECS_PADRAO, sddState } = require('../configuracao/configuracao');
 // o modo refinamento (▶ ⏸ Dar início) e as ações.
 const pasta = (id) => tickets.pasta(id);
 const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
-const mencionar = (texto) => require('../claude').mencionar(texto);
+const mencionar = (texto) => require('../infra/claude').mencionar(texto);
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 

@@ -1,6 +1,6 @@
 // @ts-check
 const os = require('os');
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const { botao, mini, icone } = require('./botao');
 
 // Componente "Card de comando": o card da lista de Comandos (nome, comando, pasta, ▶/■, @ ⋯ editar remover e a lista de processos).

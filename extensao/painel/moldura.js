@@ -1,32 +1,30 @@
 // @ts-check
-// Moldura compartilhada do ticket: cabeçalho (abas, badges), rodapé (notificações, comandos), CSS e a página HTML da webview.
-// O painel.js desenha o corpo; o grupo.js usa cabecalho/rodape/CSS_MOLDURA das outras seções via provider.moldura.
-const path = require('path');
-const { esc } = require('./ticket')._teste;
-const jira = require('./ticket').jira;
-const { ESTILO_NOTAS } = require('./comandos').ui;
-const sessao = require('./sessao');
-const { lerTexto, duvidasDe, tarefasDe } = require('./refinamento/locais');
-const { IC } = require('./componentes/icones');
-const { quando } = require('./componentes/formato');
-const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto } = require('./notificacoes');
-const aoVivo = require('./componentes/ao-vivo');
-const menuAbas = require('./componentes/menu-abas');
-const abaDocs = require('./componentes/aba-docs');
-const pill = require('./componentes/pill');
-const listaTickets = require('./componentes/lista-tickets');
-const vinculados = require('./componentes/vinculados');
-const configuracao = require('./configuracao/configuracao');
-const tarefas = require('./refinamento/tarefas');
-const mudancas = require('./refinamento/mudancas');
-const spec = require('./refinamento/spec');
-const analise = require('./refinamento/analise');
+// Moldura compartilhada do ticket: cabeçalho (abas, badges), CSS e a página HTML da webview.
+// O painel.js desenha o corpo; o grupo.js usa cabecalho/CSS_MOLDURA das outras seções via provider.moldura.
+const { esc } = require('../infra/ticket')._teste;
+const jira = require('../infra/ticket').jira;
+const { ESTILO_NOTAS } = require('../modulos/comandos').ui;
+const sessao = require('../infra/sessao');
+const { duvidasDe, tarefasDe } = require('../refinamento/locais');
+const { IC } = require('../componentes/icones');
+const aoVivo = require('../componentes/ao-vivo');
+const rodape = require('../componentes/rodape');
+const menuAbas = require('../componentes/menu-abas');
+const abaDocs = require('../componentes/aba-docs');
+const pill = require('../componentes/pill');
+const listaTickets = require('../componentes/lista-tickets');
+const vinculados = require('../componentes/vinculados');
+const configuracao = require('../configuracao/configuracao');
+const tarefas = require('../refinamento/tarefas');
+const mudancas = require('../refinamento/mudancas');
+const spec = require('../refinamento/spec');
+const analise = require('../refinamento/analise');
 const { emRefino, botaoRefino, pillRefino } = spec;
-const acoesQa = require('./qa/acoes');
-const duvidas = require('./refinamento/duvidas');
+const acoesQa = require('../qa/acoes');
+const duvidas = require('../refinamento/duvidas');
 const notas = require('./notas').editor;
-const { SEM_TICKET } = require('./componentes/card-ticket');
-const { pastaDe, pastaAba, naRaiz } = require('./pastas');
+const { SEM_TICKET } = require('../componentes/card-ticket');
+const { pastaDe, pastaAba, naRaiz } = require('../infra/pastas');
 const PRINCIPAL = 'claudeAbas.painel';
 
 // Abas do menu do ticket em cada lista (componentes/menu-abas.js): { id, nome } = aba desta página, { secao, nome } = outra seção.
@@ -41,9 +39,9 @@ const ABAS = {
 };
 /** @returns {{ id?: string, secao?: string, nome: string }[]} */
 const abasDe = (t) => ABAS[t.id === SEM_TICKET ? 'semTicket' : sessao.focoLista()] || ABAS.impl;
-const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
+const FORA = () => require('../infra/grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
 
-// Cabeçalho e rodapé do ticket aberto: na página do painel os botões falam com ele direto (data-acao);
+// Cabeçalho do ticket aberto (o rodapé é componentes/rodape.js): na página do painel os botões falam com ele direto (data-acao);
 // na moldura de outra seção, passam pelo grupo.js (data-painel / data-secao).
 const CSS_MOLDURA = `<style>
   .ct-cab { position: sticky; top: 0; z-index: 100; flex: none; padding: 8px 10px 0; background: var(--bg);
@@ -65,41 +63,7 @@ const CSS_MOLDURA = `<style>
   ${pill.CSS}
   .ct-pills .ct-ico { width: 22px; height: 22px; } .ct-pills .ct-ico svg { width: 13px; height: 13px; }
   ${menuAbas.CSS}
-  .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--border);
-    background: var(--bg); font-family: var(--fc-font); font-size: 11.5px; color: var(--text-dim); }
-  .ct-rod details { position: relative; }
-  .ct-rod details[open] .ct-badge { display: none; }
-  .ct-notif { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 11.5px; line-height: 1.45; }
-  .ct-notif:last-child { border-bottom: 0; }
-  .ct-notif small { color: var(--text-dim); }
-  .ct-notif.nova .ct-ni { color: var(--accent); }
-  .ct-ni { flex: none; width: 12px; text-align: center; }
-  .ct-rod summary { list-style: none; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11.5px; margin: 0; color: inherit; display: inline-flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: var(--r-md); }
-  .ct-rod summary::-webkit-details-marker { display: none; }
-  .ct-rod summary:hover { background: var(--surface-2); color: var(--text); }
-  .ct-rod summary svg { width: 14px; height: 14px; }
-  .ct-cmd { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 4px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
-    font: inherit; font-size: 11.5px; color: var(--text); text-align: left; }
-  .ct-cmd:hover { background: var(--surface-2); }
-  .ct-cmd .ct-ci { flex: none; display: flex; color: var(--ok); }
-  .ct-cmd.on .ct-ci { color: var(--perigo, var(--danger)); }
-  .ct-cmd svg { width: 12px; height: 12px; }
-  .ct-cmd:disabled { opacity: .55; cursor: default; }
-  .ct-cmd small { color: var(--text-dim); }
-  .ct-cmd-grupo { margin: 8px 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
-  .ct-cmd-vazio { color: var(--text-dim); padding: 2px 0; }
-  .ct-amb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
-    font: inherit; font-size: 11.5px; color: inherit; }
-  .ct-amb:hover { background: var(--surface-2); color: var(--text); }
-  .ct-luz { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
-  .ct-luz.ok { background: var(--ok); }
-  .ct-luz.prep { background: var(--ia); animation: ct-pisca 1.2s infinite; }
-  .ct-luz.erro { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
-  .ct-luz.erro.pisca { animation: ct-pisca .8s infinite; }
-  @keyframes ct-pisca { 50% { opacity: .2; } }
-  .ct-badge-erro { background: var(--danger); }
-  .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: var(--r-lg);
-    background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgb(0 0 0 / 53%); }
+  ${rodape.CSS}
 </style>`;
 
 function cabecalho(t, { aba, secao, dentro = false }) {
@@ -125,27 +89,6 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     ${menuAbas.menu(itens, { aba, secao, principal: PRINCIPAL, dentro })}
   </header>`;
 }
-
-// Notificações (notificacoes.js). Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
-const rodape = (t, dentro = false) => {
-  const dir = t && pastaAba(t.id);
-  const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || '') || 0;
-  const nova = (n) => Date.parse(n.em) > lidas; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes
-  const novas = l.filter(nova).length;
-  const cmds = require('./comandos').api?.lista() || [], emus = require('./emulador').api?.lista() || [];
-  const acao = dentro ? 'data-acao' : 'data-painel';
-  const caixaCmds = `<details class="ct-cmds"${cmdsAberto() ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
-    <div class="ct-notifs">${cmds.length ? cmds.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
-      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
-    ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
-      title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
-  // QA: ambiente depois de Comandos. Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise (Evidências).
-  const caixaAmb = t && t.id !== SEM_TICKET && sessao.focoLista() === 'qa' ? acoesQa.caixaAmbiente(dir, acao) : '';
-  return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
-    ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
-  <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>
-    <span>${esc(n.texto)}<br><small>${esc(quando(n.em))}</small></span></div>`).join('') : 'Nenhuma notificação ainda.'}</div></details>${caixaCmds}${caixaAmb}</footer>`;
-};
 
 const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .tipo { flex: none; font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 15%, transparent); }
@@ -257,4 +200,4 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
 </script></body></html>`;
 }
 
-module.exports = { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, rodape, estilo, pagina };
+module.exports = { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, estilo, pagina };

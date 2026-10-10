@@ -3,34 +3,35 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { esc } = require('./ticket')._teste;
-const jira = require('./ticket').jira;
-const sessao = require('./sessao');
-const tickets = require('./tickets');
-const { dirSpec, arqHandoff, ler, lerTexto, NOTAS, ORIGEM, decisoesDe, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, comSpec } = require('./refinamento/locais'); // onde cada coisa mora
-const { IC } = require('./componentes/icones');
-const { markdown } = require('./componentes/markdown');
+const { esc } = require('../infra/ticket')._teste;
+const jira = require('../infra/ticket').jira;
+const sessao = require('../infra/sessao');
+const tickets = require('../infra/tickets');
+const { dirSpec, arqHandoff, ler, lerTexto, NOTAS, ORIGEM, decisoesDe, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, comSpec } = require('../refinamento/locais'); // onde cada coisa mora
+const { IC } = require('../componentes/icones');
+const { markdown } = require('../componentes/markdown');
 const { LIDAS, notificar } = require('./notificacoes'); // sino do ticket
 const maestro = require('./maestro');
-const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo": só as ações (Ver tudo / Recolher)
-const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
-const abaDecisoes = require('./componentes/aba-decisoes'); // aba Decisões
-const configuracao = require('./configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
+const aoVivo = require('../componentes/ao-vivo'); // caixa "Ao vivo": só as ações (Ver tudo / Recolher)
+const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
+const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
+const configuracao = require('../configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { sddState } = configuracao;
-const tarefas = require('./refinamento/tarefas'); // cards de tarefas: tela, script do modal, CSS e ações
-const mudancas = require('./refinamento/mudancas'); // mudanças pedidas em comentário: caixas da aba Spec, ações e CSS
-const orq = require('./refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
-const spec = require('./refinamento/spec'); // aba Spec: passos, cartão Agora, pilha de perguntas, modo refinamento e ações
-const analise = require('./refinamento/analise'); // aba Análise (handoff backend/mobile): tela, CSS e ações
+const tarefas = require('../refinamento/tarefas'); // cards de tarefas: tela, script do modal, CSS e ações
+const mudancas = require('../refinamento/mudancas'); // mudanças pedidas em comentário: caixas da aba Spec, ações e CSS
+const orq = require('../refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
+const spec = require('../refinamento/spec'); // aba Spec: passos, cartão Agora, pilha de perguntas, modo refinamento e ações
+const analise = require('../refinamento/analise'); // aba Análise (handoff backend/mobile): tela, CSS e ações
 const { emRefino, modo } = spec;
-const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
-const duvidas = require('./refinamento/duvidas'); // aba Dúvidas e as ações de dúvida
-const conversas = require('./conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
+const acoesQa = require('../qa/acoes'); // ações e peças de UI do módulo QA
+const duvidas = require('../refinamento/duvidas'); // aba Dúvidas e as ações de dúvida
+const conversas = require('../modulos/conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
-const { SEM_TICKET } = require('./componentes/card-ticket');
-const { pasta, pastaDe, pastaAba, idAba, gravar } = require('./pastas'); // pastas do ticket
-const { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, rodape, estilo, pagina } = require('./moldura'); // cabeçalho, rodapé, CSS e página da webview
+const { SEM_TICKET } = require('../componentes/card-ticket');
+const { pasta, pastaDe, pastaAba, idAba, gravar } = require('../infra/pastas'); // pastas do ticket
+const { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, estilo, pagina } = require('./moldura');
+const rodape = require('../componentes/rodape'); // cabeçalho, rodapé, CSS e página da webview
 
 // Módulo Refinamento: a lista e, com um ticket aberto, o ticket ocupando a view inteira —
 // cabeçalho fixo (voltar, status no board, ▶ ✦ 🎫, menu), corpo com rolagem própria e rodapé (notificações).
@@ -46,14 +47,14 @@ function corpoAba(t, aba, d) {
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
   if (aba === 'analise') return analise.corpoAba(d);
   if (aba === 'tarefas') return tarefas.telaTarefas(t, d.tarefas, d.impactos);
-  if (aba === 'massa') return require('./qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
+  if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
   if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
 }
 
 const telaTicket = (t, aba, d) => `${estilo}${cabecalho(t, { aba, secao: PRINCIPAL, dentro: true })}
-  <main class="rolagem">${corpoAba(t, aba, d)}</main>${rodape(t, true)}`;
+  <main class="rolagem">${corpoAba(t, aba, d)}</main>${rodape.rodape(t, true)}`;
 
 exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
@@ -67,10 +68,10 @@ exports.provider = (ctx) => {
   }));
   const conf = configuracao.criar(ctx, { render: () => render(), voltar: IC.voltar, aoAbrir: () => { lista.fecharPrevia(); aberto = null; sessao.focar(null); } });
   let avisarMoldura = () => {}, pedirSecao = (/** @type {string} */ _secao) => {};
-  for (const m of ['comandos', 'emulador']) require('./' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
+  for (const m of ['comandos', 'emulador']) require('..' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
-    if (!require('./grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
+    if (!require('../infra/grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
     pedirSecao(PRINCIPAL);
     acoes.config();
   }));
@@ -139,7 +140,7 @@ exports.provider = (ctx) => {
     render();
   };
 
-  const mencionar = (texto) => require('./claude').mencionar(texto);
+  const mencionar = (texto) => require('../infra/claude').mencionar(texto);
   const ticketAberto = () => (aberto && aberto !== SEM_TICKET ? ticketDe(aberto) : null);
 
   const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
@@ -196,7 +197,7 @@ exports.provider = (ctx) => {
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('./' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('..' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
       view.onDidChangeVisibility(() => { if (view.visible) { conversas.reconciliar(servicos); render(); } });
       conversas.reconciliar(servicos);
       render();
@@ -205,10 +206,7 @@ exports.provider = (ctx) => {
     moldura: (secao) => {
       const t = aberto === SEM_TICKET ? { id: SEM_TICKET } : aberto && comSpec(ticketDe(aberto));
       if (!t) return null;
-      // Fora do painel o rodapé fica preso embaixo (a página do outro módulo rola o body).
-      // !important: a seção de dentro pode zerar o padding do body depois (Evidências usa ESTILO_NOTAS no corpo) e o rodapé fixo cobriria o fim da página.
-      return { css: CSS_MOLDURA + '<style>body { margin: 0; padding-bottom: 42px !important; } .ct-rod { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; }</style>',
-        topo: cabecalho(t, { aba, secao }), rodape: rodape(t) };
+      return { css: CSS_MOLDURA + rodape.CSS_FIXO, topo: cabecalho(t, { aba, secao }), rodape: rodape.rodape(t) };
     },
     aoMudarMoldura: (f) => { avisarMoldura = f; },
     aoPedirSecao: (f) => { pedirSecao = f; }
@@ -217,7 +215,7 @@ exports.provider = (ctx) => {
   return vscode.Disposable.from(
     sessao.onDidChange(() => { setTimeout(conversas.reconciliar, 1500, servicos); if (aberto === SEM_TICKET) render(); }), // dá tempo de o Claude gravar a 1ª mensagem
     { dispose: fechar },
-    require('./grupo').registrar(PRINCIPAL, provider)
+    require('../infra/grupo').registrar(PRINCIPAL, provider)
   );
 };
 

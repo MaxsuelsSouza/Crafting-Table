@@ -4,8 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const { trazerParaFrente } = require('./emulador');
-const tickets = require('./tickets');
+const { trazerParaFrente } = require('../modulos/emulador');
+const tickets = require('../infra/tickets');
 
 // O Teams não abre dentro do VS Code (a Microsoft bloqueia iframe). Este botão usa a janela
 // que já existe na máquina: ~/.local/share/applications/teams.desktop (Chromium --app, perfil chromium-teams).

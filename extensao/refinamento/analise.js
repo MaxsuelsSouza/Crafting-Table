@@ -26,7 +26,7 @@ const CSS = `
 `;
 
 const acoes = (s) => ({
-  handoffMencionar({ id }) { if (HANDOFF[id]) require('../claude').mencionar(`@${arqHandoff(s.ticketAberto(), id)}`); },
+  handoffMencionar({ id }) { if (HANDOFF[id]) require('../infra/claude').mencionar(`@${arqHandoff(s.ticketAberto(), id)}`); },
   handoffPrevia({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arqHandoff(s.ticketAberto(), id))); },
   handoffEditar({ id }) { if (HANDOFF[id]) vscode.commands.executeCommand('vscode.open', vscode.Uri.file(arqHandoff(s.ticketAberto(), id))); },
   handoffCriar({ id }) {

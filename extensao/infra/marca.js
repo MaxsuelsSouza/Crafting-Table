@@ -81,7 +81,7 @@ const CSS = `<style id="marca">
 // @font-face com os arquivos de fonts/ (Inter variável 400-700, Source Serif 4 400). `uri` converte caminho em URL do webview.
 function fontesCss(uri) {
   const path = require('path');
-  const u = (arq) => uri(path.join(__dirname, 'fonts', arq)).toString();
+  const u = (arq) => uri(path.join(__dirname, '..', 'fonts', arq)).toString();
   return `<style id="fontes">
   @font-face { font-family: 'Inter'; font-weight: 400 700; font-style: normal; font-display: swap; src: url('${u('Inter.woff2')}') format('woff2'); }
   @font-face { font-family: 'Source Serif 4'; font-weight: 400; font-style: normal; font-display: swap; src: url('${u('SourceSerif4.woff2')}') format('woff2'); }

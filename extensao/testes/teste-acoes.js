@@ -2,7 +2,7 @@
 // Rede de segurança do desacoplamento: todo nome de botão/ação usado pela UI precisa ter handler.
 const assert = require('assert'), fs = require('fs'), path = require('path');
 const lerJs = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.name === 'node_modules' || e.name.startsWith('.') ? [] : e.isDirectory() ? lerJs(path.join(d, e.name)) : e.name.endsWith('.js') && !e.name.startsWith('teste') ? [path.join(d, e.name)] : []);
-const fontes = lerJs(__dirname).map((f) => fs.readFileSync(f, 'utf8'));
+const fontes = lerJs(path.join(__dirname, '..')).map((f) => fs.readFileSync(f, 'utf8'));
 
 // Nomes usados pela UI (valores dinâmicos com ${ ficam de fora).
 const usados = new Set();

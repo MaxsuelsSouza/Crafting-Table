@@ -2,10 +2,10 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const { esc } = require('../ticket')._teste;
-const jira = require('../ticket').jira;
+const { esc } = require('../infra/ticket')._teste;
+const jira = require('../infra/ticket').jira;
 const { docsDaSpec, ler, ORIGEM } = require('../refinamento/locais');
-const notas = require('../notas').editor;
+const notas = require('../painel/notas').editor;
 
 // Componente "Aba Docs": a primeira aba do menu do ticket, igual em todas as listas (Refinamento, Implementações, QA e Sem ticket).
 // Três caixas: Documentos (clique abre, @ menciona no Claude), Encontrados no ticket (anexos do Jira ainda não baixados) e Notas.
@@ -62,12 +62,12 @@ const CSS = `
 
 // ── Documentos e anexos do ticket (ações da aba) ──
 const baixando = new Set(); // ids de anexos sendo baixados (o render do painel passa ao corpo da aba)
-const docsDe = (dir) => (dir ? require('../documentos')._teste.listar(dir) : []);
+const docsDe = (dir) => (dir ? require('../infra/documentos')._teste.listar(dir) : []);
 // Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
 // Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
 function docsDoTicket(s, t) {
   const docs = docsDe(s.pastaAba(t.id));
-  if (require('../sessao').focoLista() !== require('../tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome])); }
+  if (require('../infra/sessao').focoLista() !== require('../infra/tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome])); }
   const vistos = new Set(docs.map((x) => x.origem || x.full));
   for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
   return docs.sort((a, b) => b.mtime - a.mtime);
@@ -85,7 +85,7 @@ const acoes = (s) => ({
   },
   docMencionar({ id }) {
     const d = docDe(s, id);
-    if (d && !d.quebrado) require('../claude').mencionar(`@${d.origem || d.full}`);
+    if (d && !d.quebrado) require('../infra/claude').mencionar(`@${d.origem || d.full}`);
   },
   // Anexo do Jira → pasta do ticket (nome repetido ganha sufixo), marcado em .origem.json como vindo do Jira.
   async anexoBaixar({ id }) {

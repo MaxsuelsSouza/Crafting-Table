@@ -1,5 +1,5 @@
 // @ts-check
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 
 // Componente "Botão": os botões da extensão, num só lugar. Usado nas Configurações (configuracao/configuracao.js e card-config.js),
 // no card de comando/emulador (card-comando.js), no Cofre e no cabeçalho do painel. O CSS já vem dentro do ESTILO_NOTAS (comandos.js),

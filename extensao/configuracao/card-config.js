@@ -1,5 +1,5 @@
 // @ts-check
-const { esc } = require('../ticket')._teste;
+const { esc } = require('../infra/ticket')._teste;
 const { botao } = require('../componentes/botao');
 
 // Componente "Card de configuração": a caixa de cada seção das Configurações (Instalação, Agente de IA, Jira, Board, Repositórios,

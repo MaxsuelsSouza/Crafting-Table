@@ -6,9 +6,9 @@ const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { descendentes, matar } = require('./comandos').processos;
 const { ESTILO_NOTAS } = require('./comandos').ui;
-const { botao, mini, icone } = require('./componentes/botao');
-const cardComando = require('./componentes/card-comando');
-const { esc } = require('./ticket')._teste;
+const { botao, mini, icone } = require('../componentes/botao');
+const cardComando = require('../componentes/card-comando');
+const { esc } = require('../infra/ticket')._teste;
 
 // Lista os AVDs da máquina e liga com janela. O gRPC fica só para o print da aba Evidências,
 // autenticado pelo token do arquivo de descoberta, como no Projeto-dani (wms-hub/services/mobile).
@@ -169,7 +169,7 @@ exports.provider = () => {
   const acoes = {
     mencionar({ id }) {
       const emu = achar(id);
-      require('./claude').mencionar(`[Emulador Android "${id}" da Crafting Table · AVD ${id} · ${emu ? `ligado · serial ${emu.serial} · PID ${emu.pid}${emu.semJanela ? ' · sem janela' : ''}` : 'desligado'} · emulator: ${EMULATOR} · adb: ${ADB}]`);
+      require('../infra/claude').mencionar(`[Emulador Android "${id}" da Crafting Table · AVD ${id} · ${emu ? `ligado · serial ${emu.serial} · PID ${emu.pid}${emu.semJanela ? ' · sem janela' : ''}` : 'desligado'} · emulator: ${EMULATOR} · adb: ${ADB}]`);
     },
     ligar({ id }) {
       ligar(id);

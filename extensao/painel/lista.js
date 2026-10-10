@@ -1,14 +1,14 @@
 // @ts-check
 const vscode = require('vscode');
-const jira = require('./ticket').jira;
-const { esc } = require('./ticket')._teste;
-const tickets = require('./tickets');
-const { IC } = require('./componentes/icones');
-const listaTickets = require('./componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
-const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
-const implementacoes = require('./implementacoes/implementacoes');
-const menuModulos = require('./componentes/menu-modulos');
-const { cfg, siteJira, projetoJira } = require('./configuracao/configuracao');
+const jira = require('../infra/ticket').jira;
+const { esc } = require('../infra/ticket')._teste;
+const tickets = require('../infra/tickets');
+const { IC } = require('../componentes/icones');
+const listaTickets = require('../componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
+const vinculados = require('../componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
+const implementacoes = require('../implementacoes/implementacoes');
+const menuModulos = require('../componentes/menu-modulos');
+const { cfg, siteJira, projetoJira } = require('../configuracao/configuracao');
 
 // Lista de tickets (Refinamento, Implementações ou QA) e a caixa "Vinculados a você" de cada uma. Estado de módulo (singleton:
 // o painel é criado uma vez); o painel lê por modo/resetar/fecharPrevia/corpo/carregarSeNecessario e iniciar().
