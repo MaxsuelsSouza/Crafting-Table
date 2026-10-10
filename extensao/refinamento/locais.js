@@ -61,6 +61,11 @@ const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : 
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 
+// Ticket com id = chave (as funções da spec usam r.id para achar a pasta); estado da spec e ticket pronto para as abas.
+const ticketDe = (chave) => { const t = tickets.ler(chave); return t && { ...t, id: chave }; };
+const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.json'), null) : null);
+const comSpec = (t) => t && { ...t, specPronta: !!(t.spec?.dir && estadoSpec(t)) };
+
 // Frase que o maestro manda ao Claude dizendo onde gravar.
 const ondeSalvar = (r) => (dirSpec(r)
   ? `\nPasta da spec (grave aqui spec, plano, testes e qualquer documento para o usuário; as análises vão em ${HANDOFF.backend}/${HANDOFF.mobile}, que aparecem na aba Análise; ~/.claude é bloqueada para escrita): ${dirSpec(r)}`
@@ -69,4 +74,5 @@ const ondeSalvar = (r) => (dirSpec(r)
 module.exports = {
   NOMES, HANDOFF, HANDOFF_LEGADO, pasta, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar,
   ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida,
+  ticketDe, estadoSpec, comSpec,
 };

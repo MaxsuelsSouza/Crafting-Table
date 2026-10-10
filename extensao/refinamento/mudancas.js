@@ -10,6 +10,9 @@ const path = require('path');
 const DEPENDENTES = { 0: [3, 4, 5, 6], 1: [2, 3, 4, 5, 6], 2: [3, 4, 5, 6], 3: [4, 5, 6], 4: [5, 6], 5: [6], 6: [] };
 const TAREFAS = '.tarefas.json';
 
+// Rótulo e cor de cada nível de impacto (aviso do orquestrador e caixas da aba Spec).
+const NIVEL = { alto: ['ALTO', 'var(--danger)'], medio: ['MÉDIO', 'var(--warn)'], baixo: ['BAIXO', 'var(--ok)'], nenhum: ['SEM IMPACTO', 'var(--text-dim)'] };
+
 const pendentes = (l) => l.filter((i) => i.status === 'aguardando_decisao');
 
 // Passos que a mudança pode atingir: o primeiro afetado e todos que dependem dele.
@@ -55,4 +58,4 @@ function alterou(pastaTicket, dirSpec, id) {
     || (fs.existsSync(path.join(src, TAREFAS)) && !igual(path.join(src, TAREFAS), path.join(pastaTicket, TAREFAS)));
 }
 
-module.exports = { alterou, pendentes, passosAfetados, cardsAfetados, snapshot, restaurar };
+module.exports = { NIVEL, alterou, pendentes, passosAfetados, cardsAfetados, snapshot, restaurar };

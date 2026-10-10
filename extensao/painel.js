@@ -9,7 +9,7 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { dirSpec, arquivoPasso, arqHandoff, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida } = require('./refinamento/locais'); // onde cada coisa mora
+const { dirSpec, arquivoPasso, arqHandoff, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida, ticketDe, estadoSpec, comSpec } = require('./refinamento/locais'); // onde cada coisa mora
 const { IC } = require('./componentes/icones');
 const { markdown } = require('./componentes/markdown');
 const { quando, iniciais } = require('./componentes/formato');
@@ -24,6 +24,8 @@ const vinculados = require('./componentes/vinculados'); // caixa de vinculados (
 const configuracao = require('./configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
 const mudancas = require('./refinamento/mudancas');
+const { NIVEL } = mudancas;
+const orq = require('./refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
 const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
 const conversas = require('./conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
@@ -59,12 +61,9 @@ const gravar = (id, nome, dado) => {
 // Análise por camada (cards Backend/Mobile da aba Análise): o mapeamento do passo 3 mora na PASTA DA SPEC (versionado, viaja
 // com a spec para quem for implementar). Fora de ~/.claude de propósito: o Claude Code bloqueia a escrita ali ("arquivo sensível").
 // O ticket com id = chave: as funções da spec (vindas do refinamento) usam r.id para achar a pasta.
-const ticketDe = (chave) => { const t = tickets.ler(chave); return t && { ...t, id: chave }; };
-const comSpec = (t) => t && { ...t, specPronta: !!(t.spec?.dir && estadoSpec(t)) }; // estadoSpec vem mais abaixo
 
 // ── Spec (plugin sdd do Claude Code) ──
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
-const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.json'), null) : null);
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 
 
@@ -517,9 +516,6 @@ function telaConstituicao(r, est, abertos, impactos = []) {
   }).join('')}</div>`;
 }
 
-// O que o refinamento espera de você agora (null = nada: o Claude pode seguir).
-const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') ? 'perguntas'
-  : est.passos.some((p) => p.status === 'aguardando_revisao') ? 'revisao' : null);
 
 // Cartão "Agora" no topo da aba Spec: o que está acontecendo e a sua única ação, com o botão certo.
 // Cards que ainda esperam decisão para o passo poder ser aprovado: dev (tNN) no passo 4, o [QA] no passo 6.
@@ -628,7 +624,6 @@ function telaTarefas(t, l, impactos = []) {
 }
 
 // Mudanças vindas de comentários do Jira: o vigia acha, o Claude mede (nível) e regride a spec; aqui você vê e dá ciência.
-const NIVEL = { alto: ['ALTO', 'var(--danger)'], medio: ['MÉDIO', 'var(--warn)'], baixo: ['BAIXO', 'var(--ok)'], nenhum: ['SEM IMPACTO', 'var(--text-dim)'] };
 // Mudança pedida em comentário que espera você: a spec NÃO foi alterada. Uma por vez, a mais antiga primeiro.
 function caixaDecisao(l) {
   const p = mudancas.pendentes(l);
@@ -928,199 +923,19 @@ exports.provider = (ctx) => {
   };
   const ticketAberto = () => (aberto && aberto !== SEM_TICKET ? ticketDe(aberto) : null);
 
-  // ── Maestro: o Claude em segundo plano (maestro.js), uma execução por etapa. A extensão decide quando rodar:
-  // Dar início/▶, aprovação (execução nova: contexto limpo), respostas e ajuste (mesma sessão). Pausado não roda.
-  const binsSdd = () => [sddState(), path.join(os.homedir(), '.claude', 'plugins-locais', 'crafting', 'plugins', 'sdd', 'bin', 'sdd-state')].filter(Boolean);
-  // Plugin "mapa" (mapeamento do código do passo 3): mora na extensão e só o maestro carrega (--plugin-dir).
-  const MAPA = path.join(__dirname, 'plugins', 'mapa');
-  const FOCO = path.join(__dirname, 'plugins', 'foco'); // texto curto em tudo que o Claude escreve (regras + medição dos .md)
-  const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA}/bin/mapa-git:*)`, `Bash(${MAPA}/bin/mapa-conferir:*)`,
-    `Bash(${MAPA}/bin/mapa-db:*)`, 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill',
-    'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)'];
-  const reposDe = (t) => {
-    const lista = (cfg().get('repositorios') || []).filter((r) => r?.caminho && fs.existsSync(r.caminho));
-    return lista.length ? lista : reposAuto(t?.spec?.repo || cfg().get('specsDir') || SPECS_PADRAO);
-  };
-  // Banco do mapeamento: conexão/ambiente vêm das configurações (o Claude não escolhe a base). Sem isso, mapa-db recusa.
-  const bancoEnv = (t) => {
-    const conexao = cfg().get('bancoConexao') || '', ambiente = cfg().get('bancoAmbiente') || '';
-    return { MAPA_DB_CONEXAO: conexao, MAPA_DB_AMBIENTE: ambiente, MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '',
-      MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(pasta(t.chave), '.mapa-db.jsonl') };
-  };
-  const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo) => {
-    const repos = reposDe(t);
-    const bd = bancoEnv(t);
-    return maestro.rodar(pasta(t.chave), {
-      cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { render(); depoisDaEtapa(t); },
-      // O foco substitui o i-have-adhd global nestas execuções (as regras não entram duas vezes).
-      extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
-        '--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
-      prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-        + ondeSalvar(t)
-        + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
-        + ` · plugin mapa: ${MAPA} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
-        + `\nBanco de dados: ${bd.MAPA_DB_CONEXAO && bd.MAPA_DB_AMBIENTE && bd.MAPA_DB_AMBIENTE !== 'producao' ? `configurado (${bd.MAPA_DB_AMBIENTE === 'qas' ? 'QAS' : 'cópia de produção'}): use mapa-db (só leitura)` : 'NÃO configurado: não consulte banco; liste as consultas como pendência'}`
-    });
-  };
-  // Execução terminou: card que o Claude não confirmou (sdd-state card editar) volta a Pendente; depois, a fila.
-  const alterando = new Set();
-  const depoisDaEtapa = (t) => {
-    if (maestro.rodando(pasta(t.chave))) return;
-    if (alterando.size) {
-      const l = tarefasDe(pasta(t.chave));
-      let mudou = false;
-      for (const c of l) if (alterando.has(c.id) && c.status === 'em_alteracao' && !c.fila) {
-        c.status = 'pendente';
-        (c.historico ||= []).push({ em: new Date().toISOString(), evento: 'alteracao', texto: 'O Claude não confirmou a alteração: confira e peça de novo se precisar' });
-        mudou = true;
-      }
-      alterando.clear();
-      if (mudou) gravar(t.chave, TAREFAS, l);
-    }
-    avisarImpactos(t);
-    filaTriagem(t);
-    filaImpactos(t);
-    filaTarefas(t);
-  };
-  // Execução terminou: o que ficou sem registro vira erro; a análise que mexeu na spec é desfeita; decisão pendente e
-  // aplicação concluída avisam quem iniciou o refinamento (esta máquina).
-  const avisarImpactos = (t) => {
-    const l = impactosDe(pasta(t.chave));
-    let mudou = false;
-    const spec = dirSpec(ticketDe(t.chave) || t);
-    for (const i of l) {
-      const falta = { triando: 'a triagem (sdd-state comentario classificar)', analisando: 'a análise (sdd-state impacto registrar)', aplicando: 'a aplicação (sdd-state impacto aplicado): confira os arquivos ou desfaça' }[i.status];
-      if (falta) { i.resumo = `O Claude não registrou ${falta} deste comentário.`; i.status = 'erro'; mudou = true; }
-      if (i.snapAnalise) { // a análise é só leitura: se a spec mudou, volta ao que era
-        const id = `a${i.id}`;
-        if (mudancas.alterou(pasta(t.chave), spec, id) && mudancas.restaurar(pasta(t.chave), spec, id)) {
-          Object.assign(i, { status: 'erro', resumo: 'A análise alterou a spec (era só para medir): desfeito automaticamente. Peça a análise de novo.' });
-        }
-        fs.rmSync(path.join(pasta(t.chave), 'snapshots', id), { recursive: true, force: true });
-        delete i.snapAnalise; mudou = true;
-      }
-      if (['analisado', 'aguardando_decisao', 'aplicado'].includes(i.status) && !i.avisado) {
-        i.avisado = true; mudou = true;
-        if (i.nivel === 'nenhum') continue;
-        const quem = tickets.ler(t.chave)?.refinamento?.iniciadoPor;
-        const decide = i.status === 'aguardando_decisao';
-        vscode.window.showWarningMessage(`${t.chave}: comentário de ${i.autor} — impacto ${(NIVEL[i.nivel] || [i.nivel])[0]}.${decide ? ' Nada foi alterado: decida na aba Spec.' : ''}${quem ? ` (refinamento de ${quem})` : ''}`,
-          { detail: `${i.resumo}${i.passo !== null && i.passo !== undefined ? `
-${decide ? 'Passo afetado' : 'A spec voltou ao passo'} ${i.passo}.` : ''}${(i.cards || []).length ? `
-Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
-          .then((b) => { if (b) { this_abrir(t.chave, 'spec'); } });
-      }
-    }
-    if (mudou) gravar(t.chave, IMPACTOS, l);
-  };
-  // Etapa 0: comentário novo que pode responder uma dúvida enviada ao ticket ou uma pergunta aberta do Claude.
-  // O Claude classifica (sdd-state comentario classificar): resposta (só sugere; o humano confirma), mudança (segue para
-  // o impacto) ou ruído. Sem dúvida nem pergunta abertas não há o que responder: o comentário vai direto ao impacto.
-  const abertasDe = (t) => ({
-    duvidas: duvidasDe(pasta(t.chave)).filter((x) => x.enviadaEm && !x.resposta),
-    perguntas: (estadoSpec(ticketDe(t.chave) || t)?.perguntas || []).filter((q) => q.status === 'aberta')
-  });
-  const filaTriagem = (t) => {
-    if (maestro.rodando(pasta(t.chave))) return;
-    const l = impactosDe(pasta(t.chave)), c = l.find((x) => x.status === 'triagem');
-    if (!c) return;
-    const { duvidas, perguntas } = abertasDe(t);
-    c.status = 'triando';
-    gravar(t.chave, IMPACTOS, l);
-    etapa(ticketDe(t.chave), `[triagem] Comentário novo no ticket ${t.chave}: resposta, mudança ou ruído? Siga a seção "Triagem de comentário novo do Jira" da skill sdd.\n`
-      + `Dúvidas enviadas sem resposta:\n${duvidas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma)'}\n`
-      + `Perguntas abertas do Claude:\n${perguntas.map((q) => `- ${q.id}: ${q.pergunta}${q.opcoes?.length ? ` (opções: ${q.opcoes.join(' / ')})` : ''}`).join('\n') || '(nenhuma)'}\n`
-      + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Triando comentário de ${c.autor}`);
-  };
-  // Um comentário por vez, numa execução nova (o Claude lê o refinamento inteiro do disco).
-  const filaImpactos = (t) => {
-    if (maestro.rodando(pasta(t.chave)) || !estadoSpec(ticketDe(t.chave) || t)) return;
-    const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.status === 'na_fila');
-    if (!i) return;
-    i.status = 'analisando';
-    try { mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), `a${i.id}`); i.snapAnalise = true; } catch {}
-    gravar(t.chave, IMPACTOS, l);
-    etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do Jira" da skill sdd: SÓ ANÁLISE, não edite a spec nem os cards.\n`
-      + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`);
-  };
-  // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
-  let vigiando = false;
-  const vigiarComentarios = async () => {
-    if (vigiando || !(await ctx.secrets.get('jira.token'))) return;
-    vigiando = true;
-    try {
-      for (const t0 of tickets.listar().filter((x) => x.spec?.dir)) {
-        let cs, eu;
-        try { [cs, eu] = await Promise.all([jira.comentarios(ctx.secrets, { key: t0.chave, site: t0.site }), jira.eu(ctx.secrets, t0.site)]); } catch { continue; }
-        const t = tickets.ler(t0.chave);
-        const v = t.vigiaComentarios;
-        if (!v) { tickets.gravar({ ...t, vigiaComentarios: { desde: new Date().toISOString(), vistos: cs.map((c) => c.id) } }); continue; }
-        const novos = cs.filter((c) => !v.vistos.includes(c.id) && c.autorId !== eu.id && Date.parse(c.data) >= Date.parse(v.desde) - 60000);
-        if (!novos.length) continue;
-        const l = impactosDe(pasta(t.chave)), ab = abertasDe(t), temAberta = ab.duvidas.length || ab.perguntas.length;
-        for (const c of novos) {
-          if (!l.some((i) => i.id === c.id)) l.push({ ...c, status: temAberta ? 'triagem' : 'na_fila' });
-          notificar(t.chave, 'impacto', `Comentário novo de ${c.autor}: analisando o impacto no refinamento`);
-        }
-        gravar(t.chave, IMPACTOS, l);
-        tickets.gravar({ ...tickets.ler(t.chave), vigiaComentarios: { ...v, vistos: [...new Set([...v.vistos, ...novos.map((c) => c.id)])] } });
-        filaTriagem(t);
-        filaImpactos(t);
-      }
-    } finally { vigiando = false; }
-  };
-  const relogio = setInterval(vigiarComentarios, 5 * 60 * 1000);
-  setTimeout(vigiarComentarios, 20000);
-  ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
-  // Pedidos de alteração esperando: uma execução só para todos (mesma sessão do passo 4).
-  const filaTarefas = (t) => {
-    if (maestro.rodando(pasta(t.chave))) return;
-    const l = tarefasDe(pasta(t.chave)), fila = l.filter((c) => c.status === 'em_alteracao' && c.fila);
-    if (!fila.length) return;
-    fila.forEach((c) => { c.fila = false; alterando.add(c.id); });
-    gravar(t.chave, TAREFAS, l);
-    etapa(t, `Pedidos de alteração nos cards da aba Tarefas: ${fila.map((c) => `${c.id}: "${c.alteracao}"`).join('; ')}. `
-      + 'Para cada tNN: ajuste a linha em tasks.md e o card com sdd-state card editar <id> (só os campos que mudam). '
-      + 'Para o card qa: ajuste testes.md (plano de testes) e rode sdd-state card editar qa (com --estimativa/--resumo se mudarem). '
-      + 'Não mexa em outras tarefas, não conclua nem inicie passos.', true, undefined, `Alterando ${fila.map((c) => c.id).join(', ')}`);
-  };
   const QA_EXISTENTE = /^\[QA\]\s*(Planejamento|Teste de Qualidade)/i; // subtarefa de QA que já existe no ticket
   const descricaoJira = (t, c) => [c.descricao || '', '',
     c.pronto && `Pronto quando: ${c.pronto}`, (c.rf || []).length && `Requisitos: ${c.rf.join(', ')}`,
     (c.depende || []).length && `Depende de: ${c.depende.join(', ')}`, c.camada && `Camada: ${c.camada}`,
     `Origem: spec ${t.spec?.dir || ''} · tarefa ${c.id} (Crafting Table)`].filter((x) => x !== false && x !== undefined && x !== 0).join('\n');
-  const estadoDe = (chave) => tickets.ler(chave)?.refinamento?.estado;
-  // Rodando e sem nada esperando o humano → próxima etapa numa execução nova (true se começou).
-  // Passo 6: o método do plugin fcx-qa-test-planning (jira-qa-planner + test-estimation), lido do plugin instalado.
-  const qaCaminhos = () => {
-    const qa = pluginInstalado('fcx-qa-test-planning@');
-    if (!qa) return ' Plugin fcx-qa-test-planning não instalado: siga as regras do passo 6 da skill sdd sem ele.';
-    return ` Método de QA: ${path.join(qa, 'skills', 'jira-qa-planner', 'SKILL.md')} (Passos 3, 6 e 7) e ${path.join(qa, 'skills', 'jira-qa-planner', 'reference', 'test-plan-templates.md')};`
-      + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado). Não use twg nem Jira: o card [QA] é criado no Jira pela extensão.`;
-  };
-  const seguir = (t) => {
-    const est = estadoSpec(t);
-    if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(pasta(t.chave))).length || est.proximoPasso > 6) return false;
-    const novas = respondidas.splice(0).join('; ');
-    const reprovadas = est.proximoPasso === 5 ? tarefasDe(pasta(t.chave)).filter((c) => c.status === 'reprovada') : [];
-    return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${est.proximoPasso} (${est.passos[est.proximoPasso].titulo}).`
-      + (est.proximoPasso === 6 ? qaCaminhos() : '')
-      + (est.proximoPasso === 3 ? ' Comece pelo mapeamento do código com a skill mapa:mapear (camadas, ref de leitura, análises mapa-backend.md/mapa-mobile.md na pasta da spec, mapa-conferir) e só depois escreva o plan.md.' : '')
-      + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
-      + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : ''), false, undefined, `Passo ${est.proximoPasso} · ${est.passos[est.proximoPasso].titulo}`);
-  };
-  const respondidas = []; // respostas ainda não entregues ao Claude
-  const sdd = (args) => new Promise((ok) => (sddState() ? require('child_process').execFile(sddState(), args, (e, out, err) => {
-    if (e) vscode.window.showErrorMessage(String(err || e.message).replace(/^sdd-state: /, ''));
-    ok(!e);
-  }) : ok(false)));
   const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
   // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
   const servicos = {
     render: () => render(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
-    pasta, pastaAba, gravar, notificar, reposDe, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
+    pasta, pastaAba, gravar, notificar, reposDe: orq.reposDe, orq, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
+  orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
   const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
@@ -1158,8 +973,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (aberto === id) { aberto = null; sessao.focar(null); }
       render();
     },
-    atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); vigiarComentarios(); } },
-    vigiarAgora() { return vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
+    atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
+    vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
       const t = ticketAberto();
@@ -1183,9 +998,9 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (!x || x.resposta) return;
       x.resposta = { ...resposta, em: new Date().toISOString() }; x.sugestao = null;
       gravar(t.chave, DUVIDAS, l);
-      respondidas.push(`${id} (dúvida) → ${resposta.texto}`);
+      orq.respondidas.push(`${id} (dúvida) → ${resposta.texto}`);
       render();
-      if (!l.some((y) => !y.resposta)) seguir(ticketDe(t.chave));
+      if (!l.some((y) => !y.resposta)) orq.seguir(ticketDe(t.chave));
     },
     async duvidaResponder({ id }) {
       const t = ticketAberto(), x = t && duvidasDe(pasta(t.chave)).find((y) => y.id === id);
@@ -1221,7 +1036,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       aba = 'spec'; // o refinamento acontece na aba Spec
       atualizarJira(t.chave); // anexos do ticket aparecem em Docs para baixar
       // Maestro (prova): o Claude roda em segundo plano e a caixa Ao vivo da aba Spec mostra o que ele faz.
-      etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo, 'Criando a spec do ticket');
+      orq.etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo, 'Criando a spec do ticket');
       render();
     },
     darInicio() { return this.retomar(); },
@@ -1238,7 +1053,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       const t = ticketAberto();
       if (!t) return;
       modo(t.chave, 'rodando');
-      if (!seguir(t)) render();
+      if (!orq.seguir(t)) render();
     },
     specAbrir({ id }) {
       const r = ticketAberto(), n = Number(id), est = estadoSpec(r);
@@ -1275,7 +1090,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
         if (err) return vscode.window.showErrorMessage(String(errOut || err.message).replace(/^sdd-state: /, ''));
         // Aprovado: próximo passo numa execução nova (contexto limpo), se o refinamento estiver rodando.
         vscode.window.setStatusBarMessage(`$(check) ${out.trim()}`, 6000);
-        seguir(ticketDe(r.id));
+        orq.seguir(ticketDe(r.id));
       });
     },
     async specAjuste({ id }) {
@@ -1283,8 +1098,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (maestro.rodando(pasta(r.id))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
       const texto = await vscode.window.showInputBox({ title: `Ajuste no passo ${n} (${estadoSpec(r)?.passos[n]?.titulo})`, prompt: 'O que o Claude deve mudar?', ignoreFocusOut: true });
       if (!texto?.trim()) return;
-      await sdd(['ajuste', String(n), '--ref', pasta(r.id), '--motivo', texto.trim()]);
-      etapa(r, `O humano pediu ajuste no passo ${n}: "${texto.trim()}". Faça o ajuste no arquivo do passo e rode concluir ${n} de novo.`, true, undefined, `Ajuste no passo ${n} · ${estadoSpec(r)?.passos[n]?.titulo || ''}`);
+      await orq.sdd(['ajuste', String(n), '--ref', pasta(r.id), '--motivo', texto.trim()]);
+      orq.etapa(r, `O humano pediu ajuste no passo ${n}: "${texto.trim()}". Faça o ajuste no arquivo do passo e rode concluir ${n} de novo.`, true, undefined, `Ajuste no passo ${n} · ${estadoSpec(r)?.passos[n]?.titulo || ''}`);
     },
     // Pergunta do Claude respondida na aba (id = Qnn, op = índice da opção | 'outra' | 'duvida').
     // Todas respondidas e refinamento rodando → o Claude continua na mesma sessão com as respostas.
@@ -1294,19 +1109,19 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (!q || q.status !== 'aberta') return;
       let resposta;
       if (op === 'duvida') {
-        await sdd(['duvida', 'add', '--ref', pasta(r.id), '--texto', q.pergunta, '--contexto', `${q.id} · passo ${q.passo ?? '?'}${q.contexto ? ` · ${q.contexto}` : ''}${q.opcoes?.length ? ` · opções: ${q.opcoes.join(' / ')}` : ''}`]);
-        await sdd(['pergunta', 'descartar', id, '--ref', pasta(r.id)]);
+        await orq.sdd(['duvida', 'add', '--ref', pasta(r.id), '--texto', q.pergunta, '--contexto', `${q.id} · passo ${q.passo ?? '?'}${q.contexto ? ` · ${q.contexto}` : ''}${q.opcoes?.length ? ` · opções: ${q.opcoes.join(' / ')}` : ''}`]);
+        await orq.sdd(['pergunta', 'descartar', id, '--ref', pasta(r.id)]);
         resposta = 'Tirar dúvida (vai para o time; trate como em aberto)';
       } else {
         resposta = op === 'outra' ? (await vscode.window.showInputBox({ title: q.pergunta, prompt: 'Sua resposta', ignoreFocusOut: true }))?.trim() : q.opcoes?.[Number(op)];
         if (!resposta) return;
-        await sdd(['pergunta', 'responder', id, '--ref', pasta(r.id), '--resposta', resposta]);
+        await orq.sdd(['pergunta', 'responder', id, '--ref', pasta(r.id), '--resposta', resposta]);
       }
-      respondidas.push(`${id} → ${resposta}`);
+      orq.respondidas.push(`${id} → ${resposta}`);
       const est = estadoSpec(r);
-      if (!est.perguntas.some((x) => x.status === 'aberta') && estadoDe(r.id) === 'rodando' && !maestro.rodando(pasta(r.id))) {
-        etapa(r, `Respostas do humano na aba: ${respondidas.join('; ')}. Continue o passo ${est.proximoPasso} com elas.`, true, undefined, `Aplicando suas respostas · passo ${est.proximoPasso}`);
-        respondidas.length = 0;
+      if (!est.perguntas.some((x) => x.status === 'aberta') && orq.estadoDe(r.id) === 'rodando' && !maestro.rodando(pasta(r.id))) {
+        orq.etapa(r, `Respostas do humano na aba: ${orq.respondidas.join('; ')}. Continue o passo ${est.proximoPasso} com elas.`, true, undefined, `Aplicando suas respostas · passo ${est.proximoPasso}`);
+        orq.respondidas.length = 0;
       }
       render();
     },
@@ -1398,8 +1213,8 @@ Um snapshot é guardado: dá para desfazer depois.`
         Object.assign(i, { snapshot: true, status: 'aplicando' });
       } else i.status = 'decidido';
       gravar(t.chave, IMPACTOS, l);
-      if (o?.tipo === 'consultar') await sdd(['duvida', 'add', '--ref', pasta(t.chave), '--texto', o.instrucao || o.rotulo, '--contexto', `Comentário de ${i.autor}: ${i.resumo}`]);
-      if (o?.tipo === 'aplicar') etapa(ticketDe(t.chave), `[aplicar] Mudança escolhida no ticket ${t.chave}. Siga a seção "Aplicar a mudança escolhida" da skill sdd.\n`
+      if (o?.tipo === 'consultar') await orq.sdd(['duvida', 'add', '--ref', pasta(t.chave), '--texto', o.instrucao || o.rotulo, '--contexto', `Comentário de ${i.autor}: ${i.resumo}`]);
+      if (o?.tipo === 'aplicar') orq.etapa(ticketDe(t.chave), `[aplicar] Mudança escolhida no ticket ${t.chave}. Siga a seção "Aplicar a mudança escolhida" da skill sdd.\n`
         + `Opção escolhida: ${o.rotulo}\nInstrução: ${o.instrucao || o.rotulo}\nImpacto: ${i.nivel} — ${i.resumo} (passo ${i.passo ?? '?'}; cards ${(i.cards || []).join(', ') || 'nenhum'})\n`
         + `Comentário id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Aplicando mudança de ${i.autor}`);
       render();
@@ -1487,7 +1302,7 @@ Um snapshot é guardado: dá para desfazer depois.`
       (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'alteracao', texto: `Alteração pedida: ${texto.trim()}` });
       gravar(t.chave, TAREFAS, l);
       render();
-      filaTarefas(t);
+      orq.filaTarefas(t);
     }
   };
 
