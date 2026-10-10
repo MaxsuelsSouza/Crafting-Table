@@ -172,7 +172,7 @@ exports.provider = (ctx) => {
       if (dirQa) {
         fs.mkdirSync(dirQa, { recursive: true });
         let espera;
-        vigiaQa = fs.watch(dirQa, (_, nome) => { if (['.ao-vivo.jsonl', '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
+        vigiaQa = fs.watch(dirQa, (_, nome) => { if (['.ao-vivo.jsonl', '.ao-vivo.expandido', '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
       }
     }
     const arquivos = listar(dir);

@@ -356,7 +356,7 @@ const rodape = (t, dentro) => {
   const caixaAmb = !amb ? '' : amb.tipo === 'preparando'
     ? `<button class="ct-amb" ${acao}="qaAmbLog" title="Preparando API, Metro, emulador e app: clique para ver o log ao vivo"><span class="ct-luz prep"></span>Preparando ambiente</button>`
     : amb.tipo === 'erro'
-      ? `<button class="ct-amb" data-secao="${EVID}" data-cmd="qaAmbVisto" title="${amb.analisando ? 'O Claude está analisando o erro' : 'Ver o erro e a análise do Claude em Evidências'}"><span class="ct-luz erro ${amb.nova || amb.analisando ? 'pisca' : ''}"></span>Ambiente parou${amb.analisando ? ' · analisando' : ''}${amb.nova ? '<span class="ct-badge ct-badge-erro">1</span>' : ''}</button>`
+      ? `<button class="ct-amb" ${acao}="${amb.analisando ? 'qaAmbLog' : 'qaAmbErro'}" title="${amb.analisando ? 'O Claude está analisando o erro: clique para ver o log ao vivo' : 'Ver o erro e a análise do Claude'}"><span class="ct-luz erro ${amb.nova || amb.analisando ? 'pisca' : ''}"></span>Ambiente parou${amb.analisando ? ' · analisando' : ''}${amb.nova ? '<span class="ct-badge ct-badge-erro">1</span>' : ''}</button>`
       : `<button class="ct-amb" ${acao}="qaAmbLog" title="Ambiente pronto: clique para ver o log"><span class="ct-luz ok"></span>Ambiente</button>`;
   return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
@@ -899,7 +899,6 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
     ${texto ? `<div class="atexto">${texto}</div>` : ''}${acoes ? `<div class="aacoes">${acoes}</div>` : ''}</div>`;
 }
 
-const { aoVivoHtml } = maestro; // caixa "Ao vivo" (maestro.js)
 
 // ── Tarefas: cards do passo 4 (como no Jira). Pendentes → você aprova (vira subtarefa no Jira), reprova ou pede
 // alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
@@ -1014,7 +1013,7 @@ function corpoAba(t, aba, d) {
     <div class="caixa-t">Notas</div>
     <div class="notas-caixa">${notas.corpoNotas(semTicket ? 'Notas desta conversa…' : 'Notas do ticket…')}</div>`;
   }
-  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${aoVivoHtml(d.vivo, d.vivoRodando)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
+  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${maestro.caixaVivo(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
@@ -1421,7 +1420,6 @@ exports.provider = (ctx) => {
       decisoes: decisoesDe(dirAba),
       duvidas: duvidasDe(dir),
       impactos: t.id === SEM_TICKET ? [] : impactosDe(dir),
-      vivo: t.id === SEM_TICKET ? [] : maestro.aoVivo(dir),
       vivoRodando: t.id !== SEM_TICKET && maestro.rodando(dir),
       estado: dirSpec(t) ? estadoSpec(t) : null,
       jira: cacheJira[t.id],
@@ -2024,7 +2022,26 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     },
     async qaAmbAnalisar() { const t = ticketAberto(); if (t) { await require('./qa').analisarAmbiente(pastaAba(t.id), depsQa(t)); render(); } },
     // Log ao vivo: terminal acompanhando o log do preparo (tail -F); pelos Comandos, também os terminais da API e do Metro.
-    qaAmbVisto() { const t = ticketAberto(); if (t) { require('./qa').analiseVista(pastaAba(t.id)); render(); } },
+    // Ao vivo: Ver tudo / Recolher (Evidências do QA ou aba Spec).
+    vivoExpandir({ id }) {
+      const t = ticketAberto();
+      if (!t || !['qa', 'spec'].includes(id)) return;
+      maestro.alternarExpandido(id === 'qa' ? pastaAba(t.id) : pasta(t.chave));
+      render();
+    },
+    // Modal do erro do ambiente: a análise do Claude (ou o erro cru, se ainda não houver análise), com log ao vivo e reanálise.
+    async qaAmbErro() {
+      const t = ticketAberto(), qa = require('./qa');
+      if (!t) return;
+      const dir = pastaAba(t.id), r = qa.resumoErroAmbiente(dir);
+      if (!r) return;
+      qa.analiseVista(dir); render();
+      const detalhe = r.analise ? `Análise do Claude\n\n${r.analise}${r.detalhe ? `\n\n─────\n${r.detalhe}` : ''}` : `${r.detalhe || 'Sem detalhe.'}\n\nO Claude ainda não analisou este erro.`;
+      const botoes = ['Log ao vivo', ...(qa.rodando(dir) ? [] : [r.analise ? 'Analisar de novo' : 'Analisar com o Claude'])];
+      const escolha = await vscode.window.showErrorMessage(r.titulo, { modal: true, detail: detalhe }, ...botoes);
+      if (escolha === 'Log ao vivo') this.qaAmbLog();
+      else if (escolha) this.qaAmbAnalisar();
+    },
     qaAmbLog() {
       const t = ticketAberto();
       if (!t) return;
@@ -2455,7 +2472,8 @@ Um snapshot é guardado: dá para desfazer depois.`
       const t = aberto === SEM_TICKET ? { id: SEM_TICKET } : aberto && comSpec(ticketDe(aberto));
       if (!t) return null;
       // Fora do painel o rodapé fica preso embaixo (a página do outro módulo rola o body).
-      return { css: CSS_MOLDURA + '<style>body { margin: 0; padding-bottom: 30px; } .ct-rod { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; }</style>',
+      // !important: a seção de dentro pode zerar o padding do body depois (Evidências usa ESTILO_NOTAS no corpo) e o rodapé fixo cobriria o fim da página.
+      return { css: CSS_MOLDURA + '<style>body { margin: 0; padding-bottom: 42px !important; } .ct-rod { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; }</style>',
         topo: cabecalho(t, { aba, secao }), rodape: rodape(t) };
     },
     aoMudarMoldura: (f) => { avisarMoldura = f; },

@@ -182,8 +182,9 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   await qa.executar(d6, deps);
   assert.deepStrictEqual(prompts, ['QA · Analisando por que o ambiente parou']);
   assert.ok(fs.readFileSync(path.join(d6, qa.LOG_AMB), 'utf8').includes('dotnet: erro ao subir a API'));
-  const h6 = qa.html(d6);
-  assert.ok(h6.includes('parou em api') && h6.includes('porta 5111 fechada') && h6.includes('Causa: RabbitMQ fora do ar.') && h6.includes('Log ao vivo'));
+  const r6 = qa.resumoErroAmbiente(d6);
+  assert.ok(r6.titulo.includes('api') && r6.detalhe.includes('porta 5111 fechada') && r6.analise === 'Causa: RabbitMQ fora do ar.');
+  assert.ok(!qa.html(d6).includes('Ambiente')); // ambiente só no rodapé
   // Sem Comandos nas Configurações, o log registra a tentativa e cai no script da skill.
   assert.ok(/Nenhum comando cadastrado/.test(fs.readFileSync(path.join(d6, qa.LOG_AMB), 'utf8')));
   assert.deepStrictEqual(qa.cenarios(d6).cenarios.map((c) => c.status), ['pendente', 'pendente']); // nada executou
@@ -191,7 +192,6 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.deepStrictEqual(qa.statusAmbiente(d6), { tipo: 'erro', analisando: false, nova: true, etapa: 'api' });
   qa.analiseVista(d6);
   assert.strictEqual(qa.statusAmbiente(d6).nova, false);
-  assert.ok(!qa.html(d6).includes('Preparando o ambiente'));
   assert.ok(qa.massaHtml(d5).includes('Válida'));
   // Outra janela: estado diz rodando com o pid de um processo vivo (este) que não é a janela atual → rodando; pid morto → parado.
   const d7 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
@@ -213,5 +213,13 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.strictEqual(mae.aoVivo(d9).length, 1);
   await new Promise((r) => setTimeout(r, 1000));
   assert.deepStrictEqual(mae.aoVivo(d9).map((x) => x.texto), ['a', 'b', 'c']);
+  // Ao vivo: Ver tudo mostra o log inteiro (do primeiro ao mais recente); Recolher volta às últimas 40.
+  for (let i = 0; i < 45; i++) fs.appendFileSync(path.join(d9, '.ao-vivo.jsonl'), JSON.stringify({ em: new Date().toISOString(), tipo: 'acao', texto: `linha ${i}` }) + '\n');
+  assert.ok(mae.caixaVivo(d9, false, 'qa').includes('Ver tudo (48)') && !mae.caixaVivo(d9, false, 'qa').includes('>a<'));
+  mae.alternarExpandido(d9);
+  const tudo = mae.caixaVivo(d9, false, 'qa');
+  assert.ok(tudo.includes('Recolher') && tudo.includes('>a<') && tudo.includes('linha 44') && tudo.includes('expandido'));
+  mae.alternarExpandido(d9);
+  assert.ok(!mae.expandido(d9));
   console.log('ok execução');
 })();

@@ -162,8 +162,21 @@ function escoar(dir, f) {
   }, Math.max(0, f.ultimo + passo - Date.now()));
 }
 
+// n = Infinity: o log inteiro (caixa expandida). Linha corrompida não derruba a caixa.
 const aoVivo = (dir, n = 40) => {
-  try { return fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n').slice(-n).map((l) => JSON.parse(l)); } catch { return []; }
+  let linhas;
+  try { linhas = fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n'); } catch { return []; }
+  return linhas.slice(-n).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+};
+const totalVivo = (dir) => { try { return fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n').filter(Boolean).length; } catch { return 0; } };
+// Caixa expandida (todo o log, do primeiro ao mais recente): marcada por arquivo, para a tela que vigia a pasta redesenhar sozinha.
+const EXPANDIDO = '.ao-vivo.expandido';
+const expandido = (dir) => fs.existsSync(path.join(dir, EXPANDIDO));
+const alternarExpandido = (dir) => (expandido(dir) ? fs.rmSync(path.join(dir, EXPANDIDO), { force: true }) : fs.writeFileSync(path.join(dir, EXPANDIDO), ''));
+// Caixa pronta para a tela: lê o log (40 linhas, ou tudo se expandida) e põe o botão Ver tudo/Recolher (alvo: 'qa' | 'spec').
+const caixaVivo = (dir, rodandoAgora, alvo) => {
+  const exp = expandido(dir);
+  return aoVivoHtml(aoVivo(dir, exp ? Infinity : 40), rodandoAgora, { expandido: exp, total: totalVivo(dir), alvo });
 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -175,8 +188,9 @@ const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit',
 // Mais recente em cima: blocos por etapa (a etapa mais nova primeiro), o título da etapa no topo do bloco e as linhas dele da mais nova para a mais antiga.
 const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO_VIVO[x.tipo] || x.tipo) === 'etapa' || !g.length ? g.push([x]) : g.at(-1).push(x), g), [])
   .reverse().flatMap(([cab, ...resto]) => ((TIPO_VIVO[cab.tipo] || cab.tipo) === 'etapa' ? [cab, ...resto.reverse()] : [...resto.reverse(), cab]));
-const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}</span></div>
-  <div class="folha ao-vivo" id="aoVivo">${recentesPrimeiro(l).map((x) => {
+const aoVivoHtml = (l, vivo, o = {}) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}
+  ${o.alvo && (o.expandido || o.total > l.length) ? `<button class="vivo-exp" data-painel="vivoExpandir" data-id="${esc(o.alvo)}" title="${o.expandido ? 'Voltar às últimas 40 linhas' : 'Mostrar o log inteiro, do primeiro ao mais recente'}">${o.expandido ? 'Recolher' : `Ver tudo (${o.total})`}</button>` : ''}</span></div>
+  <div class="folha ao-vivo ${o.expandido ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
     const tipo = TIPO_VIVO[x.tipo] || x.tipo;
     return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
       : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE_VIVO[tipo] || '·'}</span>
@@ -184,6 +198,10 @@ const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>$
   }).join('')}</div>` : '');
 
 const CSS_VIVO = `
+  .ao-vivo.expandido { max-height: 70vh; }
+  .vivo-exp { margin-left: 8px; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: var(--r-md); background: none; color: var(--text);
+    font: inherit; font-size: 10.5px; cursor: pointer; }
+  .vivo-exp:hover { background: var(--surface-2); }
   .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
   .vivo { display: flex; gap: 6px; padding: 2px 0; }
   .vivo .vi { flex: none; width: 12px; text-align: center; color: var(--text-dim); }
@@ -203,4 +221,4 @@ const CSS_VIVO = `
 const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
 const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, anotar, aoVivo, aoVivoHtml, CSS_VIVO, parar, matarTodos, rodando: rodandoEm, vivo, VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd, recentesPrimeiro } };
+module.exports = { rodar, anotar, aoVivo, aoVivoHtml, caixaVivo, alternarExpandido, expandido, CSS_VIVO, parar, matarTodos, rodando: rodandoEm, vivo, VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd, recentesPrimeiro } };

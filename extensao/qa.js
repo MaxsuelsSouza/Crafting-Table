@@ -198,7 +198,7 @@ const SKILL = () => path.join(os.homedir(), '.claude', 'skills', 'testes-funcion
 const scriptPreparo = (backend) => [path.join(backend, 'testes-funcionais', 'preparar-ambiente.py'), path.join(SKILL(), 'assets', 'backend', 'preparar-ambiente.py')].find((f) => fs.existsSync(f)) || null;
 const shaDe = (repo) => { try { return repo ? execFileSync('git', ['-C', repo, 'rev-parse', '--short', 'HEAD'], { timeout: 5000 }).toString().trim() : null; } catch { return null; } };
 const preparos = new Map(); // dir -> processo do preparar-ambiente (a pausa mata)
-const LOG_AMB = '.ambiente.log'; // saída completa do último preparo (cartão Ambiente → Ver log; base da análise do Claude)
+const LOG_AMB = '.ambiente.log'; // saída completa do último preparo (rodapé → Ambiente: log ao vivo; base da análise do Claude)
 async function preparar(dir, chave, backend, d = {}) {
   const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · Ambiente');
@@ -255,7 +255,7 @@ function prepararPelaSkill(dir, chave, backend) {
       const amb = { ...(json || { parou_em: 'script', itens: [] }), erro: json ? null : (erro.trim().slice(-300) || `saiu com código ${code}`),
         data: hoje(), em: new Date().toISOString(), build, fonte: 'skill', preparando: false, sha: { backend: shaDe(json?.backend), mobile: shaDe(json?.mobile) } };
       gravarJson(path.join(dir, AMBIENTE), amb);
-      if (amb.parou_em) { vivo('erro', `Ambiente parou na etapa ${amb.parou_em}${amb.erro ? `: ${amb.erro}` : ''}. O log completo e a análise ficam no cartão Ambiente`); return ok(null); }
+      if (amb.parou_em) { vivo('erro', `Ambiente parou na etapa ${amb.parou_em}${amb.erro ? `: ${amb.erro}` : ''}. Log e análise no Ambiente do rodapé`); return ok(null); }
       vivo('fim', `Ambiente pronto · ref ${amb.ref || '?'} · backend ${amb.sha.backend || '?'} · mobile ${amb.sha.mobile || '?'}${amb.pendentes ? ` · ${amb.pendentes} pendência(s)` : ''}`);
       ok(amb);
     });
@@ -360,6 +360,14 @@ function statusAmbiente(dir) {
   if (a.parou_em) return { tipo: 'erro', analisando: !!a.analise?.analisando && rodando(dir), nova: !!a.analise?.texto && !a.analise.vista, etapa: a.parou_em };
   return a.preparando ? null : { tipo: 'pronto' };
 }
+// Conteúdo do modal do rodapé: etapa, erro, pendências e a análise do Claude (se houver).
+function resumoErroAmbiente(dir) {
+  const a = ambiente(dir);
+  if (!a?.parou_em) return null;
+  const pend = (a.itens || []).filter((i) => i.verdito === 'PENDENTE').map((i) => `⛔ ${i.item}: ${i.detalhe || ''}`);
+  return { titulo: `Ambiente parou na etapa ${a.parou_em}`, analise: a.analise?.texto || null, analisando: !!a.analise?.analisando && rodando(dir),
+    detalhe: [a.erro, ...pend].filter(Boolean).join('\n') };
+}
 function analiseVista(dir) { const a = ambiente(dir); if (a?.analise?.texto && !a.analise.vista) gravarJson(path.join(dir, AMBIENTE), { ...a, analise: { ...a.analise, vista: true } }); }
 function gravarAnalise(dir, texto) {
   const a = ambiente(dir);
@@ -392,7 +400,7 @@ async function executar(dir, d) {
     }
     travar(d.chave);
     const amb = await preparar(dir, d.chave, d.backend, d);
-    if (!amb && !pausado(dir)) { vivo('acao', 'Pedindo ao Claude uma análise do erro (aparece no cartão Ambiente)'); await analisarAmbiente(dir, d); }
+    if (!amb && !pausado(dir)) { vivo('acao', 'Pedindo ao Claude uma análise do erro (aparece ao clicar em Ambiente parou, no rodapé)'); await analisarAmbiente(dir, d); }
     if (!amb || pausado(dir)) return;
     const agora = new Date(), falta = semMassa(dir, pend.map((c) => c.id), agora, d.horaRefresh);
     vivo('etapa', 'QA · Massa de dados');
@@ -510,8 +518,6 @@ const CSS = `<style>${maestro.CSS_VIVO}
   .qa-card p { margin: 0; color: var(--text-dim); line-height: 1.5; }
   .qa-card button { margin-top: 8px; height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-md); background: var(--accent); color: var(--on-cor); font-weight: 600; cursor: pointer; }
   .qa-card button[disabled] { opacity: .6; cursor: default; }
-  .qa-card .analise { margin-top: 8px; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); }
-  .qa-card .analise pre { margin: 4px 0 0; white-space: pre-wrap; font: inherit; color: var(--text); line-height: 1.5; }
   .qa-card .arquivo { display: inline-flex; gap: 2px; margin-top: 8px; }
   .qa-card .arquivo .fb-btn { margin: 0; height: 24px; padding: 0 7px; background: transparent; color: var(--text); font-weight: 400; }
   .qa-card .arquivo .fb-btn:hover { background: var(--surface-2); }
@@ -565,8 +571,9 @@ function html(dir, uri = () => '') {
     : !e.fase ? '<div class="qa-card"><b>QA não iniciado</b><p>Clique em ▶ no topo: a Crafting Table procura o planejamento de QA do ticket.</p></div>' : '';
   const aprovado = e.fase === 'plano_aprovado';
   // Plano já aprovado: o cartão dele desce para baixo do Ao vivo (em cima ficam execução e ambiente).
-  return CSS + (aprovado ? '' : card) + (aprovado ? execucaoHtml(dir, e, rodando) : '') + ambienteHtml(ambiente(dir), rodando)
-    + maestro.aoVivoHtml(maestro.aoVivo(dir), rodando) + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
+  // O ambiente fica só no rodapé do painel (status, log ao vivo e a análise do Claude num modal).
+  return CSS + (aprovado ? '' : card) + (aprovado ? execucaoHtml(dir, e, rodando) : '')
+    + maestro.caixaVivo(dir, rodando, 'qa') + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
 }
 function execucaoHtml(dir, e, rodando) {
   const r = cenarios(dir).cenarios.filter((c) => !c.arquivado), pend = fila({ cenarios: r }).length, feitos = r.filter((c) => RESULTADOS.includes(c.status)).length;
@@ -577,18 +584,6 @@ function execucaoHtml(dir, e, rodando) {
     ${feitos ? '<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no Jira</button>' : ''}</div>`;
   return `<div class="qa-card"><b>Execução concluída</b><p>Nenhum cenário na fila. ↻ Refazer num cenário o coloca de volta.</p>
     ${feitos ? '<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no Jira</button>' : ''}</div>`;
-}
-function ambienteHtml(a, rodando) {
-  if (!a) return '';
-  const log = '<div class="format-bar arquivo"><button class="fb-btn" data-painel="qaAmbLog" title="Acompanhar a saída em tempo real num terminal">Log ao vivo</button></div>';
-  if (a.preparando) return ''; // preparando aparece no rodapé do painel
-  const pend = (a.itens || []).filter((i) => i.verdito === 'PENDENTE'), an = a.analise;
-  return `<div class="qa-card ${a.parou_em ? 'bloq' : ''}"><b>Ambiente${a.parou_em ? ` · parou em ${esc(a.parou_em)}` : ' pronto'}</b>
-    <p>${a.fonte === 'comandos' ? `pelos Comandos (${esc((a.terminais || []).join(', '))}) · ` : ''}${a.ref ? `ref ${esc(a.ref)} · ` : ''}${a.sha ? `backend ${esc(a.sha.backend || '?')} · mobile ${esc(a.sha.mobile || '?')} · ` : ''}${esc(dataBr(a.em))}${a.erro ? `<br>${esc(a.erro)}` : ''}
-    ${pend.map((i) => `<br>⛔ ${esc(i.item)}: ${esc(i.detalhe || '')}`).join('')}</p>
-    ${a.parou_em && an?.analisando && rodando ? '<p class="analise"><span class="vivo-bola"></span>O Claude está analisando o erro…</p>' : ''}
-    ${a.parou_em && an?.texto ? `<div class="analise"><b>Análise do Claude</b><pre>${esc(an.texto)}</pre></div>` : ''}
-    ${log}${a.parou_em && !rodando ? `<div class="acoes-passo"><button data-painel="qaAmbAnalisar">${an?.texto ? 'Analisar de novo' : 'Analisar com o Claude'}</button></div>` : ''}</div>`;
 }
 // Aba Massa (painel). Validade: estado 'valida' e medida depois do último refresh do banco.
 function massaHtml(dir, hora = '06:00') {
@@ -629,6 +624,6 @@ function mapaHtml(dir, r, amb, uri) {
     <div class="cens">${ativos.map(cartao).join('')}${arq.map(cartao).join('')}</div>`;
 }
 
-module.exports = { statusAmbiente, analiseVista, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
+module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
   concluirCenario, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, adfMd, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };
