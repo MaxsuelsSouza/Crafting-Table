@@ -6,6 +6,8 @@ const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo');
+const cardCenario = require('./componentes/card-cenario');
+const { dataBr } = cardCenario;
 
 // Módulo QA (lista QA do painel). O ▶ roda tudo em ordem (executar): planejamento → mapa de cenários → ambiente → massa → um
 // `claude -p` por cenário. Estado em arquivos da pasta qa/ do ticket, então pausar/retomar é só parar entre execuções.
@@ -82,7 +84,6 @@ function versionar(dir, s) {
 // ── Mapa de cenários (.cenarios.json): um item por CT do plano, com status e histórico de execuções.
 // Plano novo: texto mudou → desatualizado (se já rodou) ; CT novo → pendente ; CT que saiu → arquivado (mantém o histórico).
 const CENARIOS = '.cenarios.json';
-const STATUS = { pendente: 'Pendente', executando: 'Executando', passou: 'Passou', falhou: 'Falhou', bloqueado: 'Bloqueado', desatualizado: 'Plano mudou' };
 const hashDe = (t) => crypto.createHash('sha1').update(t.replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 12);
 // Início de cenário: título (#### CT01 – Validar …) ou linha só em negrito (**Cenário 1: …**, **Exploratório 2: …**).
 // CT n / Cenário n / Caso de teste n → CTnn; Exploratório n → EXnn (fica no fim da fila, como no plano).
@@ -511,7 +512,7 @@ const FERRAMENTAS_PLANO = ['Skill', 'Read', 'Glob', 'Grep', 'Bash(jq:*)', 'Bash(
     'getJiraIssueTypeMetaWithFields', 'createJiraIssue', 'editJiraIssue', 'addCommentToJiraIssue'].map((f) => `mcp__claude_ai_Atlassian__${f}`)];
 
 // Bloco do topo da seção Evidências no QA: cartão do planejamento + Ao vivo. Botões vão ao painel (data-painel, grupo.js).
-const CSS = `<style>${aoVivo.CSS}
+const CSS = `<style>${aoVivo.CSS}${cardCenario.CSS}
   .caixa-t { margin: 0 12px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); display: flex; gap: 6px; }
   .caixa-t span { margin-left: auto; text-transform: none; letter-spacing: 0; }
   .qa-card { margin: 10px 12px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); font-size: 12px; }
@@ -529,27 +530,6 @@ const CSS = `<style>${aoVivo.CSS}
   .qa-card .acoes-passo button:disabled, .qa-card .acoes-passo button.travado { opacity: .45; cursor: not-allowed; }
   .qa-card .sec { background: none; border: 1px solid var(--border); color: var(--text); font-weight: 400; margin-left: 4px; }
   .cens { margin: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
-  .cen { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: 12px; }
-  .cen summary { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; cursor: pointer; list-style: none; }
-  .cen summary::-webkit-details-marker { display: none; }
-  .cen .cid { font-weight: 700; color: var(--accent); flex: none; }
-  .cen .ctit { flex: 1; min-width: 0; }
-  .cen .cst { flex: none; font-size: 10px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
-  .cst.passou { color: var(--ok); border-color: var(--ok); } .cst.falhou { color: var(--danger); border-color: var(--danger); }
-  .cst.desatualizado, .cst.bloqueado { color: var(--warn); border-color: var(--warn); } .cst.executando { color: var(--ia); border-color: var(--ia); }
-  .cen .cdet { padding: 0 10px 10px; color: var(--text-dim); line-height: 1.5; }
-  .cen .cdet pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
-  .cen .cex { margin-top: 6px; } .cen .cex div { font-size: 11px; }
-  .cen button { margin-top: 6px; height: 24px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--r-md); background: none; color: var(--text); cursor: pointer; }
-  .cen.arq { opacity: .55; }
-  .cevs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-  .cev { width: 54px; height: 96px; border-radius: var(--r-md); overflow: hidden; background: var(--surface-2); display: flex; align-items: center; justify-content: center;
-    font-size: 10px; font-weight: 700; color: var(--text-dim); cursor: pointer; }
-  .cex-vazio { font-size: 11px; color: var(--text-dim); margin: 2px 0 6px; }
-  .cen .arquivo { display: inline-flex; gap: 2px; margin: 4px 0; }
-  .cen .arquivo .fb-btn { margin: 0; height: 24px; border: 0; padding: 0 7px; background: transparent; }
-  .cen .arquivo .fb-btn:hover { background: var(--surface-2); }
-  .cev img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
 </style>`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 // uri(arquivo) → endereço da webview (miniaturas das evidências).
@@ -604,26 +584,13 @@ function massaHtml(dir, hora = '06:00') {
     <button data-acao="qaMassaEditar" title="Abre o .massa.json no editor (cole ou corrija dados à mão)">Editar à mão</button></div>
     <div class="cens">${linhas || '<div class="vazio-aba">Nenhuma massa ainda. O ▶ do QA levanta a massa antes de executar os cenários.</div>'}</div>`;
 }
-const dataBr = (iso) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-const IMG = /\.(png|jpe?g|gif|webp)$/i;
 function mapaHtml(dir, r, amb, uri) {
   const ativos = r.cenarios.filter((c) => !c.arquivado), arq = r.cenarios.filter((c) => c.arquivado);
   if (!r.cenarios.length) return '';
   const feitos = ativos.filter((c) => c.status === 'passou').length;
-  const miniatura = (f) => `<span class="cev" data-acao="abrir" data-nome="${esc(f)}" title="${esc(path.basename(f))}">${IMG.test(f) && uri(f) ? `<img src="${uri(f)}">` : esc(path.extname(f).slice(1).toUpperCase() || 'ARQ')}</span>`;
-  // Expandido: resumo, pasta/copiar das evidências do cenário e cada execução com as suas evidências (todas, não só a última).
-  const cartao = (c) => `<details class="cen ${c.arquivado ? 'arq' : ''}" data-cen="${esc(c.id)}"><summary><span class="cid">${esc(c.id)}</span><span class="ctit">${esc(c.titulo || '')}</span>
-      <span class="cst ${esc(c.status)}">${c.arquivado ? 'Fora do plano' : esc(STATUS[c.status] || c.status)}</span></summary>
-    <div class="cdet">${c.resumo ? `<pre>${esc(c.resumo)}</pre>` : `<pre>${esc((c.texto || '').slice(0, 600))}</pre>`}
-      ${(c.execucoes || []).length ? `<div class="format-bar arquivo"><button class="fb-btn" data-acao="pastaCenario" data-nome="${esc(path.join(dir, 'evidencias', c.id))}" title="${esc(path.join(dir, 'evidencias', c.id))}">Abrir pasta</button>
-        <button class="fb-btn" data-acao="copiarCenario" data-nome="${esc(path.join(dir, 'evidencias', c.id))}">Copiar caminho</button></div>
-        <div class="cex">${c.execucoes.slice().reverse().map((x) => `<div>${esc(dataBr(x.inicio || x.em))} · ${esc(STATUS[x.status] || x.status)}${x.nota ? ` · ${esc(x.nota)}` : ''}`
-          + `${x.sha && amb?.sha && (x.sha.backend !== amb.sha.backend || x.sha.mobile !== amb.sha.mobile) ? ' · <span class="cst desatualizado" title="O código mudou desde esta execução">build anterior</span>' : ''}</div>`
-          + (arquivosDe(dir, x).length ? `<div class="cevs">${arquivosDe(dir, x).map(miniatura).join('')}</div>` : '<div class="cex-vazio">Sem evidências nesta execução.</div>')).join('')}</div>`
-        : '<div class="cex"><div>Ainda não executado.</div></div>'}
-      ${!c.arquivado && ['passou', 'falhou', 'desatualizado', 'bloqueado'].includes(c.status) ? `<button data-painel="qaRefazer" data-id="${esc(c.id)}">↻ Refazer</button>` : ''}</div></details>`;
+  const ctx = { dir, amb, uri, arquivos: (x) => arquivosDe(dir, x) };
   return `<div class="caixa-t">Cenários · plano v${r.planoVersao}<span>${feitos}/${ativos.length} passaram</span></div>
-    <div class="cens">${ativos.map(cartao).join('')}${arq.map(cartao).join('')}</div>`;
+    <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
 module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,

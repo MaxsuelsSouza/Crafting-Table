@@ -10,6 +10,7 @@ const emulador = require('./emulador');
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.
 const sessao = require('./sessao');
 const aoVivo = require('./componentes/ao-vivo');
+const cardCenario = require('./componentes/card-cenario');
 const ADB = path.join(emulador.SDK, 'platform-tools', 'adb');
 const IMAGEM = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const VIDEO = new Set(['.mp4', '.webm', '.mov']);
@@ -124,15 +125,7 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
   const pag = document.scrollingElement;
   pag.scrollTop = st().evPagina || 0;
   ${aoVivo.script('evVivo')}
-  // Cenários expandidos continuam expandidos depois do redesenho.
-  for (const d of document.querySelectorAll('details[data-cen]')) {
-    if ((st().evAbertos || []).includes(d.dataset.cen)) d.open = true;
-    d.addEventListener('toggle', () => {
-      const l = new Set(st().evAbertos || []);
-      d.open ? l.add(d.dataset.cen) : l.delete(d.dataset.cen);
-      vscode.setState({ ...st(), evAbertos: [...l] });
-    });
-  }
+  ${cardCenario.script('evAbertos')}
   addEventListener('scroll', () => vscode.setState({ ...st(), evPagina: pag.scrollTop }), { passive: true });
   const desde = ${gravandoDesde || 0};
   const rel = document.getElementById('relogio');

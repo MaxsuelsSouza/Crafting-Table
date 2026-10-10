@@ -172,6 +172,14 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   const h5 = qa.html(d5, (f) => `uri:${f}`);
   assert.ok(h5.includes('print-0.png') && h5.includes('print-1.png') && h5.includes('data-acao="pastaCenario"') && h5.includes('data-cen="CT02"'));
 
+  // Card de cenário: execução sem evidência, ↻ Refazer só nos concluídos e cenário fora do plano apagado e sem Refazer.
+  const cardCen = require('./componentes/card-cenario').card, ctxC = { dir: d5, uri: () => '', arquivos: () => [] };
+  const semExec = cardCen({ id: 'CT09', titulo: 'T', status: 'pendente', texto: 'x' }, ctxC);
+  assert.ok(semExec.includes('Ainda não executado') && !semExec.includes('qaRefazer'));
+  const arqC = cardCen({ id: 'CT08', status: 'passou', arquivado: true, execucoes: [{ status: 'passou', evidencias: 'e' }] }, ctxC);
+  assert.ok(arqC.includes('Fora do plano') && arqC.includes('class="cen arq"') && arqC.includes('Sem evidências nesta execução') && !arqC.includes('qaRefazer'));
+  assert.ok(h5.includes('data-painel="qaRefazer" data-id="CT02"'));
+
   // Ambiente parou: log completo + análise do Claude (gravada pelo qa-state analise, pela entrada padrão).
   const d6 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
   await qa.verificarPlano(d6, 'WMS-1', apiPlano); qa.aprovar(d6);
