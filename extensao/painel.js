@@ -13,7 +13,7 @@ const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar, ler,
 const { IC } = require('./componentes/icones');
 const { markdown } = require('./componentes/markdown');
 const { quando, iniciais } = require('./componentes/formato');
-const { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe, cmdsAberto } = require('./notificacoes'); // sino do ticket
+const { LIDAS, ICONE_NOTIF, notificar, notifsDe, cmdsAberto } = require('./notificacoes'); // sino do ticket
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
@@ -26,6 +26,7 @@ const menuModulos = require('./componentes/menu-modulos'); // Refinamento · Imp
 const configuracao = require('./configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
 const mudancas = require('./refinamento/mudancas');
+const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 
 // Módulo Refinamento: a lista e, com um ticket aberto, o ticket ocupando a view inteira —
@@ -224,9 +225,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
-      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? (require('./qa/qa').rodando(pastaAba(t.id))
-    ? `<button class="ct-ico ct-pausa" ${b('qaParar')} title="Pausar o QA: o cenário em andamento é descartado e volta na retomada">${IC.pausa}</button>`
-    : `<button class="ct-ico ct-play" ${b('qaPlay')} title="Executar QA: planejamento, ambiente, massa e cenários pendentes (Ao vivo em Evidências)">${IC.play}</button>`) : ''}
+      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no Jira">${IC.jira}</button>`}
     </div>
@@ -253,12 +252,7 @@ const rodape = (t, dentro = false) => {
     ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
       title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
   // QA: ambiente depois de Comandos. Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise (Evidências).
-  const amb = t && t.id !== SEM_TICKET && sessao.focoLista() === 'qa' ? require('./qa/qa').statusAmbiente(dir) : null;
-  const caixaAmb = !amb ? '' : amb.tipo === 'preparando'
-    ? `<button class="ct-amb" ${acao}="qaAmbLog" title="Preparando API, Metro, emulador e app: clique para ver o log ao vivo"><span class="ct-luz prep"></span>Preparando ambiente</button>`
-    : amb.tipo === 'erro'
-      ? `<button class="ct-amb" ${acao}="${amb.analisando ? 'qaAmbLog' : 'qaAmbErro'}" title="${amb.analisando ? 'O Claude está analisando o erro: clique para ver o log ao vivo' : 'Ver o erro e a análise do Claude'}"><span class="ct-luz erro ${amb.nova || amb.analisando ? 'pisca' : ''}"></span>Ambiente parou${amb.analisando ? ' · analisando' : ''}${amb.nova ? '<span class="ct-badge ct-badge-erro">1</span>' : ''}</button>`
-      : `<button class="ct-amb" ${acao}="qaAmbLog" title="Ambiente pronto: clique para ver o log"><span class="ct-luz ok"></span>Ambiente</button>`;
+  const caixaAmb = t && t.id !== SEM_TICKET && sessao.focoLista() === 'qa' ? acoesQa.caixaAmbiente(dir, acao) : '';
   return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
   <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>
@@ -1230,34 +1224,13 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     ok(!e);
   }) : ok(false)));
   const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
-  // Dependências do qa.executar / análise do ambiente (Jira, Claude em segundo plano, gravação da tela, avisos).
-  const depsQa = (t) => {
-    const dir = pastaAba(t.id), emu = require('./emulador');
-    return {
-      chave: t.chave, backend: reposDe(t).find((r) => r.camada === 'backend')?.caminho, api: (rota) => jira.api(ctx.secrets, t.site, rota),
-      horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: render,
-      extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir,
-        ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
-      // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
-      comandos: {
-        lista: () => require('./comandos').api?.lista() || [],
-        rodar: (nome) => { const api = require('./comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api?.alternar({ id: b.id }); }
-      },
-      emulador: { avd: cfg().get('avdPadrao'), aparelhos: () => emu.dispositivos(), ligar: () => emu.ligar(cfg().get('avdPadrao')) },
-      adb: path.join(emu.SDK, 'platform-tools', 'adb'),
-      confirmar: async (texto) => (await vscode.window.showWarningMessage(texto, { modal: true }, 'Usar')) === 'Usar',
-      gravarTela: (destino) => { if (emu.emuladorRodando()) require('./evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
-      pararTela: () => require('./evidencias').pararGravacao?.(),
-      avisar: (texto) => { try { fs.appendFileSync(path.join(dir, NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo: 'fim', texto: `${t.chave} · ${texto}` }) + '\n'); } catch {} }
-    };
-  };
   // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
   const servicos = {
     render: () => render(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
-    pasta, pastaAba, gravar, notificar, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
+    pasta, pastaAba, gravar, notificar, reposDe, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
     secrets: ctx.secrets, globalState: ctx.globalState
   };
-  const modulosAcoes = [require('./notificacoes')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
@@ -1399,24 +1372,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       render();
     },
     darInicio() { return this.retomar(); },
-    // ▶ do QA: abre Evidências (Ao vivo) e confere o planejamento no Jira (qa.js). Sem plano, o cartão bloqueia e oferece criar.
-    // ▶ do QA: só procura o planejamento (Ao vivo em Evidências). Executar é o Dar início do cartão.
-    async qaPlay() {
-      const t = ticketAberto();
-      if (!t || sessao.focoLista() !== 'qa') return;
-      pedirSecao(EVID);
-      await require('./qa/qa').verificarPlano(pastaAba(t.id), t.chave, (rota) => jira.api(ctx.secrets, t.site, rota));
-      render();
-    },
-    // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila, um claude -p por cenário (qa.executar).
-    async qaIniciar() {
-      const t = ticketAberto();
-      if (!t || sessao.focoLista() !== 'qa') return;
-      await require('./qa/qa').executar(pastaAba(t.id), depsQa(t));
-      render();
-    },
-    async qaAmbAnalisar() { const t = ticketAberto(); if (t) { await require('./qa/qa').analisarAmbiente(pastaAba(t.id), depsQa(t)); render(); } },
-    // Log ao vivo: terminal acompanhando o log do preparo (tail -F); pelos Comandos, também os terminais da API e do Metro.
     // Ao vivo: Ver tudo / Recolher (Evidências do QA ou aba Spec).
     vivoExpandir({ id }) {
       const t = ticketAberto();
@@ -1424,93 +1379,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       aoVivo.alternarExpandido(id === 'qa' ? pastaAba(t.id) : pasta(t.chave));
       render();
     },
-    // Modal do erro do ambiente: a análise do Claude (ou o erro cru, se ainda não houver análise), com log ao vivo e reanálise.
-    async qaAmbErro() {
-      const t = ticketAberto(), qa = require('./qa/qa');
-      if (!t) return;
-      const dir = pastaAba(t.id), r = qa.resumoErroAmbiente(dir);
-      if (!r) return;
-      qa.analiseVista(dir); render();
-      const detalhe = r.analise ? `Análise do Claude\n\n${r.analise}${r.detalhe ? `\n\n─────\n${r.detalhe}` : ''}` : `${r.detalhe || 'Sem detalhe.'}\n\nO Claude ainda não analisou este erro.`;
-      const botoes = ['Log ao vivo', ...(qa.rodando(dir) ? [] : [r.analise ? 'Analisar de novo' : 'Analisar com o Claude'])];
-      const escolha = await vscode.window.showErrorMessage(r.titulo, { modal: true, detail: detalhe }, ...botoes);
-      if (escolha === 'Log ao vivo') this.qaAmbLog();
-      else if (escolha) this.qaAmbAnalisar();
-    },
-    qaAmbLog() {
-      const t = ticketAberto();
-      if (!t) return;
-      const qa = require('./qa/qa'), dir = pastaAba(t.id), a = qa.ambiente(dir), cmds = require('./comandos').api;
-      for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds?.acao({ acao: 'mostrar', id: b.id }); }
-      const nome = `QA ${t.chave} · log do ambiente`;
-      const term = vscode.window.terminals.find((x) => x.name === nome)
-        || vscode.window.createTerminal({ name: nome, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', path.join(dir, qa.LOG_AMB)] });
-      term.show();
-    },
-    qaPlanoAbrir() {
-      const t = ticketAberto(), v = t && require('./qa/qa').versaoAtual(pastaAba(t.id));
-      if (!v) return;
-      require('./qa/qa').mudar(pastaAba(t.id), { lido: v.v }); // libera o Aprovar: só depois de ler
-      vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(path.join(pastaAba(t.id), v.arquivo)));
-      render();
-    },
-    qaPlanoMencionar() { const t = ticketAberto(), v = t && require('./qa/qa').versaoAtual(pastaAba(t.id)); if (v) mencionar(`@${path.join(pastaAba(t.id), v.arquivo)}`); },
-    qaPlanoAprovar() { const t = ticketAberto(); if (t) { require('./qa/qa').aprovar(pastaAba(t.id)); render(); } },
-    // Pedir mudança: o Claude aplica na subtarefa do Jira; ao terminar, a versão nova volta para aprovação.
-    async qaPlanoMudar() {
-      const t = ticketAberto(), qa = require('./qa/qa');
-      if (!t) return;
-      const dir = pastaAba(t.id), v = qa.versaoAtual(dir);
-      if (!v) return;
-      const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: 'O Claude aplica na subtarefa do Jira e gera a versão nova para você aprovar', ignoreFocusOut: true });
-      if (!pedido?.trim()) return;
-      const ok = maestro.rodar(dir, { prompt: qa.promptMudanca(t.link, v.subtarefa, path.join(dir, v.arquivo), pedido.trim()), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`,
-        ferramentas: qa.FERRAMENTAS_PLANO, extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir],
-        aoMudar: () => { render(); if (!maestro.rodando(dir)) qa.verificarPlano(dir, t.chave, (rota) => jira.api(ctx.secrets, t.site, rota)).then(render); } });
-      if (ok) qa.mudar(dir, { fase: 'alterando', pedido: pedido.trim() });
-      render();
-    },
-    // Publicar: comentário com o resultado na subtarefa de QA + evidências da última execução de cada cenário (anexos).
-    async qaPublicar() {
-      const t = ticketAberto(), qa = require('./qa/qa');
-      if (!t || sessao.focoLista() !== 'qa') return;
-      const dir = pastaAba(t.id), sub = qa.estado(dir).subtarefa, r = qa.cenarios(dir);
-      const feitos = r.cenarios.filter((c) => !c.arquivado && qa.RESULTADOS.includes(c.status));
-      if (!sub || !feitos.length) return;
-      const arqs = feitos.flatMap((c) => qa.arquivosDe(dir, c.execucoes.at(-1)).map((f) => [c.id, f]));
-      const ok = await vscode.window.showWarningMessage(`Publicar no ${sub}: comentário com ${feitos.length} cenário(s) e ${arqs.length} evidência(s) anexada(s)?`, { modal: true }, 'Publicar');
-      if (ok !== 'Publicar') return;
-      const ROT = { passou: '✅ Passou', falhou: '❌ Falhou', bloqueado: '⛔ Bloqueado' };
-      const md = [`**Resultado do QA · plano v${r.planoVersao}** (Crafting Table)`, '', '| Cenário | Resultado | Observação |', '| --- | --- | --- |',
-        ...feitos.map((c) => `| ${c.id} · ${c.titulo.replace(/\|/g, '/')} | ${ROT[c.status]} | ${(c.execucoes.at(-1)?.nota || '').replace(/\|/g, '/')} |`)].join('\n');
-      try {
-        await jira.comentar(ctx.secrets, { key: sub, site: t.site }, md);
-        if (arqs.length) await jira.anexar(ctx.secrets, t.site, sub, arqs.map(([id, f]) => ({ arquivo: f, nome: `${id}-${path.basename(f)}` })));
-        aoVivo.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
-      } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no Jira: ${e.message}` }); }
-      render();
-    },
-    qaMassaEstado({ id, op }) { const t = ticketAberto(); try { if (t && typeof id === 'string') require('./qa/qa').massaEstado(pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } render(); },
-    qaMassaEditar() {
-      const t = ticketAberto(), qa = require('./qa/qa');
-      if (!t) return;
-      const arq = path.join(pastaAba(t.id), qa.MASSA);
-      if (!fs.existsSync(arq)) { fs.mkdirSync(path.dirname(arq), { recursive: true }); fs.writeFileSync(arq, JSON.stringify({ itens: [] }, null, 2)); }
-      vscode.commands.executeCommand('vscode.open', vscode.Uri.file(arq));
-    },
-    // Criar planejamento: jira-qa-planner em segundo plano; ao terminar, confere de novo.
-    qaCriarPlano() {
-      const t = ticketAberto(), qa = require('./qa/qa');
-      if (!t || sessao.focoLista() !== 'qa') return;
-      const dir = pastaAba(t.id);
-      const ok = maestro.rodar(dir, { prompt: qa.promptCriar(t.link), titulo: 'QA · Criando o planejamento (jira-qa-planner)', ferramentas: qa.FERRAMENTAS_PLANO,
-        extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } })],
-        aoMudar: () => { render(); if (!maestro.rodando(dir)) this.qaPlay(); } });
-      if (ok) qa.mudar(dir, { fase: 'criando' });
-      render();
-    },
-    qaRefazer({ id }) { const t = ticketAberto(); if (t && typeof id === 'string') require('./qa/qa').refazer(pastaAba(t.id), id); },
-    qaParar() { const t = ticketAberto(); if (t) { require('./qa/qa').pausar(pastaAba(t.id)); render(); } },
     pausar() { modo(aberto, 'pausado'); render(); },
     // Dar início / ▶ Retomar / Continuar: modo rodando e, se nada espera por você, o Claude começa a próxima etapa.
     retomar() {
