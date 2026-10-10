@@ -7,7 +7,7 @@ const Module = /** @type {any} */ (require('module')); const load = Module._load
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
 const { caixaDecisao, caixaMudancas } = mud;
-const { cabecalho } = require('../painel')._teste;
+const { cabecalho } = require('../moldura');
 const { telaConstituicao } = require('./spec');
 const { telaTarefas } = require('./tarefas');
 

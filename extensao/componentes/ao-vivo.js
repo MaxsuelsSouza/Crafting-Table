@@ -96,4 +96,14 @@ const CSS = `
   @keyframes pulsa { 50% { opacity: .3; } }
 `;
 
-module.exports = { anotar, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };
+// Ver tudo / Recolher (Evidências do QA ou aba Spec); servicos vem do painel.js.
+const acoes = (s) => ({
+  vivoExpandir({ id }) {
+    const t = s.ticketAberto();
+    if (!t || !['qa', 'spec'].includes(id)) return;
+    alternarExpandido(id === 'qa' ? s.pastaAba(t.id) : s.pasta(t.chave));
+    s.render();
+  }
+});
+
+module.exports = { acoes, anotar, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };
