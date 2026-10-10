@@ -235,7 +235,7 @@ exports.provider = (ctx) => {
   // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (painel.js): ela pede o html e repassa os cliques.
   exports.api = {
     html: () => cache ?? tela(botoes(), {}),
-    lista: () => botoes().map((b) => ({ id: b.id, nome: b.nome, rodando: Boolean(terminalDe(b)) })),
+    lista: () => botoes().map((b) => ({ id: b.id, nome: b.nome, comando: b.comando, pasta: b.pasta, rodando: Boolean(terminalDe(b)) })),
     alternar: ({ id }) => (terminalDe(achar(id)) ? acoes.parar({ id }) : acoes.rodar({ id })),
     acao: (m) => acoes[m.acao]?.(m),
     atualizar: render

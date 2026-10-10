@@ -25,6 +25,16 @@ const SEM_TICKET = '__sem-ticket';
 const PRINCIPAL = 'claudeAbas.painel';
 const pasta = (id) => tickets.pasta(id);
 const pastaDe = (id) => (id === SEM_TICKET ? (sessao.conversaAtual() ? sessao.pasta(sessao.conversaAtual()) : null) : pasta(id));
+// Pasta da aba em que o ticket está aberto (Tickets = raiz; Implementações e QA = impl/ e qa/, tickets.js): documentos,
+// notas, decisões e notificações das conversas daquela aba. Refinamento (spec, tarefas, dúvidas, impactos) segue na raiz.
+// id pode vir como CHAVE/aba (nota salva depois de trocar de aba não cai na aba errada).
+const pastaAba = (id) => {
+  if (!id || id === SEM_TICKET) return pastaDe(SEM_TICKET);
+  const [chave, lista] = id.split('/');
+  return lista ? tickets.pasta(chave, lista) : sessao.pasta(chave);
+};
+const naRaiz = () => sessao.focoLista() === 'tickets'; // ticket aberto na aba Tickets (a do refinamento)
+const idAba = (id) => (id === SEM_TICKET || naRaiz() ? id : `${id}/${sessao.focoLista()}`);
 const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 const lerTexto = (arq) => { try { return fs.readFileSync(arq, 'utf8'); } catch { return null; } };
 const gravar = (id, nome, dado) => {
@@ -154,9 +164,11 @@ const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : 
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
-// Docs do ticket = pasta do ticket + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
+// Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
+// Fora da aba Tickets, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
 function docsDoTicket(t) {
-  const docs = docsDe(pastaDe(t.id));
+  const docs = docsDe(pastaAba(t.id));
+  if (!naRaiz()) { const jira = ler(path.join(pasta(t.id), ORIGEM), {}); docs.push(...docsDe(pasta(t.id)).filter((d) => jira[d.nome])); }
   const vistos = new Set(docs.map((x) => x.origem || x.full));
   for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
   return docs.sort((a, b) => b.mtime - a.mtime);
@@ -181,7 +193,11 @@ const IC = {
 
 const ABAS = [['docs', 'Docs'], ['spec', 'Spec'], ['ticket', 'Ticket'], ['analise', 'Análise'], ['tarefas', 'Tarefas'], ['decisoes', 'Decisões'], ['duvidas', 'Dúvidas']];
 const ABAS_SEM_TICKET = [['docs', 'Docs'], ['decisoes', 'Decisões']];
-const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1); // [id da seção, nome]
+const ABAS_FORA_REFINO = [['docs', 'Docs'], ['ticket', 'Ticket'], ['decisoes', 'Decisões']]; // Implementações e QA
+const abasDe = (t) => (t.id === SEM_TICKET ? ABAS_SEM_TICKET : naRaiz() ? ABAS : sessao.focoLista() === 'qa' ? [...ABAS_FORA_REFINO, ['massa', 'Massa']] : ABAS_FORA_REFINO);
+// [id da seção, nome]. Evidências é só do QA, e lá fica logo depois de Docs (cabecalho); fora do QA não aparece.
+const EVID = 'claudeAbas.evidencias';
+const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
 
 // Cabeçalho e rodapé do ticket aberto: na página do painel os botões falam com ele direto (data-acao);
 // na moldura de outra seção, passam pelo grupo.js (data-painel / data-secao).
@@ -244,6 +260,16 @@ const CSS_MOLDURA = `<style>
   .ct-cmd small { color: var(--text-dim); }
   .ct-cmd-grupo { margin: 8px 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
   .ct-cmd-vazio { color: var(--text-dim); padding: 2px 0; }
+  .ct-amb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
+    font: inherit; font-size: 11.5px; color: inherit; }
+  .ct-amb:hover { background: var(--surface-2); color: var(--text); }
+  .ct-luz { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+  .ct-luz.ok { background: var(--ok); }
+  .ct-luz.prep { background: var(--ia); animation: ct-pisca 1.2s infinite; }
+  .ct-luz.erro { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+  .ct-luz.erro.pisca { animation: ct-pisca .8s infinite; }
+  @keyframes ct-pisca { 50% { opacity: .2; } }
+  .ct-badge-erro { background: var(--danger); }
   .ct-notifs { position: absolute; bottom: 30px; left: 0; width: min(320px, 90vw); max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: var(--r-lg);
     background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 30px rgb(0 0 0 / 53%); }
 </style>`;
@@ -274,7 +300,7 @@ function pillRefino(t) {
 function cabecalho(t, { aba, secao, dentro }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
-  const abas = semTicket ? ABAS_SEM_TICKET : ABAS;
+  const abas = abasDe(t), refino = !semTicket && naRaiz();
   const pend = semTicket ? 0 : duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length;
   const pendT = semTicket ? 0 : tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length;
   const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) em aberto: a spec só avança quando todas forem respondidas">${pend}</span>`
@@ -282,20 +308,23 @@ function cabecalho(t, { aba, secao, dentro }) {
   const abaBtn = ([id, nome]) => (dentro
     ? `<button data-acao="aba" data-id="${id}" class="${secao === PRINCIPAL && aba === id ? 'is-on' : ''}">${rot(id, nome)}</button>`
     : `<button data-secao="${PRINCIPAL}" data-aba="${id}">${rot(id, nome)}</button>`);
+  const secaoBtn = ([id, nome]) => `<button data-secao="${id}" class="${secao === id ? 'is-on' : ''}">${nome}</button>`;
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
-      ${semTicket ? '' : botaoRefino(t, b)}
+      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? (require('./qa').rodando(pastaAba(t.id))
+    ? `<button class="ct-ico ct-pausa" ${b('qaParar')} title="Pausar o QA: o cenário em andamento é descartado e volta na retomada">${IC.pausa}</button>`
+    : `<button class="ct-ico ct-play" ${b('qaPlay')} title="Executar QA: planejamento, ambiente, massa e cenários pendentes (Ao vivo em Evidências)">${IC.play}</button>`) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no Jira">${IC.jira}</button>`}
     </div>
     <div class="ct-pills">${semTicket ? '<span class="ct-pill ct-novo" title="Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket">Sem ticket vinculado</span>'
       : `<span class="ct-pill ct-${jira.corStatus(t.status)}" title="Coluna do ticket no board do Jira${t.tipo ? ` · ${esc(t.tipo)}` : ''}"><span class="ct-bola"></span>${esc(t.status || 'Status desconhecido')}</span>
-      ${emRefino(t) ? pillRefino(t) : ''}
+      ${refino && emRefino(t) ? pillRefino(t) : ''}
       <button class="ct-ico" ${b('atualizar')} title="Atualizar status e anexos do Jira">${IC.atualizar}</button>`}</div>
-    ${!semTicket && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
-    <nav class="ct-menu">${abas.map(abaBtn).join('')}<span class="ct-sep"></span>
-      ${FORA().map(([id, nome]) => `<button data-secao="${id}" class="${secao === id ? 'is-on' : ''}">${nome}</button>`).join('')}</nav>
+    ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
+    <nav class="ct-menu">${abas.map((a) => abaBtn(a) + (a[0] === 'docs' && !semTicket && sessao.focoLista() === 'qa' ? secaoBtn([EVID, 'Evidências']) : '')).join('')}<span class="ct-sep"></span>
+      ${FORA().map(secaoBtn).join('')}</nav>
   </header>`;
 }
 
@@ -311,7 +340,7 @@ const notifsDe = (dir) => {
 };
 let cmdsAberto = false; // caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado)
 const rodape = (t, dentro) => {
-  const dir = t && pastaDe(t.id);
+  const dir = t && pastaAba(t.id);
   const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || 0) || 0;
   const nova = (n) => Date.parse(n.em) > lidas; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes
   const novas = l.filter(nova).length;
@@ -322,10 +351,17 @@ const rodape = (t, dentro) => {
       title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
     ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
       title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
+  // QA: ambiente depois de Comandos. Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise (Evidências).
+  const amb = t && t.id !== SEM_TICKET && sessao.focoLista() === 'qa' ? require('./qa').statusAmbiente(dir) : null;
+  const caixaAmb = !amb ? '' : amb.tipo === 'preparando'
+    ? `<button class="ct-amb" ${acao}="qaAmbLog" title="Preparando API, Metro, emulador e app: clique para ver o log ao vivo"><span class="ct-luz prep"></span>Preparando ambiente</button>`
+    : amb.tipo === 'erro'
+      ? `<button class="ct-amb" data-secao="${EVID}" data-cmd="qaAmbVisto" title="${amb.analisando ? 'O Claude está analisando o erro' : 'Ver o erro e a análise do Claude em Evidências'}"><span class="ct-luz erro ${amb.nova || amb.analisando ? 'pisca' : ''}"></span>Ambiente parou${amb.analisando ? ' · analisando' : ''}${amb.nova ? '<span class="ct-badge ct-badge-erro">1</span>' : ''}</button>`
+      : `<button class="ct-amb" ${acao}="qaAmbLog" title="Ambiente pronto: clique para ver o log"><span class="ct-luz ok"></span>Ambiente</button>`;
   return `<footer class="ct-rod"><details><summary ${dentro ? 'data-acao' : 'data-painel'}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
   <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>
-    <span>${esc(n.texto)}<br><small>${esc(quando(n.em))}</small></span></div>`).join('') : 'Nenhuma notificação ainda.'}</div></details>${caixaCmds}</footer>`;
+    <span>${esc(n.texto)}<br><small>${esc(quando(n.em))}</small></span></div>`).join('') : 'Nenhuma notificação ainda.'}</div></details>${caixaCmds}${caixaAmb}</footer>`;
 };
 
 const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
@@ -488,6 +524,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .cfg-b { flex: none; height: 24px; padding: 0 9px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
   .cfg-b:hover { border-color: var(--accent) !important; }
   .cfg-dim { color: var(--text-dim); font-size: 11px; } .cfg-mal { font-size: 11px; }
+  .cfg-versao { text-align: center; margin: 14px 0 6px; }
   .cfg-dica { font-size: 11px; color: var(--text-dim); margin: 4px 0 6px; }
   .cfg-repo { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-top: 1px solid var(--border); }
   .cfg-repo > div { flex: 1; min-width: 0; word-break: break-all; } .cfg-acoes { display: flex; gap: 4px; }
@@ -596,20 +633,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .meus-vazio.erro { color: var(--danger); }
   .meus-vazio .link { color: var(--accent); text-decoration: underline; }
   .nada-t { margin: 4px 12px; font-size: 12px; color: var(--text-dim); }
-  .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
-  .vivo { display: flex; gap: 6px; padding: 2px 0; }
-  .vivo .vi { flex: none; width: 12px; text-align: center; color: var(--text-dim); }
-  .vivo .vt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
-  .vivo .vq { flex: none; color: var(--text-dim); font-size: 10px; }
-  .v-etapa { margin: 8px 0 2px; padding: 3px 6px; border-radius: var(--r-md); background: color-mix(in srgb, var(--ia) 14%, transparent);
-    color: var(--ia); font-weight: 600; font-size: 11.5px; }
-  .v-etapa:first-child { margin-top: 0; }
-  .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
-  .v-fala .vt { font-style: italic; }
-  .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
-  .v-fim .vi { color: var(--ok, var(--ok)); }
-  .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--ia); animation: pulsa 1.2s infinite; }
-  @keyframes pulsa { 50% { opacity: .3; } }
+  ${maestro.CSS_VIVO}
   .duvida { padding: 4px 0 10px 12px; }
   .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
   .duvida .dtexto { margin: 4px 0; font-size: 12.5px; line-height: 1.5; }
@@ -738,6 +762,7 @@ function telaConfig(v) {
       + '<div class="cfg-dica">Mudanças de impacto médio/alto, perguntas do Claude e eventos da spec chegam como card no Teams (só com o VS Code aberto). A URL vem de um fluxo do app Workflows e fica no Cofre como TEAMS_WEBHOOK.</div>'
       + '<div class="cfg-acoes-linha"><button class="cfg-b" data-acao="cfgTeamsAjuda" title="Como criar o fluxo no Workflows">ⓘ Como criar o webhook</button>'
       + '<button class="cfg-b" data-acao="cfgTeamsAbrir">Abrir Power Automate</button></div>')}
+    <div class="cfg-dim cfg-versao">Crafting Table v${esc(require('./package.json').version)}</div>
   </main>`}`;
 }
 
@@ -753,7 +778,7 @@ const telaPrevia = (key, dados) => `${estilo}
 
 const LISTAS = [['tickets', 'Tickets', 'Tickets'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
 const telaLista = (lista, erro, meus, modo = 'tickets') => `${estilo}
-  <style>.topo .rotulo[data-acao] { cursor: pointer; } .topo .rotulo[data-acao]:hover { color: var(--accent); } .topo .rotulo.is-on { color: var(--text); font-weight: 600; }</style>
+  <style>.topo .rotulo[data-acao] { cursor: pointer; } .topo .rotulo[data-acao]:hover { color: var(--accent); } .topo .rotulo.is-on { color: var(--text); font-weight: 600; text-decoration: underline 2px var(--accent); text-underline-offset: 5px; }</style>
   <div class="rolagem">
   <div class="topo">${LISTAS.map(([id, nome, dica]) => `<span class="rotulo ${modo === id ? 'is-on' : ''}" data-acao="listaModo" data-id="${id}" title="${dica}">${nome}</span>`).join('')}<span class="titulo"></span>
     <span class="extra">${lista.length ? `${lista.length} ticket${lista.length === 1 ? '' : 's'}` : ''}</span></div>
@@ -874,18 +899,7 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
     ${texto ? `<div class="atexto">${texto}</div>` : ''}${acoes ? `<div class="aacoes">${acoes}</div>` : ''}</div>`;
 }
 
-// Caixa "Ao vivo" da aba Spec: o que o Claude em segundo plano (maestro.js) está fazendo.
-// Tipos antigos (antes da padronização) caem no equivalente novo.
-const TIPO_VIVO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
-const ICONE_VIVO = { fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
-const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}</span></div>
-  <div class="folha ao-vivo" id="aoVivo">${l.map((x) => {
-    const tipo = TIPO_VIVO[x.tipo] || x.tipo;
-    return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
-      : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE_VIVO[tipo] || '·'}</span>
-        <span class="vt">${esc(x.texto.slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`;
-  }).join('')}</div>` : '');
+const { aoVivoHtml } = maestro; // caixa "Ao vivo" (maestro.js)
 
 // ── Tarefas: cards do passo 4 (como no Jira). Pendentes → você aprova (vira subtarefa no Jira), reprova ou pede
 // alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
@@ -1017,6 +1031,7 @@ function corpoAba(t, aba, d) {
       </div></div></div>`;
   }
   if (aba === 'tarefas') return telaTarefas(t, d.tarefas, d.impactos);
+  if (aba === 'massa') return require('./qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
   if (aba === 'decisoes') return `<div class="folha">${d.decisoes.length ? `<div class="hist">${d.decisoes.map((x) => `
     <details class="decisao" data-dec="${esc(x.id)}">
       <summary><span class="quando">${esc(quando(x.data))}</span><span class="dtitulo">${esc(x.titulo)}</span>
@@ -1138,9 +1153,12 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     mostrar();
   }
 
-  // Ao vivo: rola para a última linha; o corpo volta para onde estava (a página é redesenhada a cada linha nova).
+  // Ao vivo: mais recente em cima. A página é redesenhada a cada linha nova: a caixa e o corpo voltam para onde estavam.
   const av = document.getElementById('aoVivo');
-  if (av) av.scrollTop = av.scrollHeight;
+  if (av) {
+    av.scrollTop = (vscode.getState() || {}).vivo || 0;
+    av.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), vivo: av.scrollTop }));
+  }
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;
@@ -1207,7 +1225,7 @@ function localizarConversa(t) {
   return nomes.map((n) => path.basename(n, '.jsonl'))
     .filter((sid) => !tickets.ticketDa(sid))
     .filter((sid) => { try { return fs.statSync(jsonl(sid)).mtimeMs >= desde; } catch { return false; } })
-    .filter((sid) => (lerTexto(jsonl(sid)) || '').includes(pasta(t.chave)) && inicioDa(sid) >= desde)
+    .filter((sid) => (lerTexto(jsonl(sid)) || '').includes(tickets.pasta(t.chave, t.pedidoLista)) && inicioDa(sid) >= desde)
     .sort((a, b) => inicioDa(a) - inicioDa(b))[0] || null;
 }
 // Título da conversa: a mesma linha que o /rename do Claude grava (custom-title vence o ai-title).
@@ -1217,7 +1235,7 @@ function titularConversa(sid, titulo, tentativas = 20) {
   const atual = fs.readFileSync(arq, 'utf8');
   fs.appendFileSync(arq, (atual.endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: titulo }) + '\n');
 }
-const ultimaConversa = (t) => require('./claude').ultimaConversa(t);
+const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoLista());
 
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 
@@ -1227,7 +1245,9 @@ exports.provider = (ctx) => {
   const cacheJira = {}; // chave -> dados do Jira (ou { erro })
   // Lista mostrada: Tickets, Implementações ou QA (ticket.lista: 'impl' | 'qa'). Cada uma tem a sua caixa de vinculados.
   let modoLista = ctx.globalState.get('listaModo') || 'tickets';
-  const listaDe = (t) => t.lista || (t.implementacao ? 'impl' : 'tickets');
+  const naLista = (t, l = modoLista) => tickets.listasDe(t).includes(l);
+  // Põe o ticket também nesta aba (não tira das outras); grava listas no lugar do lista/implementacao de antes.
+  const porNaLista = (t) => (naLista(t) ? t : tickets.gravar({ ...t, listas: [...tickets.listasDe(t), modoLista], lista: undefined, implementacao: undefined }));
   const meusPor = {}; // modo -> { itens, etapas, filtro, erro, carregando, semCredencial, em }: caixa "Vinculados a você"
   let etapasJira = null; // colunas do board [{ nome, ids }] (buscadas uma vez por sessão)
   // Configurações (⚙): settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
@@ -1382,23 +1402,23 @@ exports.provider = (ctx) => {
       if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
       if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
       const meus = meusPor[modoLista];
-      view.webview.html = pagina(nonce, telaLista(tickets.listar().filter((x) => listaDe(x) === modoLista), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}, modoLista));
+      view.webview.html = pagina(nonce, telaLista(tickets.listar().filter((x) => naLista(x)), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}, modoLista));
       avisarMoldura();
       if (!meus?.carregando) carregarMeus(false);
       return;
     }
-    if (!(t.id === SEM_TICKET ? ABAS_SEM_TICKET : ABAS).some(([id]) => id === aba)) aba = 'docs';
+    if (!abasDe(t).some(([id]) => id === aba)) aba = 'docs';
     // Confere os arquivos da spec antes de desenhar: edição depois de aprovado volta o passo para revisão.
     if (aba === 'spec' && dirSpec(t) && fs.existsSync(path.join(dirSpec(t), 'sdd-state.json')) && sddState()) {
       try { require('child_process').execFileSync(sddState(), ['check', '--ref', pasta(t.id)], { timeout: 5000, stdio: 'ignore' }); } catch {}
     }
-    const dir = pastaDe(t.id);
+    const dir = pastaDe(t.id), dirAba = pastaAba(t.id);
     const d = {
       dir, lado, abertos,
       docs: t.id === SEM_TICKET ? docsDe(dir) : docsDoTicket(t),
       handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
       tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
-      decisoes: decisoesDe(dir),
+      decisoes: decisoesDe(dirAba),
       duvidas: duvidasDe(dir),
       impactos: t.id === SEM_TICKET ? [] : impactosDe(dir),
       vivo: t.id === SEM_TICKET ? [] : maestro.aoVivo(dir),
@@ -1408,15 +1428,15 @@ exports.provider = (ctx) => {
       origens: dir ? ler(path.join(dir, ORIGEM), {}) : {},
       baixando
     };
-    view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dir
-      ? { html: lerTexto(path.join(dir, NOTAS)) || '', sid: t.id, estilo: ler(path.join(dir, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
+    view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
+      ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
     avisarMoldura();
     // O Claude grava documentos, handoffs, decisões e o estado da spec por fora: redesenha quando muda
     // (as notas não, para não atropelar a digitação).
     let espera;
     const depois = (ms) => { clearTimeout(espera); espera = setTimeout(render, ms); };
     const obs = [];
-    try { if (dir) obs.push(fs.watch(dir, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300); })); } catch {}
+    for (const p of new Set([dir, dirAba])) try { if (p) obs.push(fs.watch(p, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300); })); } catch {}
     if (dirSpec(t) && fs.existsSync(dirSpec(t))) {
       try { obs.push(fs.watch(dirSpec(t), (_, nome) => { if (nome && !nome.endsWith('.tmp')) depois(400); })); } catch {}
       try { obs.push(fs.watch(t.spec.repo, (_, nome) => { if (nome === 'constitution.md') depois(400); })); } catch {}
@@ -1629,13 +1649,18 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
       + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : ''), false, undefined, `Passo ${est.proximoPasso} · ${est.passos[est.proximoPasso].titulo}`);
   };
-  const pedido = (t) => `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${pasta(t.chave)} (documentos, notas em ${NOTAS}, `
-    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`;
+  const pedido = (t) => (naRaiz() ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${pasta(t.chave)} (documentos, notas em ${NOTAS}, `
+    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
+    // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : 'Implementação'}\n${t.link}\n`
+      + `Pasta desta etapa: ${pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
+      + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
+      + `Anexos do Jira em ${pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
   // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
   const abrirConversa = async (t, texto) => {
     const sid = ultimaConversa(t);
     if (sid) return vscode.commands.executeCommand('claude-vscode.editor.open', sid, texto);
-    tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now() });
+    tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now(), pedidoLista: sessao.focoLista() });
     await vscode.commands.executeCommand('claude-vscode.editor.open', undefined, texto || pedido(t));
   };
 
@@ -1656,6 +1681,27 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     await salvarCfg('bancoConexao', nome); await salvarCfg('bancoAmbiente', amb.v);
     if (amb.v === 'producao') vscode.window.showWarningMessage('Marcada como produção: o mapeamento vai recusar consultar. Escolha a cópia de produção ou o QAS.');
     checar(['banco']);
+  };
+  // Dependências do qa.executar / análise do ambiente (Jira, Claude em segundo plano, gravação da tela, avisos).
+  const depsQa = (t) => {
+    const dir = pastaAba(t.id), emu = require('./emulador');
+    return {
+      chave: t.chave, backend: reposDe(t).find((r) => r.camada === 'backend')?.caminho, api: (rota) => jira.api(ctx.secrets, t.site, rota),
+      horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: render,
+      extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir,
+        ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
+      // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
+      comandos: {
+        lista: () => require('./comandos').api?.lista() || [],
+        rodar: (nome) => { const api = require('./comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api.alternar({ id: b.id }); }
+      },
+      emulador: { avd: cfg().get('avdPadrao'), aparelhos: () => emu.dispositivos(), ligar: () => emu.ligar(cfg().get('avdPadrao')) },
+      adb: path.join(emu.SDK, 'platform-tools', 'adb'),
+      confirmar: async (texto) => (await vscode.window.showWarningMessage(texto, { modal: true }, 'Usar')) === 'Usar',
+      gravarTela: (destino) => { if (emu.emuladorRodando()) require('./evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
+      pararTela: () => require('./evidencias').pararGravacao?.(),
+      avisar: (texto) => { try { fs.appendFileSync(path.join(dir, NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo: 'fim', texto: `${t.chave} · ${texto}` }) + '\n'); } catch {} }
+    };
   };
   const acoes = {
     meusAtualizar() { carregarMeus(true); },
@@ -1836,8 +1882,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     meuPuxar({ id }) {
       const t0 = tickets.ler(id);
       if (!t0) {
-        try { tickets.criar(`${siteJira()}/browse/${id}`, { lista: modoLista }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
-      } else if (listaDe(t0) !== modoLista) tickets.gravar({ ...t0, lista: modoLista, implementacao: undefined }); // puxado na outra aba: muda de lista
+        try { tickets.criar(`${siteJira()}/browse/${id}`, { listas: [modoLista] }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      } else porNaLista(t0); // já está em outra aba: entra nesta também, cada aba com a sua pasta
       if (cachePrevia[id] && !cachePrevia[id].erro) cacheJira[id] = cachePrevia[id];
       previa = null;
       render();
@@ -1854,7 +1900,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(`${t.site}/browse/${key}`)); } // subtarefa
       aberto = id;
       aba = 'docs';
-      sessao.focar(id === SEM_TICKET ? null : id);
+      sessao.focar(id === SEM_TICKET ? null : id, modoLista);
       render();
       if (id !== SEM_TICKET && !cacheJira[id]) atualizarJira(id);
     },
@@ -1865,12 +1911,17 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: 'Link do ticket no Jira', placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
       if (!link) return;
       let t;
-      try { jira.lerLink(link); t = tickets.criar(link.trim(), { lista: modoLista }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
-      if (listaDe(t) !== modoLista) t = tickets.gravar({ ...t, lista: modoLista, implementacao: undefined });
+      try { jira.lerLink(link); t = porNaLista(tickets.criar(link.trim(), { listas: [modoLista] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
       this.abrir({ id: t.chave });
     },
     async excluir({ id }) {
       const t = tickets.ler(id);
+      // Em mais de uma aba: sai só desta (a pasta da aba fica, volta a aparecer se puxar de novo).
+      if (t && tickets.listasDe(t).length > 1) {
+        tickets.gravar({ ...t, listas: tickets.listasDe(t).filter((l) => l !== modoLista), lista: undefined, implementacao: undefined });
+        if (aberto === id) { aberto = null; sessao.focar(null); }
+        return render();
+      }
       const ok = t && await vscode.window.showWarningMessage(`Excluir o ticket ${id}?`, { modal: true,
         detail: `Sai da lista. A pasta (documentos, notas, tarefas, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
       if (!ok) return;
@@ -1883,7 +1934,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     cmdsAlternar() { cmdsAberto = !cmdsAberto; },
     cmdAlternar({ id }) { require('./comandos').api?.alternar({ id }); },
     emuAlternar({ id }) { require('./emulador').api?.alternar({ id }); },
-    notifLidas() { if (aberto) gravar(aberto, LIDAS, new Date().toISOString()); },
+    notifLidas() { const dir = aberto && pastaAba(aberto); if (dir) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, LIDAS), new Date().toISOString()); } },
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
       const t = ticketAberto();
@@ -1955,6 +2006,99 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       render();
     },
     darInicio() { return this.retomar(); },
+    // ▶ do QA: abre Evidências (Ao vivo) e confere o planejamento no Jira (qa.js). Sem plano, o cartão bloqueia e oferece criar.
+    // ▶ do QA: só procura o planejamento (Ao vivo em Evidências). Executar é o Dar início do cartão.
+    async qaPlay() {
+      const t = ticketAberto();
+      if (!t || sessao.focoLista() !== 'qa') return;
+      pedirSecao(EVID);
+      await require('./qa').verificarPlano(pastaAba(t.id), t.chave, (rota) => jira.api(ctx.secrets, t.site, rota));
+      render();
+    },
+    // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila, um claude -p por cenário (qa.executar).
+    async qaIniciar() {
+      const t = ticketAberto();
+      if (!t || sessao.focoLista() !== 'qa') return;
+      await require('./qa').executar(pastaAba(t.id), depsQa(t));
+      render();
+    },
+    async qaAmbAnalisar() { const t = ticketAberto(); if (t) { await require('./qa').analisarAmbiente(pastaAba(t.id), depsQa(t)); render(); } },
+    // Log ao vivo: terminal acompanhando o log do preparo (tail -F); pelos Comandos, também os terminais da API e do Metro.
+    qaAmbVisto() { const t = ticketAberto(); if (t) { require('./qa').analiseVista(pastaAba(t.id)); render(); } },
+    qaAmbLog() {
+      const t = ticketAberto();
+      if (!t) return;
+      const qa = require('./qa'), dir = pastaAba(t.id), a = qa.ambiente(dir), cmds = require('./comandos').api;
+      for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds.acao({ acao: 'mostrar', id: b.id }); }
+      const nome = `QA ${t.chave} · log do ambiente`;
+      const term = vscode.window.terminals.find((x) => x.name === nome)
+        || vscode.window.createTerminal({ name: nome, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', path.join(dir, qa.LOG_AMB)] });
+      term.show();
+    },
+    qaPlanoAbrir() {
+      const t = ticketAberto(), v = t && require('./qa').versaoAtual(pastaAba(t.id));
+      if (!v) return;
+      require('./qa').mudar(pastaAba(t.id), { lido: v.v }); // libera o Aprovar: só depois de ler
+      vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(path.join(pastaAba(t.id), v.arquivo)));
+      render();
+    },
+    qaPlanoMencionar() { const t = ticketAberto(), v = t && require('./qa').versaoAtual(pastaAba(t.id)); if (v) mencionar(`@${path.join(pastaAba(t.id), v.arquivo)}`); },
+    qaPlanoAprovar() { const t = ticketAberto(); if (t) { require('./qa').aprovar(pastaAba(t.id)); render(); } },
+    // Pedir mudança: o Claude aplica na subtarefa do Jira; ao terminar, a versão nova volta para aprovação.
+    async qaPlanoMudar() {
+      const t = ticketAberto(), qa = require('./qa');
+      if (!t) return;
+      const dir = pastaAba(t.id), v = qa.versaoAtual(dir);
+      if (!v) return;
+      const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: 'O Claude aplica na subtarefa do Jira e gera a versão nova para você aprovar', ignoreFocusOut: true });
+      if (!pedido?.trim()) return;
+      const ok = maestro.rodar(dir, { prompt: qa.promptMudanca(t.link, v.subtarefa, path.join(dir, v.arquivo), pedido.trim()), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`,
+        ferramentas: qa.FERRAMENTAS_PLANO, extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir],
+        aoMudar: () => { render(); if (!maestro.rodando(dir)) qa.verificarPlano(dir, t.chave, (rota) => jira.api(ctx.secrets, t.site, rota)).then(render); } });
+      if (ok) qa.mudar(dir, { fase: 'alterando', pedido: pedido.trim() });
+      render();
+    },
+    // Publicar: comentário com o resultado na subtarefa de QA + evidências da última execução de cada cenário (anexos).
+    async qaPublicar() {
+      const t = ticketAberto(), qa = require('./qa');
+      if (!t || sessao.focoLista() !== 'qa') return;
+      const dir = pastaAba(t.id), sub = qa.estado(dir).subtarefa, r = qa.cenarios(dir);
+      const feitos = r.cenarios.filter((c) => !c.arquivado && qa.RESULTADOS.includes(c.status));
+      if (!sub || !feitos.length) return;
+      const arqs = feitos.flatMap((c) => qa.arquivosDe(dir, c.execucoes.at(-1)).map((f) => [c.id, f]));
+      const ok = await vscode.window.showWarningMessage(`Publicar no ${sub}: comentário com ${feitos.length} cenário(s) e ${arqs.length} evidência(s) anexada(s)?`, { modal: true }, 'Publicar');
+      if (ok !== 'Publicar') return;
+      const ROT = { passou: '✅ Passou', falhou: '❌ Falhou', bloqueado: '⛔ Bloqueado' };
+      const md = [`**Resultado do QA · plano v${r.planoVersao}** (Crafting Table)`, '', '| Cenário | Resultado | Observação |', '| --- | --- | --- |',
+        ...feitos.map((c) => `| ${c.id} · ${c.titulo.replace(/\|/g, '/')} | ${ROT[c.status]} | ${(c.execucoes.at(-1)?.nota || '').replace(/\|/g, '/')} |`)].join('\n');
+      try {
+        await jira.comentar(ctx.secrets, { key: sub, site: t.site }, md);
+        if (arqs.length) await jira.anexar(ctx.secrets, t.site, sub, arqs.map(([id, f]) => ({ arquivo: f, nome: `${id}-${path.basename(f)}` })));
+        maestro.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
+      } catch (e) { maestro.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no Jira: ${e.message}` }); }
+      render();
+    },
+    qaMassaEstado({ id, op }) { const t = ticketAberto(); try { if (t && typeof id === 'string') require('./qa').massaEstado(pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } render(); },
+    qaMassaEditar() {
+      const t = ticketAberto(), qa = require('./qa');
+      if (!t) return;
+      const arq = path.join(pastaAba(t.id), qa.MASSA);
+      if (!fs.existsSync(arq)) { fs.mkdirSync(path.dirname(arq), { recursive: true }); fs.writeFileSync(arq, JSON.stringify({ itens: [] }, null, 2)); }
+      vscode.commands.executeCommand('vscode.open', vscode.Uri.file(arq));
+    },
+    // Criar planejamento: jira-qa-planner em segundo plano; ao terminar, confere de novo.
+    qaCriarPlano() {
+      const t = ticketAberto(), qa = require('./qa');
+      if (!t || sessao.focoLista() !== 'qa') return;
+      const dir = pastaAba(t.id);
+      const ok = maestro.rodar(dir, { prompt: qa.promptCriar(t.link), titulo: 'QA · Criando o planejamento (jira-qa-planner)', ferramentas: qa.FERRAMENTAS_PLANO,
+        extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } })],
+        aoMudar: () => { render(); if (!maestro.rodando(dir)) this.qaPlay(); } });
+      if (ok) qa.mudar(dir, { fase: 'criando' });
+      render();
+    },
+    qaRefazer({ id }) { const t = ticketAberto(); if (t && typeof id === 'string') require('./qa').refazer(pastaAba(t.id), id); },
+    qaParar() { const t = ticketAberto(); if (t) { require('./qa').pausar(pastaAba(t.id)); render(); } },
     pausar() { modo(aberto, 'pausado'); render(); },
     // Dar início / ▶ Retomar / Continuar: modo rodando e, se nada espera por você, o Claude começa a próxima etapa.
     retomar() {
@@ -2268,7 +2412,7 @@ Um snapshot é guardado: dá para desfazer depois.`
   // Editor de notas (notas.js): o sid que vem da página é o ticket (ou Sem ticket) em que a nota foi aberta,
   // então um salvamento atrasado nunca cai em outro ticket.
   const daNota = (m) => {
-    const dir = m.sid && pastaDe(m.sid);
+    const dir = m.sid && pastaAba(m.sid);
     if (!dir) return;
     fs.mkdirSync(dir, { recursive: true });
     if (m.tipo === 'salvar' || m.tipo === 'mencionar') {
@@ -2287,12 +2431,12 @@ Um snapshot é guardado: dá para desfazer depois.`
       if (!t.pedidoEm) continue;
       const sid = localizarConversa(t);
       if (sid) {
-        tickets.vincular(sid, t.chave);
-        const { pedidoEm, ...resto } = tickets.ler(t.chave);
+        tickets.vincular(sid, t.chave, t.pedidoLista);
+        const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
         tickets.gravar(resto);
-        titularConversa(sid, `${t.chave} · ${t.titulo || ''}`.trim());
+        titularConversa(sid, `${t.chave}${{ impl: ' · Implementação', qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
         mudou = true;
-      } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, ...resto } = t; tickets.gravar(resto); }
+      } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
     }
     if (mudou) render();
   };

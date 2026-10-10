@@ -107,8 +107,8 @@ async function ciclo(ctx, agora = Date.now()) {
     for (const t of lista) fs.writeFileSync(path.join(tickets.pasta(t.chave), ENVIADO), new Date(agora).toISOString());
     return ctx.globalState.update('teamsLigado', true);
   }
-  for (const t of lista) {
-    const dir = tickets.pasta(t.chave);
+  // Cada aba do ticket (raiz, impl/, qa/) tem o seu .notificacoes.jsonl e o seu marcador.
+  for (const [t, dir] of lista.flatMap((t) => [...new Set(['tickets', ...tickets.listasDe(t)])].map((l) => [t, tickets.pasta(t.chave, l)]))) {
     let marca = 0, texto;
     try { marca = ms(fs.readFileSync(path.join(dir, ENVIADO), 'utf8')); } catch {}
     try { texto = fs.readFileSync(path.join(dir, '.notificacoes.jsonl'), 'utf8'); } catch { continue; }

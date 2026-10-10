@@ -119,6 +119,22 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
     e.stopPropagation();
     vscode.postMessage({ acao: el.dataset.acao, nome: el.dataset.nome });
   });
+  // Redesenho a cada linha do Ao vivo: a página e a caixa Ao vivo voltam para onde estavam (sem pular para o topo).
+  const st = () => vscode.getState() || {};
+  const pag = document.scrollingElement, av = document.getElementById('aoVivo');
+  pag.scrollTop = st().evPagina || 0;
+  if (av) av.scrollTop = st().evVivo || 0;
+  // Cenários expandidos continuam expandidos depois do redesenho.
+  for (const d of document.querySelectorAll('details[data-cen]')) {
+    if ((st().evAbertos || []).includes(d.dataset.cen)) d.open = true;
+    d.addEventListener('toggle', () => {
+      const l = new Set(st().evAbertos || []);
+      d.open ? l.add(d.dataset.cen) : l.delete(d.dataset.cen);
+      vscode.setState({ ...st(), evAbertos: [...l] });
+    });
+  }
+  addEventListener('scroll', () => vscode.setState({ ...st(), evPagina: pag.scrollTop }), { passive: true });
+  av?.addEventListener('scroll', () => vscode.setState({ ...st(), evVivo: av.scrollTop }), { passive: true });
   const desde = ${gravandoDesde || 0};
   const rel = document.getElementById('relogio');
   if (desde && rel) setInterval(() => {
@@ -128,7 +144,7 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
 </script></body></html>`;
 
 exports.provider = (ctx) => {
-  let view, dir, ticket, observador, erro, gravacao, raizesAtuais, todos = [];
+  let view, dir, ticket, observador, erro, gravacao, raizesAtuais, todos = [], vigiaQa, vigiadoQa;
 
   const render = async () => {
     if (!view) return;
@@ -149,6 +165,16 @@ exports.provider = (ctx) => {
       observador = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(dir), '*'));
       observador.onDidCreate(render); observador.onDidDelete(render); observador.onDidChange(render);
     }
+    // QA: planejamento e Ao vivo do ▶ (qa.js) no topo; redesenha quando o estado ou o Ao vivo mudam.
+    const dirQa = sessao.foco() && sessao.focoLista() === 'qa' ? require('./tickets').pasta(sessao.foco(), 'qa') : null;
+    if (dirQa !== vigiadoQa) {
+      vigiaQa?.close(); vigiaQa = null; vigiadoQa = dirQa;
+      if (dirQa) {
+        fs.mkdirSync(dirQa, { recursive: true });
+        let espera;
+        vigiaQa = fs.watch(dirQa, (_, nome) => { if (['.ao-vivo.jsonl', '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
+      }
+    }
     const arquivos = listar(dir);
     const extras = fontesDaSkill(sid).map((f) => ({ ...f, arquivos: listar(f.dir) })).filter((f) => f.arquivos.length);
     const raizes = [sessao.RAIZ, sessao.TICKETS, ...extras.map((f) => f.dir)];
@@ -156,7 +182,10 @@ exports.provider = (ctx) => {
       raizesAtuais = raizes;
       view.webview.options = { enableScripts: true, localResourceRoots: raizes.map((r) => vscode.Uri.file(r)) };
     }
-    todos = [...arquivos, ...extras.flatMap((f) => f.arquivos)];
+    // Evidências por cenário do QA (qa/evidencias/CTnn/<execução>/): também abrem pelo clique.
+    const doQa = dirQa ? require('./qa').cenarios(dirQa).cenarios.flatMap((c) => (c.execucoes || []).flatMap((x) => require('./qa').arquivosDe(dirQa, x)))
+      .map((full) => ({ nome: path.basename(full), full, tipo: IMAGEM.has(path.extname(full).toLowerCase()) ? 'imagem' : VIDEO.has(path.extname(full).toLowerCase()) ? 'video' : 'outro' })) : [];
+    todos = [...arquivos, ...extras.flatMap((f) => f.arquivos), ...doQa];
     const grade = (lista, apagavel) => `<div class="grade">${lista.map((a) => `
         <div class="item" data-acao="abrir" data-nome="${esc(a.full)}" title="${esc(a.full)}">
           <div class="thumb">${a.tipo === 'imagem' ? `<img src="${view.webview.asWebviewUri(vscode.Uri.file(a.full))}?v=${a.mtime}">`
@@ -168,34 +197,22 @@ exports.provider = (ctx) => {
         </div>`).join('')}</div>`;
     let tituloConversa;
     try { const c = require('./conversas')._teste; tituloConversa = c.titulo(path.join(c.projeto(), `${sid}.jsonl`)); } catch {}
-    const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
     const corpo = `${ESTILO_NOTAS}${estiloEvid}
       <div class="topo">
         <span class="rotulo">Evidências</span>
         <span class="titulo" title="${esc(sid)}">${esc(tituloConversa || sid.slice(0, 8))}</span>
         ${ticket && ticket !== 'sem-ticket' ? `<span class="ticket">${esc(ticket)}</span>` : ''}
       </div>
-      <div class="barras">
-        <div class="format-bar">
-          ${gravacao
-            ? `<button class="fb-btn gravando" data-acao="parar" title="Parar e salvar o vídeo">Parar<span id="relogio">00:00</span></button>`
-            : `<button class="fb-btn gravar" data-acao="gravar" title="Grava a tela do emulador (o Android limita a 3 min)">Gravar</button>`}
-          <span class="fb-sep"></span>
-          <button class="fb-btn icone" data-acao="abrirPasta" title="Abrir a pasta: ${esc(dir)}">${svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>')}</button>
-          <button class="fb-btn icone" data-acao="copiar" title="Copiar o caminho">${svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/>')}</button>
-        </div>
-        <span class="espaco"></span>
-        <button class="primario" data-acao="print" title="Salva a tela atual do emulador">Print</button>
-      </div>
       ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-      <div class="folha">${arquivos.length ? `<p class="contagem">${arquivos.length} evidência${arquivos.length === 1 ? '' : 's'}</p>${grade(arquivos, true)}`
-        : '<div class="centro"><div class="icone">📷</div>Nenhuma evidência ainda.<br>Tire um print ou grave o emulador.</div>'}</div>
+      ${dirQa ? require('./qa').html(dirQa, (f) => view.webview.asWebviewUri(vscode.Uri.file(f))) : ''}
+      ${arquivos.length ? `<div class="folha"><p class="contagem">${arquivos.length} evidência${arquivos.length === 1 ? '' : 's'}</p>${grade(arquivos, true)}</div>` : ''}
       ${extras.map((f) => `<div class="folha"><p class="contagem" title="${esc(f.dir)}">${esc(f.titulo)} <span class="tag">somente leitura</span></p>${grade(f.arquivos, false)}</div>`).join('')}`;
     erro = null;
     view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), view.webview.cspSource, corpo, gravacao?.desde);
   };
 
   const falhar = (msg) => { erro = msg; render(); };
+  const cenarioDir = (nome) => (vigiadoQa && typeof nome === 'string' && path.dirname(path.resolve(nome)) === path.join(vigiadoQa, 'evidencias') ? path.resolve(nome) : null);
   const precisaEmulador = () => {
     const emu = emulador.emuladorRodando();
     if (!emu) falhar('Nenhum emulador rodando. Abra pelo botão 📱 primeiro.');
@@ -214,7 +231,7 @@ exports.provider = (ctx) => {
     gravar(opcoes = {}) {
       const emu = precisaEmulador();
       if (!emu || gravacao) return;
-      const destino = opcoes.sid ? path.join(sessao.pasta(opcoes.sid), 'evidencias') : dir;
+      const destino = opcoes.destino || (opcoes.sid ? path.join(sessao.pasta(opcoes.sid), 'evidencias') : dir);
       if (!destino) return;
       fs.mkdirSync(destino, { recursive: true });
       const nome = `${opcoes.chave || ticket || 'sem-ticket'}-video-${carimbo()}.mp4`;
@@ -254,15 +271,22 @@ exports.provider = (ctx) => {
       const ok = await vscode.window.showWarningMessage(`Excluir "${path.basename(nome)}"?`, { modal: true, detail: 'Vai para a lixeira do sistema.' }, 'Excluir');
       if (ok) await vscode.workspace.fs.delete(vscode.Uri.file(alvo), { useTrash: true });
     },
-    abrirPasta: () => vscode.env.openExternal(vscode.Uri.file(dir)),
-    copiar: async () => { await vscode.env.clipboard.writeText(dir); vscode.window.showInformationMessage('Caminho da pasta copiado.'); }
+    // Pasta de evidências de um cenário do QA (qa/evidencias/CTnn): só caminhos dentro da pasta do QA aberto.
+    pastaCenario({ nome }) {
+      const alvo = cenarioDir(nome);
+      if (alvo) { fs.mkdirSync(alvo, { recursive: true }); vscode.env.openExternal(vscode.Uri.file(alvo)); }
+    },
+    async copiarCenario({ nome }) {
+      const alvo = cenarioDir(nome);
+      if (alvo) { await vscode.env.clipboard.writeText(alvo); vscode.window.showInformationMessage('Caminho das evidências do cenário copiado.'); }
+    }
   };
 
   exports.gravar = (opcoes) => acoes.gravar(opcoes);
   exports.pararGravacao = () => acoes.parar();
 
   return vscode.Disposable.from(
-    { dispose: () => { observador?.dispose(); gravacao?.proc.kill(); } },
+    { dispose: () => { observador?.dispose(); vigiaQa?.close(); gravacao?.proc.kill(); } },
     require('./grupo').registrar('claudeAbas.evidencias', {
       resolveWebviewView(v) {
         view = v;

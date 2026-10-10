@@ -20,7 +20,8 @@ EXTENSOES = {".md", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx", ".csv", 
 
 
 def ticket_da(sid):
-    """Chave do ticket a que a conversa foi vinculada pela extensao (tickets/.conversas/<sid>), ou None."""
+    """Vinculo da conversa feito pela extensao (tickets/.conversas/<sid>): CHAVE, ou CHAVE/impl e CHAVE/qa
+    para as abas Implementacoes e QA (cada aba tem a sua subpasta no ticket). None sem vinculo."""
     try:
         return open(os.path.join(TICKETS, ".conversas", sid)).read().strip() or None
     except OSError:
@@ -84,7 +85,9 @@ def main():
         return
     if evento == "SessionStart":
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": cofre() +
-            (f"Esta conversa pertence ao ticket {ticket_da(dados['session_id'])}. Pasta de documentos do ticket: {pasta}\n"
+            (f"Esta conversa pertence ao ticket {ticket_da(dados['session_id']).split('/')[0]}"
+             f"{ {'impl': ' (etapa Implementacao)', 'qa': ' (etapa QA)'}.get(ticket_da(dados['session_id']).partition('/')[2], '')}."
+             f" Pasta de documentos desta etapa do ticket: {pasta}\n"
              if ticket_da(dados["session_id"]) else f"Pasta de documentos desta conversa: {pasta}\n") +
             "Salve ali todo documento que você criar para o usuário e que não faça parte do código do repositório "
             "(relatórios, análises, planos, resumos, roteiros de teste, .md/.html/.pdf/.docx/.xlsx/.csv). "

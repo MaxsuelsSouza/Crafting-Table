@@ -14,11 +14,11 @@ async function colar(texto) {
   await vscode.env.clipboard.writeText(anterior);
 }
 
-// Conversa mais recente de um ticket que ainda tem histórico (dá para reabrir), de qualquer projeto.
-exports.ultimaConversa = (t) => {
+// Conversa mais recente do ticket naquela aba (Tickets, Implementações ou QA) que ainda tem histórico, de qualquer projeto.
+exports.ultimaConversa = (t, lista = 'tickets') => {
   const { historico } = require('./conversas')._teste;
-  const fs = require('fs');
-  return t.conversas.filter((sid) => fs.existsSync(historico(sid)))
+  const fs = require('fs'), { listaDa } = require('./tickets');
+  return t.conversas.filter((sid) => listaDa(sid) === lista && fs.existsSync(historico(sid)))
     .sort((a, b) => fs.statSync(historico(b)).mtimeMs - fs.statSync(historico(a)).mtimeMs)[0] || null;
 };
 
@@ -28,11 +28,11 @@ exports.ultimaConversa = (t) => {
 // (ela leva a pasta do ticket no texto). Sem ticket: a conversa atual.
 exports.mencionar = async (texto) => {
   const sessao = require('./sessao'), tickets = require('./tickets');
-  const chave = sessao.foco(), t = chave && tickets.ler(chave);
-  let sid = t ? exports.ultimaConversa(t) : sessao.conversaAtual();
+  const chave = sessao.foco(), t = chave && tickets.ler(chave), lista = sessao.focoLista();
+  let sid = t ? exports.ultimaConversa(t, lista) : sessao.conversaAtual();
   if (t && !sid) {
-    tickets.gravar({ ...t, pedidoEm: Date.now() });
-    texto = `Ticket ${t.chave} (pasta do ticket: ${tickets.pasta(t.chave)})\n${texto}`;
+    tickets.gravar({ ...t, pedidoEm: Date.now(), pedidoLista: lista });
+    texto = `Ticket ${t.chave} (pasta do ticket: ${tickets.pasta(t.chave, lista)})\n${texto}`;
   }
   texto = texto.trimEnd() + ' ';
   // Conversa nova: o texto vai junto. Conversa existente: o Claude recusa texto em conversa já aberta

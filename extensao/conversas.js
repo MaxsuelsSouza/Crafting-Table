@@ -44,8 +44,9 @@ const contar = (dir) => { try { return fs.readdirSync(dir).filter((n) => !n.star
 
 function listar() {
   let nomes = [];
-  // Com um ticket aberto no painel: só as conversas dele, de qualquer projeto.
-  const doTicket = sessao.foco() && require('./tickets').ler(sessao.foco())?.conversas;
+  // Com um ticket aberto no painel: só as conversas dele na aba em que foi aberto, de qualquer projeto.
+  const tk = require('./tickets');
+  const doTicket = sessao.foco() && tk.ler(sessao.foco())?.conversas.filter((sid) => tk.listaDa(sid) === sessao.focoLista());
   if (doTicket) nomes = doTicket.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))));
   else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return []; }
   return nomes.map((n) => {

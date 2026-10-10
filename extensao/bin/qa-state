@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+// qa-state: o Claude do QA (claude -p, qa.js) grava resultado de cenário, evidências e massa por aqui (~/.claude é bloqueada para Write).
+// A pasta do QA vem em QA_DIR (o maestro passa). Uso:
+//   qa-state cenario CT01 concluir --status passou|falhou|bloqueado --nota "o que foi visto"
+//   qa-state evidencia CT01 <arquivo...>
+//   qa-state massa add --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
+//   qa-state massa M3 valida|consumida|invalida
+//   qa-state analise <<'FIM' … FIM        (análise do ambiente que parou; texto pela entrada padrão)
+//   qa-state status
+const qa = require('../qa');
+const dir = process.env.QA_DIR;
+const [obj, a, b, ...resto] = process.argv.slice(2);
+const opt = {};
+for (let i = 0; i < process.argv.length; i++) if (process.argv[i].startsWith('--')) opt[process.argv[i].slice(2)] = process.argv[i + 1];
+const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };
+if (!dir) sair('qa-state: QA_DIR não definida (rode pelo ▶ do QA na Crafting Table)');
+try {
+  if (obj === 'cenario' && b === 'concluir') { qa.concluirCenario(dir, a, opt.status, opt.nota || ''); sair(`${a}: ${opt.status}`, 0); }
+  if (obj === 'evidencia') { sair(qa.evidencia(dir, a, [b, ...resto]).map((f) => `salvo: ${f}`).join('\n'), 0); }
+  if (obj === 'massa' && a === 'add') {
+    let dados = {};
+    try { dados = JSON.parse(opt.dados || '{}'); } catch { sair('qa-state: --dados precisa ser JSON'); }
+    sair(qa.massaAdd(dir, { papel: opt.papel, cenarios: String(opt.cenarios || '').split(',').map((x) => x.trim()).filter(Boolean), dados, consulta: opt.consulta }), 0);
+  }
+  if (obj === 'massa' && a) { qa.massaEstado(dir, a, b); sair(`${a}: ${b}`, 0); }
+  if (obj === 'analise') { qa.gravarAnalise(dir, [a, b, ...resto].filter(Boolean).join(' ') || require('fs').readFileSync(0, 'utf8')); sair('análise gravada', 0); }
+  if (obj === 'status') sair(JSON.stringify({ cenarios: qa.cenarios(dir).cenarios.map(({ id, titulo, status }) => ({ id, titulo, status })), massa: qa.massa(dir).itens }, null, 2), 0);
+  sair('qa-state: comando desconhecido. Veja o topo de bin/qa-state.');
+} catch (e) { sair(`qa-state: ${e.message}`); }

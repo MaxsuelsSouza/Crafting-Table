@@ -173,6 +173,20 @@ async function api(secrets, site, rota, opcoes = {}) {
   return txt ? JSON.parse(txt) : {};
 }
 
+// Anexos no ticket: [{ arquivo, nome }] (multipart; o Jira exige X-Atlassian-Token). Um por vez: um arquivo grande não derruba os outros.
+async function anexar(secrets, site, key, arquivos) {
+  const auth = await credenciais(secrets);
+  if (!auth) throw new Error('Credenciais do Jira não informadas');
+  const falhas = [];
+  for (const a of arquivos) {
+    const fd = new FormData();
+    fd.append('file', new Blob([require('fs').readFileSync(a.arquivo)]), a.nome);
+    const r = await fetch(`${site}/rest/api/3/issue/${key}/attachments`, { method: 'POST', headers: { Authorization: auth, 'X-Atlassian-Token': 'no-check' }, body: fd });
+    if (!r.ok) falhas.push(`${a.nome} (${r.status})`);
+  }
+  if (falhas.length) throw new Error(`anexos recusados: ${falhas.join(', ')}`);
+}
+
 // Comentário no ticket.
 // mencoes: [{ id, nome }] viram menções reais (notificam) numa linha no começo do comentário.
 async function comentar(secrets, { key, site }, texto, mencoes = []) {
@@ -356,5 +370,5 @@ const folhaTicket = (t) => `
     </details>
   </div>`;
 
-exports.jira = { lerLink, buscar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, labels, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
+exports.jira = { lerLink, buscar, api, anexar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, labels, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
 exports._teste = { lerLink, esc, mdParaAdf, adfTexto };

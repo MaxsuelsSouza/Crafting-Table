@@ -4,7 +4,7 @@
   "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets do Jira, documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
   "icon": "icons/crafting-table.png",
   "publisher": "local",
-  "version": "0.0.1",
+  "version": "0.0.12",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -124,6 +124,12 @@
     "configuration": {
       "title": "Crafting Table",
       "properties": {
+        "craftingTable.qaHoraRefresh": {
+          "type": "string",
+          "default": "06:00",
+          "pattern": "^\\d{1,2}:\\d{2}$",
+          "description": "Horário (HH:MM) em que o banco de cópia de produção é renovado. A massa de dados do QA medida antes do último refresh vence e é levantada de novo."
+        },
         "craftingTable.avdPadrao": {
           "type": "string",
           "default": "Small_Phone",

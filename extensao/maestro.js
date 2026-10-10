@@ -7,8 +7,13 @@ const { spawn } = require('child_process');
 // faz em <pasta do ticket>/.ao-vivo.jsonl ({ em, tipo, texto }), que a aba Spec mostra ao vivo.
 // Sem AskUserQuestion (não existe em -p): perguntas passam pelo sdd-state e pela aba.
 // A sessão fica em .ao-vivo.sid para continuar a mesma conversa (--resume) quando precisar.
-const VIVO = '.ao-vivo.jsonl', SID = '.ao-vivo.sid';
-const rodando = new Map(); // pasta do ticket -> processo
+const VIVO = '.ao-vivo.jsonl', SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
+const rodando = new Map(); // pasta do ticket -> processo (desta janela)
+// Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
+// Confere que o pid ainda é um claude (o executável, não um caminho com "claude" no meio): pid pode ser reaproveitado.
+const vivo = (pid) => { try { process.kill(pid, 0); return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').slice(0, 2).some((a) => path.basename(a) === 'claude'); } catch { return false; } };
+const pidDe = (dir) => { try { return Number(fs.readFileSync(path.join(dir, PID), 'utf8')) || null; } catch { return null; } };
+const rodandoEm = (dir) => rodando.has(dir) || vivo(pidDe(dir));
 
 const claudeBin = () => [path.join(os.homedir(), '.local', 'bin', 'claude'), '/usr/local/bin/claude', '/usr/bin/claude'].find((p) => fs.existsSync(p)) || 'claude';
 const curto = (s) => String(s || '').replaceAll(os.homedir(), '~').replace(/\s+/g, ' ').trim();
@@ -98,15 +103,15 @@ function linhas(e) {
 // Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
 function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd, ferramentas = [], extras = [], env = {}, continuar = false, aoMudar = () => {} }) {
-  if (rodando.has(dir)) return false;
-  const log = path.join(dir, VIVO);
-  const gravar = (l) => fs.appendFileSync(log, JSON.stringify({ em: new Date().toISOString(), ...l }) + '\n');
+  if (rodandoEm(dir)) return false;
+  const gravar = (l) => anotar(dir, l);
   let sid = null;
   try { sid = continuar ? fs.readFileSync(path.join(dir, SID), 'utf8').trim() : null; } catch {}
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd: cwd || dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
+  try { fs.writeFileSync(path.join(dir, PID), String(p.pid)); } catch {}
   gravar({ tipo: 'etapa', texto: titulo });
   aoMudar();
   let resto = '';
@@ -123,20 +128,79 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd, ferramentas = 
   let erro = '';
   p.stderr.on('data', (b) => { erro += b; });
   let falhou = false;
+  const soltar = () => { rodando.delete(dir); if (pidDe(dir) === p.pid) fs.rmSync(path.join(dir, PID), { force: true }); };
   p.on('close', (code) => {
-    rodando.delete(dir);
+    soltar();
     if (code && !falhou) gravar({ tipo: 'erro', texto: `O Claude parou com erro (código ${code})`, detalhe: `código ${code}${erro.trim() ? `: ${curto(erro).slice(0, 200)}` : ''}` });
     aoMudar();
   });
-  p.on('error', (e) => { falhou = true; rodando.delete(dir); gravar({ tipo: 'erro', texto: `Não consegui rodar o Claude: ${e.message}` }); aoMudar(); });
+  p.on('error', (e) => { falhou = true; soltar(); gravar({ tipo: 'erro', texto: `Não consegui rodar o Claude: ${e.message}` }); aoMudar(); });
   return true;
+}
+
+// Linha no Ao vivo (do Claude ou de passos da própria extensão). Fila por pasta: uma linha a cada meio segundo, para dar
+// tempo de ler (o Claude e o ▶ escrevem em rajada). Fila acima de 20 linhas acelera para não ficar minutos atrasada.
+const INTERVALO = 500, INTERVALO_FILA_LONGA = 100;
+const filas = new Map(); // pasta -> { linhas, ultimo, timer }
+function anotar(dir, l) {
+  const f = filas.get(dir) || { linhas: [], ultimo: 0, timer: null };
+  filas.set(dir, f);
+  f.linhas.push(l);
+  escoar(dir, f);
+}
+function escoar(dir, f) {
+  if (f.timer || !f.linhas.length) return;
+  const passo = f.linhas.length > 20 ? INTERVALO_FILA_LONGA : INTERVALO;
+  f.timer = setTimeout(() => {
+    f.timer = null;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, VIVO), JSON.stringify({ em: new Date().toISOString(), ...f.linhas.shift() }) + '\n');
+    } catch {}
+    f.ultimo = Date.now();
+    escoar(dir, f);
+  }, Math.max(0, f.ultimo + passo - Date.now()));
 }
 
 const aoVivo = (dir, n = 40) => {
   try { return fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n').slice(-n).map((l) => JSON.parse(l)); } catch { return []; }
 };
 
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// Caixa "Ao vivo" (aba Spec e Evidências do QA): o que o Claude em segundo plano (maestro.js) está fazendo.
+// Tipos antigos (antes da padronização) caem no equivalente novo.
+const TIPO_VIVO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
+const ICONE_VIVO = { fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
+const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// Mais recente em cima: blocos por etapa (a etapa mais nova primeiro), o título da etapa no topo do bloco e as linhas dele da mais nova para a mais antiga.
+const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO_VIVO[x.tipo] || x.tipo) === 'etapa' || !g.length ? g.push([x]) : g.at(-1).push(x), g), [])
+  .reverse().flatMap(([cab, ...resto]) => ((TIPO_VIVO[cab.tipo] || cab.tipo) === 'etapa' ? [cab, ...resto.reverse()] : [...resto.reverse(), cab]));
+const aoVivoHtml = (l, vivo) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}</span></div>
+  <div class="folha ao-vivo" id="aoVivo">${recentesPrimeiro(l).map((x) => {
+    const tipo = TIPO_VIVO[x.tipo] || x.tipo;
+    return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
+      : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE_VIVO[tipo] || '·'}</span>
+        <span class="vt">${esc(x.texto.slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`;
+  }).join('')}</div>` : '');
+
+const CSS_VIVO = `
+  .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
+  .vivo { display: flex; gap: 6px; padding: 2px 0; }
+  .vivo .vi { flex: none; width: 12px; text-align: center; color: var(--text-dim); }
+  .vivo .vt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+  .vivo .vq { flex: none; color: var(--text-dim); font-size: 10px; }
+  .v-etapa { margin: 8px 0 2px; padding: 3px 6px; border-radius: var(--r-md); background: color-mix(in srgb, var(--ia) 14%, transparent);
+    color: var(--ia); font-weight: 600; font-size: 11.5px; }
+  .v-etapa:first-child { margin-top: 0; }
+  .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
+  .v-fala .vt { font-style: italic; }
+  .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
+  .v-fim .vi { color: var(--ok, var(--ok)); }
+  .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--ia); animation: pulsa 1.2s infinite; }
+  @keyframes pulsa { 50% { opacity: .3; } }
+`;
 // Mata todas as execuções em segundo plano (claude -p); devolve quantas eram.
 const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
+const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, aoVivo, matarTodos, rodando: (dir) => rodando.has(dir), VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd } };
+module.exports = { rodar, anotar, aoVivo, aoVivoHtml, CSS_VIVO, parar, matarTodos, rodando: rodandoEm, vivo, VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd, recentesPrimeiro } };
