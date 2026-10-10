@@ -14,6 +14,10 @@ const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
 const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
+const pill = require('./componentes/pill'); // pills de status (cabeçalho do ticket, cards e vinculados)
+const listaTickets = require('./componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
+const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
+const menuModulos = require('./componentes/menu-modulos'); // Tickets · Implementações · QA
 const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -25,7 +29,7 @@ const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (
 // Pasta do ticket (tickets.pasta, mesmo layout da pasta de uma conversa): .ticket.json, documentos, .notas.html,
 // .tarefas.json, .decisoes.json, aprovados/ e .vigia (plugin sdd).
 // "Sem ticket": a pasta da conversa atual do Claude (conversas que não são de nenhum ticket).
-const SEM_TICKET = '__sem-ticket';
+const { SEM_TICKET } = require('./componentes/card-ticket');
 const PRINCIPAL = 'claudeAbas.painel';
 const pasta = (id) => tickets.pasta(id);
 const pastaDe = (id) => (id === SEM_TICKET ? (sessao.conversaAtual() ? sessao.pasta(sessao.conversaAtual()) : null) : pasta(id));
@@ -189,9 +193,7 @@ const IC = {
   parar: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>',
   sino: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11V7a4 4 0 018 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>',
   grade: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
-  lupa: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>',
-  engrenagem: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4"/></svg>',
-  lixo: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg>'
+  engrenagem: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4"/></svg>'
 };
 
 // Abas do menu do ticket em cada lista (componentes/menu-abas.js): { id, nome } = aba desta página, { secao, nome } = outra seção.
@@ -231,14 +233,8 @@ const CSS_MOLDURA = `<style>
     box-shadow: inset 0 0 14px color-mix(in srgb, var(--ia) 22%, transparent); }
   /* Pills do topo: coluna do ticket no Jira e modo refinamento, lado a lado à esquerda */
   .ct-pills { margin: 8px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .ct-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 10px; border-radius: var(--r-pill); font-size: 11px; font-weight: 600;
-    white-space: nowrap; cursor: default; color: var(--cor); background: color-mix(in srgb, var(--cor) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--cor) 40%, transparent); }
-  .ct-pill.ct-refino { --cor: var(--ia); }
-  .ct-pill.ct-refino.ct-pausada { --cor: var(--warn); }
-  .ct-bola { width: 7px; height: 7px; border-radius: 50%; background: var(--cor); flex: none; }
+  ${pill.CSS}
   .ct-pills .ct-ico { width: 22px; height: 22px; } .ct-pills .ct-ico svg { width: 13px; height: 13px; }
-  .ct-novo { --cor: var(--text-dim); } .ct-andando { --cor: var(--warn); } .ct-ok { --cor: var(--ok); }
   ${menuAbas.CSS}
   .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--border);
     background: var(--bg); font-family: var(--fc-font); font-size: 11.5px; color: var(--text-dim); }
@@ -297,7 +293,7 @@ function pillRefino(t) {
       : ['Preparando spec', 'Modo refinamento: o Claude está criando a spec no repositório de specs.'])
     : modo === 'rodando' ? ['Refinando', 'Modo refinamento: o Claude trabalha nos passos da spec e segue sozinho a cada aprovação. ⏸ no topo pausa.']
       : ['Refinamento pausado', 'Modo refinamento pausado: o Claude termina a etapa atual e espera. ▶ no topo retoma.'];
-  return `<span class="ct-pill ct-refino ${modo === 'pausado' ? 'ct-pausada' : ''}" title="${dica}"><span class="ct-bola"></span>${texto}</span>`;
+  return pill.pill(texto, { cor: modo === 'pausado' ? 'pausada' : 'ia', dica, grande: true });
 }
 
 function cabecalho(t, { aba, secao, dentro = false }) {
@@ -317,8 +313,8 @@ function cabecalho(t, { aba, secao, dentro = false }) {
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no Jira">${IC.jira}</button>`}
     </div>
-    <div class="ct-pills">${semTicket ? '<span class="ct-pill ct-novo" title="Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket">Sem ticket vinculado</span>'
-      : `<span class="ct-pill ct-${jira.corStatus(t.status)}" title="Coluna do ticket no board do Jira${t.tipo ? ` · ${esc(t.tipo)}` : ''}"><span class="ct-bola"></span>${esc(t.status || 'Status desconhecido')}</span>
+    <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
+      : `${pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do Jira${t.tipo ? ` · ${t.tipo}` : ''}` })}
       ${refino && emRefino(t) ? pillRefino(t) : ''}
       <button class="ct-ico" ${b('atualizar')} title="Atualizar status e anexos do Jira">${IC.atualizar}</button>`}</div>
     ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
@@ -406,12 +402,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .s-desatualizado { border-color: var(--warn); }
   .s-desatualizado .num { background: var(--warn); color: var(--on-cor); }
   .s-desatualizado .st { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
-  .cartoes > li { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-  .cartoes .corpo { flex: 1; min-width: 0; }
-  .cartoes .nome { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
-  .cartoes .nome span:first-child { overflow: hidden; text-overflow: ellipsis; }
-  .cartoes .det { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 8px; }
-  .chave { font-family: var(--fc-font); color: var(--accent); font-weight: 600; }
   .aguardando { color: var(--warn); }
   /* Detalhe */
   .menu { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
@@ -581,49 +571,9 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
     background: var(--surface-2); color: var(--text); font: inherit; resize: vertical; }
   .tm-hist { font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
   .tm-hist span { margin-right: 6px; }
-  .busca-t { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; border: 1px solid var(--border);
-    border-radius: var(--r-md); background: var(--surface); color: var(--text-dim); }
-  .busca-t:focus-within { border-color: var(--accent); }
-  .busca-t svg { width: 13px; height: 13px; flex: none; }
-  .busca-t input { flex: 1; min-width: 0; height: 26px; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 12px; }
-  .ordem-t { flex: none; width: 30px; height: 30px; border: 1px solid var(--border) !important; border-radius: var(--r-md); background: var(--surface) !important; font-size: 13px; }
-  .ordem-t:hover { border-color: var(--accent) !important; }
-  .ordem-t.is-on { color: var(--accent); }
-  .meus { flex: none; display: flex; flex-direction: column; max-height: 45vh; margin: 8px 12px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sombra); overflow: hidden; }
-  .meus-t { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; font-size: 10px; font-weight: 600;
-    letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border); }
-  .meus-t > span { display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0; }
-  .meus-etapa { max-width: 150px; height: 24px; padding: 0 22px 0 8px; border: 1px solid var(--border); border-radius: var(--r-md); font: inherit;
-    font-size: 11px; letter-spacing: 0; text-transform: none; color: var(--text); background: var(--surface-2); cursor: pointer; appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239a9aa4' stroke-width='1.8'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 5px center; background-size: 12px; }
-  .meus-etapa:focus { outline: none; border-color: var(--accent); }
-  .meus-t .ct-ico { width: 24px; height: 24px; } .meus-t .ct-ico svg { width: 13px; height: 13px; }
-  .meus-lista { flex: 1; min-height: 0; overflow-y: auto; }
-  .meu { opacity: .62; transition: opacity 120ms; }
-  .meu:hover { opacity: 1; }
-  .meu-acoes { display: flex; gap: 12px; margin-top: 5px; }
-  .meu-acoes button { padding: 0; font-size: 11px; color: var(--text-dim); }
-  .meu-acoes button:hover { color: var(--accent); text-decoration: underline; }
-  .meus-ocultos { flex: none; padding: 5px 12px; font-size: 10.5px; color: var(--text-dim); text-align: left; border-top: 1px solid var(--border) !important; }
-  .meus-ocultos:hover { color: var(--accent); }
   .previa-acoes { display: flex; gap: 8px; padding: 6px 0 8px; }
   .previa-acoes button { height: 28px; padding: 0 12px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 12px; }
   .previa-acoes .primario { border-color: transparent !important; }
-  .meu { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
-  .meu:last-child { border-bottom: 0; }
-  .meu:hover { background: var(--surface-2); }
-  .meu-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
-  .meu-l1 .chave { color: var(--accent); font-weight: 600; }
-  .meu-l1 .pill { margin-left: auto; }
-  .meu-tipo { color: var(--text-dim); }
-  .meu-na { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
-  .meu-tit { margin-top: 2px; line-height: 1.4; word-break: break-word; }
-  .meu-pai { margin-top: 2px; font-size: 11px; color: var(--text-dim); }
-  .meus-vazio { padding: 12px; font-size: 12px; color: var(--text-dim); }
-  .meus-vazio.erro { color: var(--danger); }
-  .meus-vazio .link { color: var(--accent); text-decoration: underline; }
-  .nada-t { margin: 4px 12px; font-size: 12px; color: var(--text-dim); }
   ${aoVivo.CSS}
   .duvida { padding: 4px 0 10px 12px; }
   .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
@@ -648,45 +598,10 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .lado { display: flex; gap: 4px; margin: 0 12px 10px; }
   .lado button { flex: 1; height: 28px; border-radius: var(--r-md); border: 1px solid var(--border) !important; background: var(--surface) !important; font-size: 12px; }
   .lado button.is-on { border-color: var(--accent) !important; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent) !important; }
-  .st-novo { --cor: var(--text-dim); } .st-andando { --cor: var(--warn); } .st-ok { --cor: var(--ok); }
-  .pill { font-size: 10px; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 16%, transparent); white-space: nowrap; }
-  .cartoes > li.sem-ticket { border-style: dashed; }
   .erro { color: var(--danger); font-size: 12px; margin: 0 12px 8px; }
   ${abaDocs.CSS}
+  ${listaTickets.CSS}
 </style><style>${jira.estiloDetalhe}</style>`;
-
-// Caixa "Vinculados a você" (presa embaixo da tela): tickets do Jira com você de responsável que ainda não estão na
-// lista. Clique abre só a visualização; Puxar traz para a lista (lá ele baixa título, status e anexos); Remover esconde.
-// v = { itens, etapas, filtro, ocultos, erro, carregando, semCredencial }.
-function caixaMeus(v, lista, modo = 'tickets') {
-  if (!v) return '';
-  const naLista = new Set(lista.map((t) => t.chave)), ocultos = new Set(v.ocultos || []);
-  const itens = (v.itens || []).filter((i) => !naLista.has(i.key) && !ocultos.has(i.key));
-  const escondidos = (v.itens || []).filter((i) => ocultos.has(i.key)).length;
-  const corpo = v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
-    : v.erro ? `<div class="meus-vazio erro">${esc(v.erro)}</div>`
-    : !v.itens ? '<div class="meus-vazio">Carregando do Jira…</div>'
-    : modo === 'qa' && !v.label ? '<div class="meus-vazio">Escolha a label de QA no seletor acima.</div>'
-    : !itens.length ? `<div class="meus-vazio">${modo === 'qa' ? `Nada novo com a label ${esc(v.label || '')} em Pronto para QA ou Teste integrado`
-      : `Nada novo vinculado a você${modo === 'impl' ? ' em Buffer, Não iniciado ou Em andamento' : ''}`}.</div>`
-    : itens.map((i) => `<div class="meu" data-acao="meuVer" data-id="${esc(i.key)}" data-busca="${esc(`${i.key} ${i.resumo || ''} ${i.status || ''} ${i.pai || ''}`.toLowerCase())}" title="Ver o ticket">
-        <div class="meu-l1"><span class="chave">${esc(i.key)}</span><span class="meu-tipo">${esc(i.tipo || '')}</span><span class="pill">${esc(i.status || '')}</span></div>
-        <div class="meu-tit">${esc(i.resumo || '')}</div>
-        ${i.pai ? `<div class="meu-pai">↳ subtarefa de ${esc(i.pai)}</div>` : ''}
-        <div class="meu-acoes"><button data-acao="meuPuxar" data-id="${esc(i.key)}" title="Trazer para a lista de tickets">↑ Puxar</button>
-          <button data-acao="meuRemover" data-id="${esc(i.key)}" title="Tirar desta caixa">✕ Remover</button></div></div>`).join('');
-  const opcoes = [['', 'Abertos'], ...(v.etapas || []).map((e) => [e, e])];
-  if (v.filtro && !(v.etapas || []).includes(v.filtro)) opcoes.push([v.filtro, v.filtro]);
-  return `<div class="meus"><div class="meus-t">${modo === 'qa' ? 'Com a label' : 'Vinculados a você'}<span>
-    ${modo !== 'qa' ? '' : `<select class="meus-etapa" id="filtroLabel" title="Labels do Jira que contêm QA">${['', ...(v.labels || []), ...(v.label && !(v.labels || []).includes(v.label) ? [v.label] : [])].map((l) =>
-      `<option value="${esc(l)}" ${(v.label || '') === l ? 'selected' : ''}>${esc(l || 'Escolha a label')}</option>`).join('')}</select>`}
-    ${modo !== 'tickets' ? '' : `<select class="meus-etapa" id="filtroMeus" title="Filtrar pela etapa do ticket no board">${opcoes.map(([val, rot]) =>
-      `<option value="${esc(val)}" ${(v.filtro || '') === val ? 'selected' : ''}>${esc(rot)}</option>`).join('')}</select>`}
-    ${v.itens ? itens.length : ''}
-    <button class="ct-ico" data-acao="meusAtualizar" title="Atualizar do Jira">${v.carregando ? '…' : IC.atualizar}</button></span></div>
-    ${v.aviso ? `<div class="meus-vazio erro">${esc(v.aviso)}</div>` : ''}<div class="meus-lista">${corpo}</div>
-    ${escondidos ? `<button class="meus-ocultos" data-acao="meusMostrar">${escondidos} removido${escondidos > 1 ? 's' : ''} · mostrar de novo</button>` : ''}</div>`;
-}
 
 // ⚙ Configurações: as mesmas seções do primeiro uso, cada uma com o estado (✅/⚠), Editar e Testar.
 // v = { valores, estado: { agente, jira, board, specs, repos, teams }, reposAuto }.
@@ -758,32 +673,6 @@ const telaPrevia = (key, dados) => `${estilo}
     <div class="previa-acoes"><button class="primario" data-acao="meuPuxar" data-id="${esc(key)}">↑ Puxar para a lista</button>
       <button data-acao="meuRemover" data-id="${esc(key)}">✕ Remover dos vinculados</button></div></header>
   <main class="rolagem">${dados?.erro ? `<p class="erro">${esc(dados.erro)}</p>` : dados ? jira.folhaTicket(dados) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>'}</main>`;
-
-const LISTAS = [['tickets', 'Tickets', 'Tickets'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
-const telaLista = (lista, erro, meus, modo = 'tickets') => `${estilo}
-  <style>.topo .rotulo[data-acao] { cursor: pointer; } .topo .rotulo[data-acao]:hover { color: var(--accent); } .topo .rotulo.is-on { color: var(--text); font-weight: 600; text-decoration: underline 2px var(--accent); text-underline-offset: 5px; }</style>
-  <div class="rolagem">
-  <div class="topo">${LISTAS.map(([id, nome, dica]) => `<span class="rotulo ${modo === id ? 'is-on' : ''}" data-acao="listaModo" data-id="${id}" title="${dica}">${nome}</span>`).join('')}<span class="titulo"></span>
-    <span class="extra">${lista.length ? `${lista.length} ticket${lista.length === 1 ? '' : 's'}` : ''}</span></div>
-  <div class="barras">${lista.length ? `<label class="busca-t">${IC.lupa}<input id="filtroT" type="search" placeholder="Pesquisar" title="Pesquisa por chave, título ou status (Esc limpa)" spellcheck="false"></label>
-    <button class="ordem-t" id="ordemT" title="Mais recentes primeiro (clique para inverter)">↑↓</button>` : '<span class="espaco"></span>'}
-    <button class="primario" data-acao="novo" title="Adicionar ticket pelo link do Jira">＋ Ticket</button></div>
-  ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-  <ul class="cartoes" id="listaT">${lista.map((t) => `<li data-acao="abrir" data-id="${esc(t.chave)}" data-busca="${esc(`${t.chave} ${t.titulo || ''} ${t.status || ''}`.toLowerCase())}" class="st-${jira.corStatus(t.status)}" title="Abrir o ticket"${emRefino(t) ? ' style="border-left: 3px solid var(--ia)"' : ''}>
-    <div class="corpo">
-      <div class="nome"><span>${esc(t.titulo || t.chave)}</span></div>
-      <div class="det"><span class="chave">${esc(t.chave)}</span>${t.status ? `<span class="pill">${esc(t.status)}</span>` : ''}
-        ${emRefino(t) ? '<span class="pill" style="--cor:var(--ia)">● refinando</span>' : ''}
-        <span>${t.conversas.length} conversa${t.conversas.length === 1 ? '' : 's'}</span></div>
-    </div>
-    <span class="mini"><button class="perigo" data-acao="excluir" data-id="${esc(t.chave)}" title="Excluir (a pasta vai para _arquivados, nada é apagado)">${IC.lixo}</button></span></li>`).join('')}
-    <li class="sem-ticket" data-acao="abrir" data-id="${SEM_TICKET}" title="Documentos e notas da conversa atual, sem ticket">
-      <div class="corpo"><div class="nome"><span>Sem ticket</span></div><div class="det"><span>conversa atual do Claude</span></div></div></li>
-  </ul>
-  <p class="nada-t" id="nadaT" hidden>Nenhum ticket encontrado.</p>
-  ${lista.length ? '' : '<div class="folha"><div class="centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do Jira.</div></div>'}
-  </div>
-  ${caixaMeus(meus, lista, modo)}`;
 
 function telaConstituicao(r, est, abertos, impactos = []) {
   if (!est) return `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>specs/NNN-…/</code> em ${esc(path.basename(r.spec?.repo || 'repositório'))} e começa pelo passo 0.</div>`;
@@ -1062,29 +951,9 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     });
   });
 
-  // Lista de tickets: pesquisa por chave/título/status e ↑↓ inverte a ordem (Sem ticket fica sempre por último).
-  const filtroT = document.getElementById('filtroT');
-  if (filtroT) {
-    const ul = document.getElementById('listaT'), semT = ul.querySelector('.sem-ticket'), nada = document.getElementById('nadaT'), ordem = document.getElementById('ordemT');
-    const itens = [...ul.querySelectorAll('li[data-busca]')];
-    let antigos = !!(vscode.getState() || {}).ticketsAntigos;
-    const aplicar = () => {
-      const q = filtroT.value.trim().toLowerCase();
-      (antigos ? [...itens].reverse() : itens).forEach((li) => { li.hidden = !!q && !li.dataset.busca.includes(q); ul.insertBefore(li, semT); });
-      if (semT) semT.hidden = !!q;
-      nada.hidden = !q || itens.some((li) => !li.hidden);
-      document.querySelectorAll('.meu[data-busca]').forEach((m) => { m.hidden = !!q && !m.dataset.busca.includes(q); });
-      ordem.classList.toggle('is-on', antigos);
-      ordem.title = antigos ? 'Mais antigos primeiro (clique para inverter)' : 'Mais recentes primeiro (clique para inverter)';
-    };
-    filtroT.addEventListener('input', aplicar);
-    filtroT.addEventListener('keydown', (e) => { if (e.key === 'Escape') { filtroT.value = ''; aplicar(); } });
-    ordem.addEventListener('click', () => { antigos = !antigos; vscode.setState({ ...(vscode.getState() || {}), ticketsAntigos: antigos }); aplicar(); });
-    aplicar();
-  }
-
-  document.getElementById('filtroLabel')?.addEventListener('change', (e) => enviar({ acao: 'labelQA', id: e.target.value }));
-  document.getElementById('filtroMeus')?.addEventListener('change', (e) => enviar({ acao: 'meusFiltro', id: e.target.value }));
+  // Lista de tickets: pesquisa, ordem e os seletores da caixa de vinculados.
+  ${listaTickets.script('ticketsAntigos')}
+  ${vinculados.script()}
 
   // Pilha de perguntas: ‹ › troca o card de cima, ▦ alterna para a grade com todas. Lembra a pergunta e o modo.
   const pilha = document.getElementById('pilha');
@@ -1198,6 +1067,13 @@ function titularConversa(sid, titulo, tentativas = 20) {
 const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoLista());
 
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
+
+// Caixa de vinculados de cada módulo (componentes/vinculados.js): título, seletor do topo e quais status do Jira entram.
+const VINCULADOS = {
+  tickets: { titulo: 'Vinculados a você', seletor: 'etapa' },
+  impl: { titulo: 'Vinculados a você', status: ['Buffer', 'Não iniciado', 'Em andamento|In progress'] },
+  qa: { titulo: 'Com a label', seletor: 'label', status: ['Pronto para QA|Pronto p/ QA', 'Teste integrado'] }
+};
 
 exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
@@ -1315,8 +1191,6 @@ exports.provider = (ctx) => {
   const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
   // Implementações: só os que estão em Buffer, Não iniciado ou Em andamento/In progress (pelo nome do status, sem acento).
   // QA: os com a label de QA (não o responsável) em Pronto para QA ou Teste integrado.
-  const STATUS_LISTA = { impl: new Set(['buffer', 'naoiniciado', 'emandamento', 'inprogress']), qa: new Set(['prontoparaqa', 'prontop/qa', 'testeintegrado']) };
-  const statusNorm = (st) => String(st || '').normalize('NFD').replace(/[\u0300-\u036f\s]/g, '').toLowerCase();
   const labelQA = () => ctx.globalState.get('labelQA') || '';
   let labelsQA = null; // labels do Jira com "QA" (buscadas uma vez por sessão)
   const carregarMeus = async (forcar) => {
@@ -1334,7 +1208,7 @@ exports.provider = (ctx) => {
       const coluna = (etapasJira || []).find((c) => c.nome === filtro);
       if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(ctx.secrets, siteJira(), 'qa');
       let itens = k === 'qa' && !labelQA() ? [] : await jira.meus(ctx.secrets, siteJira(), coluna?.ids, k === 'qa' ? labelQA() : '');
-      if (fixo) itens = itens.filter((i) => STATUS_LISTA[k].has(statusNorm(i.status)));
+      itens = vinculados.filtrar(itens, VINCULADOS[k].status);
       meusPor[k] = { itens, label: labelQA(), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: ctx.globalState.get('meusOcultos') || [], em: Date.now() };
     } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
     render();
@@ -1362,7 +1236,8 @@ exports.provider = (ctx) => {
       if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
       if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
       const meus = meusPor[modoLista];
-      view.webview.html = pagina(nonce, telaLista(tickets.listar().filter((x) => naLista(x)), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}, modoLista));
+      view.webview.html = pagina(nonce, estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).map((x) => ({ ...x, refinando: emRefino(x) })),
+        meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: VINCULADOS[modoLista] }));
       avisarMoldura();
       if (!meus?.carregando) carregarMeus(false);
       return;
@@ -1848,7 +1723,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       previa = null;
       render();
       atualizarJira(id); // título, status e anexos (a aba Docs mostra os que faltam baixar)
-      vscode.window.setStatusBarMessage(`$(arrow-up) ${id} foi para a lista de ${LISTAS.find(([id]) => id === modoLista)[1]}`, 4000);
+      vscode.window.setStatusBarMessage(`$(arrow-up) ${id} foi para a lista de ${menuModulos.nome(modoLista)}`, 4000);
     },
     async meuRemover({ id }) {
       await ctx.globalState.update('meusOcultos', [...new Set([...(ctx.globalState.get('meusOcultos') || []), id])]);
@@ -2448,4 +2323,4 @@ Um snapshot é guardado: dá para desfazer depois.`
   );
 };
 
-exports._teste = { markdown, telaLista, telaTicket, cabecalho, pagina, SEM_TICKET, caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas };
+exports._teste = { markdown, telaTicket, cabecalho, pagina, SEM_TICKET, caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas };

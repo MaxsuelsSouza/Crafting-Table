@@ -49,3 +49,25 @@ assert.ok(htmlDocs.includes('data-acao="anexoTodos"') && htmlDocs.includes('data
 assert.ok(htmlDocs.includes('<span class="sigla">ARQ</span>') && htmlDocs.includes('Baixando…'));
 assert.ok(abaDocs.corpo({ docs: [], origens: {}, baixando: new Set(), dir: null }, true).includes('Nenhuma conversa do Claude aberta ainda.'));
 console.log('ok aba docs');
+
+// Vinculados: filtro de status por módulo (sem acento/caixa, nomes alternativos), texto do vazio e itens fora da lista/ocultos.
+const vinc = require('./componentes/vinculados');
+const its = ['Em andamento', 'In progress', 'Não iniciado', 'Done', ''].map((status, i) => ({ key: `W-${i}`, status }));
+assert.deepStrictEqual(vinc.filtrar(its, ['Buffer', 'Não iniciado', 'Em andamento|In progress']).map((i) => i.key), ['W-0', 'W-1', 'W-2']);
+assert.strictEqual(vinc.filtrar(its, undefined).length, 5, 'sem status no módulo: todos');
+assert.deepStrictEqual(vinc.filtrar([{ status: 'Pronto p/ QA' }], ['Pronto para QA|Pronto p/ QA']).length, 1);
+assert.strictEqual(vinc._teste.emStatus(['A|a', 'B', 'C']), ' em A, B ou C');
+const caixa = vinc.caixa({ itens: [{ key: 'W-1', resumo: 'x', status: 'Done' }, { key: 'W-2' }, { key: 'W-3' }], ocultos: ['W-3'] }, [{ chave: 'W-1' }], { titulo: 'T', status: ['Buffer'] });
+assert.ok(caixa.includes('data-id="W-2"') && !caixa.includes('data-id="W-1"') && !caixa.includes('data-id="W-3"') && caixa.includes('1 removido'));
+assert.ok(vinc.caixa({ itens: [] }, [], { titulo: 'T', status: ['Buffer'] }).includes('vinculado a você em Buffer'));
+assert.ok(vinc.caixa({ itens: [], label: '' }, [], { titulo: 'T', seletor: 'label' }).includes('Escolha a label'));
+console.log('ok vinculados');
+
+// Lista de tickets: barra sempre presente (mesmo vazia), Sem ticket por último, pills e conversas no card.
+const lista = require('./componentes/lista-tickets');
+const vazia = lista.corpo([], {}, { modo: 'qa', vinculados: { titulo: 'T' } });
+assert.ok(vazia.includes('id="filtroT"') && vazia.includes('id="ordemT"') && vazia.includes('data-acao="novo"') && vazia.includes('Nenhum ticket ainda'));
+assert.ok(vazia.includes('class="rotulo is-on" data-acao="listaModo" data-id="qa"'));
+const cheia = lista.corpo([{ chave: 'W-1', titulo: 'Oi', status: 'Em andamento', conversas: [1], refinando: true }], {}, { modo: 'tickets', vinculados: { titulo: 'T' } });
+assert.ok(cheia.includes('1 conversa<') && cheia.includes('st-andando') && cheia.includes('● refinando') && cheia.indexOf('data-id="W-1"') < cheia.indexOf('class="sem-ticket"'));
+console.log('ok lista');
