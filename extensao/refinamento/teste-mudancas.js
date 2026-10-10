@@ -6,7 +6,8 @@ process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-home-'));
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
-const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas, cabecalho } = require('../painel')._teste;
+const { caixaDecisao, caixaMudancas } = mud;
+const { telaConstituicao, telaTarefas, cabecalho } = require('../painel')._teste;
 
 // ── mudancas.js: passos em atenção, snapshot, alterou, restaurar ──
 const imp = (o) => ({ id: '9', autor: 'PO Fulano', data: '2026-10-08T10:00:00Z', link: 'https://j/9', texto: 'o botão agora é vermelho', resumo: 'Cor do botão muda', ...o });
@@ -40,7 +41,7 @@ assert.strictEqual(mud.restaurar(tk, spec, 'inexistente'), false);
 
 // ── telas: caixa vermelha, passos e cards laranja, trava ──
 const html = caixaDecisao([pend, imp({ id: '10', status: 'aguardando_decisao', nivel: 'baixo', opcoes: [] })]);
-assert.ok(html.includes('class="decisao"') && html.includes('A spec ainda não foi alterada') && html.includes('+1 na fila'));
+assert.ok(html.includes('class="dec-caixa"') && html.includes('A spec ainda não foi alterada') && html.includes('+1 na fila'));
 assert.ok(html.includes('Aplicar: botão vermelho') && html.includes('data-op="nao"') && html.includes('Não prosseguir'));
 assert.strictEqual(caixaDecisao([{ ...pend, status: 'descartado' }]), '', 'sem pendência não há caixa');
 assert.ok(!caixaMudancas([pend]).includes('mud-tx'), 'a pendente só aparece na caixa de decisão');

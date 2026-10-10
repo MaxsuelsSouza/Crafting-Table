@@ -9,7 +9,7 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { dirSpec, arquivoPasso, arqHandoff, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida, ticketDe, estadoSpec, comSpec } = require('./refinamento/locais'); // onde cada coisa mora
+const { dirSpec, arquivoPasso, arqHandoff, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida, ticketDe, estadoSpec, comSpec } = require('./refinamento/locais'); // onde cada coisa mora
 const { IC } = require('./componentes/icones');
 const { markdown } = require('./componentes/markdown');
 const { quando, iniciais } = require('./componentes/formato');
@@ -23,8 +23,7 @@ const listaTickets = require('./componentes/lista-tickets'); // tela inicial: m�
 const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
 const configuracao = require('./configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
-const mudancas = require('./refinamento/mudancas');
-const { NIVEL } = mudancas;
+const mudancas = require('./refinamento/mudancas'); // mudanças pedidas em comentário: caixas da aba Spec, ações e CSS
 const orq = require('./refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
 const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
 const duvidas = require('./refinamento/duvidas'); // aba Dúvidas e as ações de dúvida
@@ -343,27 +342,12 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .cam-mobile { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
   .tjira { color: var(--accent-soft); font-weight: 600; }
   .tav { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--on-cor); font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
-  .mudancas { display: flex; flex-direction: column; gap: 8px; margin: 0 12px 12px; }
-  .mud { position: relative; padding: 9px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--cor); font-size: 12px; }
-  .mud-l1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
-  .mud-niv { display: inline-flex; align-items: center; padding: 0 6px; border-radius: var(--r-sm); font-size: 10px; font-weight: 700; color: var(--on-cor); background: var(--cor); }
-  .mud-q { color: var(--text-dim); } .mud-l1 a { color: var(--accent-soft); margin-left: auto; }
-  .mud-tx { margin-top: 4px; line-height: 1.45; }
-  .mud-ef { margin-top: 4px; font-size: 11px; color: var(--text-dim); }
-  .decisao { margin: 0 12px 12px; padding: 10px 12px; border-radius: var(--r-lg); border: 2px solid var(--perigo); background: color-mix(in srgb, var(--perigo) 7%, var(--surface)); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
-  .dec-t { display: flex; align-items: center; gap: 8px; font-size: 12.5px; } .dec-ic { color: var(--perigo); }
-  .dec-fila { margin-left: auto; font-size: 10.5px; color: var(--text-dim); }
-  .dec-cm { padding: 6px 8px; border-radius: var(--r-md); background: var(--surface-2); font-style: italic; line-height: 1.45; word-break: break-word; }
-  .dec-op { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-  .dec-op button { padding: 4px 10px; border-radius: var(--r-md); font-size: 11.5px; font-weight: 600; border: 1px solid var(--border) !important; background: var(--surface) !important; color: var(--text); }
-  .dec-op button:first-child { background: var(--accent) !important; color: var(--on-cor); border-color: transparent !important; }
-  .dec-op .dec-nao { margin-left: auto; color: var(--perigo); border-color: color-mix(in srgb, var(--perigo) 50%, transparent) !important; }
+  ${mudancas.CSS}
   .passo.s-atencao { border-color: #f58a1f; background: color-mix(in srgb, #f58a1f 12%, var(--surface-2)); opacity: 1; filter: none; }
   .passo.s-atencao .num { background: #f58a1f; color: var(--on-cor); }
   .aten { flex: none; color: #f58a1f; font-size: 13px; cursor: help; }
   .tcard.tatencao { border-color: #f58a1f; background: color-mix(in srgb, #f58a1f 10%, var(--surface)); }
   .tcard .taten { color: #f58a1f; margin-right: 4px; cursor: help; }
-  .mud-ok { margin-top: 6px; padding: 2px 10px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
   .trev { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: color-mix(in srgb, var(--ia) 25%, transparent); color: var(--ia); }
   .tm-rev { padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--ia); background: color-mix(in srgb, var(--ia) 8%, transparent); }
   .tm-rev b { color: var(--ia); }
@@ -578,43 +562,10 @@ function telaTarefas(t, l, impactos = []) {
   }).join('')}</div>${l.map(modal).join('')}`;
 }
 
-// Mudanças vindas de comentários do Jira: o vigia acha, o Claude mede (nível) e regride a spec; aqui você vê e dá ciência.
-// Mudança pedida em comentário que espera você: a spec NÃO foi alterada. Uma por vez, a mais antiga primeiro.
-function caixaDecisao(l) {
-  const p = mudancas.pendentes(l);
-  if (!p.length) return '';
-  const i = p[0], [rot, cor] = NIVEL[i.nivel] || [i.nivel, 'var(--perigo)'];
-  const bt = (op, texto, cls = '') => `<button class="${cls}" data-acao="mudancaDecidir" data-id="${esc(i.id)}" data-op="${op}">${esc(texto)}</button>`;
-  return `<div class="decisao"><div class="dec-t"><span class="dec-ic">⚠</span><b>Mudança pedida no ticket</b>
-      <span class="mud-niv" style="--cor:${cor}">${esc(rot)}</span>${p.length > 1 ? `<span class="dec-fila">+${p.length - 1} na fila</span>` : ''}</div>
-    <div class="mud-l1"><b>${esc(i.autor || 'alguém')}</b><span class="mud-q">${esc(quando(i.data))}</span><a href="${esc(i.link)}">ver comentário</a></div>
-    <div class="dec-cm">${esc((i.texto || '').slice(0, 300))}</div>
-    <div class="mud-tx">${esc(i.resumo || '')}</div>
-    <div class="mud-ef"><b>A spec ainda não foi alterada.</b> ${Number.isInteger(i.passo) ? `Passo afetado: ${esc(i.passo)} (e os que dependem dele). ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))}.` : ''}</div>
-    <div class="dec-op">${(i.opcoes || []).map((o, k) => bt(k, o.rotulo)).join('')}${bt('nao', 'Não prosseguir', 'dec-nao')}</div></div>`;
-}
-
-const VISIVEIS = ['na_fila', 'triagem', 'triando', 'analisando', 'aplicando', 'aplicado', 'erro', 'analisado']; // os demais já foram decididos
-function caixaMudancas(l) {
-  const vis = l.filter((i) => VISIVEIS.includes(i.status) && !(i.status === 'analisado' && i.nivel === 'nenhum')).slice().reverse().slice(0, 5);
-  if (!vis.length) return '';
-  return `<div class="caixa-t">Mudanças por comentário<span>${vis.length}</span></div><div class="mudancas">${vis.map((i) => {
-    const [rot, cor] = NIVEL[i.nivel] || ['ANALISANDO', 'var(--ia)'];
-    return `<div class="mud" style="--cor:${cor}">
-      <div class="mud-l1"><span class="mud-niv">${i.status === 'analisado' ? rot : i.status === 'aplicado' ? 'APLICADA' : i.status === 'erro' ? 'NÃO CONCLUÍDO' : `<span class="vivo-bola"></span>${i.status === 'aplicando' ? 'APLICANDO' : i.status === 'triagem' || i.status === 'triando' ? 'TRIANDO' : 'ANALISANDO'}`}</span>
-        <b>${esc(i.autor || 'alguém')}</b><span class="mud-q">${esc(quando(i.data))}</span><a href="${esc(i.link)}">ver comentário</a></div>
-      <div class="mud-tx">${esc(i.resumo || (i.texto || '').slice(0, 220))}</div>
-      ${['analisado', 'aplicado'].includes(i.status) && i.nivel !== 'nenhum' ? `<div class="mud-ef">${i.passo !== null && i.passo !== undefined ? `Spec voltou ao passo ${esc(i.passo)}. ` : ''}${(i.cards || []).length ? `Cards atingidos: ${esc(i.cards.join(', '))} (revise na aba Tarefas).` : ''}</div>` : ''}
-      ${!['na_fila', 'triagem', 'triando', 'analisando', 'aplicando'].includes(i.status) ? `<button class="mud-ok" data-acao="impactoCiente" data-id="${esc(i.id)}">Ciente</button>` : ''}
-      ${['aplicado', 'erro'].includes(i.status) && i.snapshot ? `<button class="mud-ok" data-acao="mudancaDesfazer" data-id="${esc(i.id)}" title="Volta a spec e os cards ao estado de antes da aplicação">Desfazer</button>` : ''}
-    </div>`;
-  }).join('')}</div>`;
-}
-
 function corpoAba(t, aba, d) {
   const semTicket = t.id === SEM_TICKET;
   if (aba === 'docs') return abaDocs.corpo(d, semTicket);
-  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
+  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${mudancas.caixaDecisao(d.impactos)}${mudancas.caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
@@ -873,7 +824,7 @@ exports.provider = (ctx) => {
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas, duvidas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas, duvidas, mudancas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
@@ -1086,55 +1037,6 @@ exports.provider = (ctx) => {
       delete cacheJira[t.chave];
       render();
     },
-    // Decisão sobre a mudança pedida em comentário. "Não prosseguir" descarta (a spec nunca foi tocada); manter só registra;
-    // consultar vira uma dúvida para o PO; aplicar guarda um snapshot e manda o Claude regredir ([aplicar]).
-    async mudancaDecidir({ id, op }) {
-      const t = ticketAberto();
-      if (!t) return;
-      const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.id === id && x.status === 'aguardando_decisao');
-      const o = op === 'nao' ? null : (i?.opcoes || [])[Number(op)];
-      if (!i || (op !== 'nao' && !o)) return;
-      if (o?.tipo === 'aplicar' && maestro.rodando(pasta(t.chave))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar para aplicar.');
-      const ok = await vscode.window.showWarningMessage(`${o ? o.rotulo : 'Não prosseguir'}?`, { modal: true, detail: !o ? 'A mudança do comentário é descartada e a spec segue como estava (nada foi alterado).'
-        : o.tipo === 'aplicar' ? `O Claude vai regredir a spec: ${o.instrucao || o.rotulo}
-Um snapshot é guardado: dá para desfazer depois.`
-        : o.tipo === 'consultar' ? 'Vira uma dúvida (aba Dúvidas) para você enviar ao ticket; a spec espera a resposta.' : 'Nada muda na spec.' }, 'Confirmar');
-      if (!ok) return;
-      i.decisao = { opcao: o ? o.rotulo : 'Não prosseguir', tipo: o ? o.tipo : 'nao_prosseguir', por: os.userInfo().username, em: new Date().toISOString() };
-      if (!o) i.status = 'descartado';
-      else if (o.tipo === 'aplicar') {
-        mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), i.id);
-        Object.assign(i, { snapshot: true, status: 'aplicando' });
-      } else i.status = 'decidido';
-      gravar(t.chave, IMPACTOS, l);
-      if (o?.tipo === 'consultar') await orq.sdd(['duvida', 'add', '--ref', pasta(t.chave), '--texto', o.instrucao || o.rotulo, '--contexto', `Comentário de ${i.autor}: ${i.resumo}`]);
-      if (o?.tipo === 'aplicar') orq.etapa(ticketDe(t.chave), `[aplicar] Mudança escolhida no ticket ${t.chave}. Siga a seção "Aplicar a mudança escolhida" da skill sdd.\n`
-        + `Opção escolhida: ${o.rotulo}\nInstrução: ${o.instrucao || o.rotulo}\nImpacto: ${i.nivel} — ${i.resumo} (passo ${i.passo ?? '?'}; cards ${(i.cards || []).join(', ') || 'nenhum'})\n`
-        + `Comentário id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Aplicando mudança de ${i.autor}`);
-      render();
-    },
-    // "Não prosseguir" depois de aplicar: volta a spec e os cards ao snapshot de antes da aplicação.
-    async mudancaDesfazer({ id }) {
-      const t = ticketAberto();
-      if (!t) return;
-      const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.id === id && ['aplicado', 'erro'].includes(x.status) && x.snapshot);
-      if (!i) return;
-      if (maestro.rodando(pasta(t.chave))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
-      const ok = await vscode.window.showWarningMessage('Desfazer a mudança?', { modal: true, detail: 'A spec e os cards voltam ao estado de antes de aplicar. Subtarefas já atualizadas no Jira não são mexidas.' }, 'Desfazer');
-      if (!ok) return;
-      if (!mudancas.restaurar(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), i.id)) return vscode.window.showErrorMessage('Snapshot não encontrado: nada foi desfeito.');
-      i.status = 'desfeito';
-      gravar(t.chave, IMPACTOS, l);
-      vscode.window.showInformationMessage('Mudança desfeita: spec e cards voltaram ao estado anterior.');
-      render();
-    },
-    async impactoCiente({ id }) {
-      const l = impactosDe(pasta(aberto)), i = l.find((x) => x.id === id);
-      if (!i) return;
-      i.status = 'ciente';
-      gravar(aberto, IMPACTOS, l);
-      render();
-    },
     // Revisão de card já no Jira: aplica o texto novo (descrição/título/estimativa) e comenta na subtarefa o motivo,
     // quem pediu a mudança (autor do comentário, com o link) e quem aplicou.
     async revisaoAplicar({ id }) {
@@ -1229,4 +1131,4 @@ Um snapshot é guardado: dá para desfazer depois.`
   );
 };
 
-exports._teste = { markdown, telaTicket, cabecalho, pagina, SEM_TICKET, caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas };
+exports._teste = { markdown, telaTicket, cabecalho, pagina, SEM_TICKET, telaConstituicao, telaTarefas };
