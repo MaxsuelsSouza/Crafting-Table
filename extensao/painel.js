@@ -13,6 +13,7 @@ const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = r
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
+const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
 const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -419,13 +420,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .aba[hidden] { display: none; }
   .folha { padding: 12px 14px; }
   .folha h3 { margin: 0 0 6px; font-size: 13px; }
-  .linha-doc { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: var(--r-md); cursor: pointer; }
-  .linha-doc:hover { background: var(--surface-2); }
-  .sigla { flex: none; width: 30px; height: 30px; border-radius: var(--r-md); display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700;
-    color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
-  .linha-doc .nome { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .linha-doc .mini { opacity: 0; }
-  .linha-doc:hover .mini { opacity: 1; }
   .vazio-aba { color: var(--text-dim); font-size: 12px; line-height: 1.6; text-align: center; padding: 18px 6px; }
   .acoes-aba { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .md { font-size: 12.5px; line-height: 1.55; }
@@ -658,15 +652,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .pill { font-size: 10px; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 16%, transparent); white-space: nowrap; }
   .cartoes > li.sem-ticket { border-style: dashed; }
   .erro { color: var(--danger); font-size: 12px; margin: 0 12px 8px; }
-  .selo { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid color-mix(in srgb, var(--accent-soft) 45%, transparent); color: var(--accent-soft); }
-  .pendentes { border-style: dashed; }
-  .pendentes .linha-doc { opacity: .45; cursor: default; transition: opacity 140ms; }
-  .pendentes .linha-doc:hover { opacity: .8; background: none; }
-  .pendentes .tam { flex: none; font-size: 10.5px; color: var(--text-dim); }
-  .baixar { flex: none; height: 24px; padding: 0 8px; border-radius: var(--r-md); border: 1px solid var(--border) !important; background: var(--surface-2) !important; font-size: 11px; }
-  .baixar:hover { border-color: var(--accent) !important; color: var(--accent); }
-  .notas-caixa .papel { min-height: 280px; }
-  .caixa-t .baixar { height: 20px; font-size: 10.5px; text-transform: none; letter-spacing: 0; }
+  ${abaDocs.CSS}
 </style><style>${jira.estiloDetalhe}</style>`;
 
 // Caixa "Vinculados a você" (presa embaixo da tela): tickets do Jira com você de responsável que ainda não estão na
@@ -991,25 +977,7 @@ function caixaMudancas(l) {
 
 function corpoAba(t, aba, d) {
   const semTicket = t.id === SEM_TICKET;
-  if (aba === 'docs') {
-    const docs = d.docs.length ? d.docs.map((x) => `<div class="linha-doc" data-acao="docAbrir" data-id="${esc(x.nome)}" title="${esc(x.origem || x.full)}">
-        <span class="sigla">${esc(path.extname(x.nome).slice(1, 5).toUpperCase() || 'ARQ')}</span><span class="nome">${esc(x.nome)}</span>
-        ${d.origens[x.nome]?.origem === 'jira' ? '<span class="selo" title="Baixado dos anexos do Jira">↓ Jira</span>' : ''}
-        <span class="mini"><button data-acao="docMencionar" data-id="${esc(x.nome)}" title="Mencionar no Claude">@</button></span></div>`).join('')
-      : `<div class="vazio-aba">${semTicket && !d.dir ? 'Nenhuma conversa do Claude aberta ainda.' : 'Nenhum documento ainda. O que o Claude criar aparece aqui.'}</div>`;
-    // Anexos do ticket que ainda não foram baixados: apagados, com botão de baixar. Baixado, sobe para Documentos.
-    const baixados = new Set(Object.values(d.origens).map((o) => o.id));
-    const pend = (d.jira?.anexos || []).filter((a) => !baixados.has(a.id));
-    const kb = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
-    const pendentes = pend.length ? `<div class="caixa-t">Encontrados no ticket<span>${pend.length > 1 ? '<button class="baixar" data-acao="anexoTodos">↓ Baixar todos</button>' : ''}</span></div>
-      <div class="folha pendentes">${pend.map((a) => `<div class="linha-doc" title="${esc(a.nome)}">
-        <span class="sigla">${esc(path.extname(a.nome).slice(1, 5).toUpperCase() || 'ARQ')}</span><span class="nome">${esc(a.nome)}</span>${a.de ? `<span class="selo" title="Anexo de outro ticket da mesma feature">↑ ${esc(a.de)}</span>` : ''}
-        <span class="tam">${kb(a.tamanho || 0)}</span>
-        <button class="baixar" data-acao="anexoBaixar" data-id="${esc(a.id)}" ${d.baixando.has(a.id) ? 'disabled' : ''}>${d.baixando.has(a.id) ? 'Baixando…' : '↓ Baixar'}</button></div>`).join('')}</div>` : '';
-    return `<div class="caixa-t">Documentos<span>${d.docs.length || ''}</span></div><div class="folha">${docs}</div>${pendentes}
-    <div class="caixa-t">Notas</div>
-    <div class="notas-caixa">${notas.corpoNotas(semTicket ? 'Notas desta conversa…' : 'Notas do ticket…')}</div>`;
-  }
+  if (aba === 'docs') return abaDocs.corpo(d, semTicket);
   if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
@@ -2415,8 +2383,7 @@ Um snapshot é guardado: dá para desfazer depois.`
       filaTarefas(t);
     },
     async anexoTodos() {
-      const baixados = new Set(Object.values(ler(path.join(pasta(aberto), ORIGEM), {})).map((o) => o.id));
-      for (const a of cacheJira[aberto]?.anexos || []) if (!baixados.has(a.id)) await this.anexoBaixar({ id: a.id });
+      for (const a of abaDocs.pendentes(cacheJira[aberto]?.anexos, ler(path.join(pasta(aberto), ORIGEM), {}))) await this.anexoBaixar({ id: a.id });
     }
   };
 

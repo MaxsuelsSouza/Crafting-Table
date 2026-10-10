@@ -35,3 +35,17 @@ assert.ok(fora.includes('<button data-secao="principal" data-aba="docs">Docs</bu
 assert.ok(fora.includes('<button data-secao="outra" class="is-on">Outra</button>'));
 assert.ok(!menu([{ id: 'x', nome: 'X', badge: 0 }], { principal: 'p' }).includes('ct-badge'), 'contador zero some');
 console.log('ok menu');
+
+// Aba Docs: anexo já baixado (id no .origem.json) sai de "Encontrados no ticket"; lista vazia mostra o aviso.
+const abaDocs = require('./componentes/aba-docs');
+assert.deepStrictEqual(abaDocs.pendentes([{ id: '1' }, { id: '2' }], { 'a.pdf': { origem: 'jira', id: '1' } }).map((a) => a.id), ['2']);
+assert.deepStrictEqual(abaDocs.pendentes(undefined, undefined), []);
+assert.strictEqual(abaDocs._teste.kb(2 * 1048576), '2.0 MB');
+assert.strictEqual(abaDocs._teste.kb(10), '1 KB');
+const htmlDocs = abaDocs.corpo({ docs: [{ nome: 'a.pdf', full: '/x/a.pdf' }], origens: { 'a.pdf': { origem: 'jira', id: '1' } },
+  jira: { anexos: [{ id: '1', nome: 'a.pdf' }, { id: '2', nome: 'b.png', tamanho: 2048 }, { id: '3', nome: 'c' }] }, baixando: new Set(['3']), dir: '/x' }, false);
+assert.ok(htmlDocs.includes('data-acao="docAbrir" data-id="a.pdf"') && htmlDocs.includes('↓ Jira'));
+assert.ok(htmlDocs.includes('data-acao="anexoTodos"') && htmlDocs.includes('data-acao="anexoBaixar" data-id="2"') && !htmlDocs.includes('data-id="1" '));
+assert.ok(htmlDocs.includes('<span class="sigla">ARQ</span>') && htmlDocs.includes('Baixando…'));
+assert.ok(abaDocs.corpo({ docs: [], origens: {}, baixando: new Set(), dir: null }, true).includes('Nenhuma conversa do Claude aberta ainda.'));
+console.log('ok aba docs');
