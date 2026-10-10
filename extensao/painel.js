@@ -27,6 +27,7 @@ const mudancas = require('./refinamento/mudancas');
 const { NIVEL } = mudancas;
 const orq = require('./refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
 const acoesQa = require('./qa/acoes'); // ações e peças de UI do módulo QA
+const duvidas = require('./refinamento/duvidas'); // aba Dúvidas e as ações de dúvida
 const conversas = require('./conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -67,43 +68,6 @@ const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 
 
-// Busca pessoas no Jira enquanto digita; Enter numa pessoa a menciona (Enter de novo remove), "Concluir" segue.
-// Devolve [{ id, nome }] (vazio = ninguém) ou undefined se cancelou.
-function escolherMencoes(t, secrets) {
-  return new Promise((resolve) => {
-    const qp = /** @type {vscode.QuickPick<vscode.QuickPickItem & { fim?: boolean, p?: any }>} */ (vscode.window.createQuickPick()), escolhidas = new Map();
-    qp.ignoreFocusOut = true; qp.matchOnDescription = true;
-    qp.placeholder = 'Digite parte do nome ou do e-mail para buscar no Jira';
-    let seq = 0, timer, fim = false;
-    const titulo = () => { const ja = [...escolhidas.values()].map((p) => '@' + p.nome).join(', '); qp.title = ja ? `Mencionando: ${ja}` : `Mencionar alguém no comentário do ${t.chave}?`; };
-    const concluir = () => ({ label: escolhidas.size ? '$(check) Concluir menções' : '$(check) Enviar sem menção', alwaysShow: true, fim: true });
-    const pessoa = (p) => ({ label: p.nome, description: escolhidas.has(p.id) ? 'mencionada · Enter remove' : '', alwaysShow: true, p });
-    const inicio = () => { qp.busy = false; qp.items = [concluir(), ...[...escolhidas.values()].map(pessoa)]; };
-    qp.onDidChangeValue((v) => {
-      clearTimeout(timer);
-      const n = ++seq;
-      if (!v.trim()) return inicio();
-      qp.busy = true;
-      timer = setTimeout(async () => {
-        let itens;
-        try { const achadas = await jira.pessoas(secrets, { key: t.chave, site: t.site }, v.trim()); itens = achadas.length ? achadas.map(pessoa) : [{ label: `Ninguém encontrado para "${v}"`, alwaysShow: true }]; }
-        catch (e) { itens = [{ label: `$(error) ${e.message}`, alwaysShow: true }]; }
-        if (n !== seq) return;
-        qp.busy = false; qp.items = itens;
-      }, 300);
-    });
-    qp.onDidAccept(() => {
-      const i = qp.activeItems[0];
-      if (!i) return;
-      if (i.fim) { fim = true; resolve([...escolhidas.values()]); return qp.hide(); }
-      if (!i.p) return;
-      if (escolhidas.has(i.p.id)) escolhidas.delete(i.p.id); else escolhidas.set(i.p.id, i.p);
-      titulo(); qp.value = ''; inicio();
-    });
-    qp.onDidHide(() => { clearTimeout(timer); qp.dispose(); if (!fim) resolve(undefined); });
-    titulo(); inicio(); qp.show();
-  });
-}
 
 // ── Telas ──
 
@@ -442,16 +406,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .previa-acoes button { height: 28px; padding: 0 12px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 12px; }
   .previa-acoes .primario { border-color: transparent !important; }
   ${aoVivo.CSS}
-  .duvida { padding: 4px 0 10px 12px; }
-  .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
-  .duvida .dtexto { margin: 4px 0; font-size: 12.5px; line-height: 1.5; }
-  .duvida .enviar { border: 1px solid var(--border); margin-top: 6px; }
-  .duvida summary { text-transform: none; letter-spacing: 0; font-size: 11.5px; font-weight: 400; color: inherit; margin: 0; }
-  .duvida .dtexto { display: block; margin-top: 4px; }
-  .caixa-enviadas { margin-top: 14px; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); }
-  .caixa-enviadas .titulo-caixa { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); margin-bottom: 6px; }
-  .duvida.enviada { opacity: .6; } .duvida.enviada:hover, .duvida.enviada[open] { opacity: .9; }
-  .duvida .sug { border-left: 3px solid var(--accent); padding-left: 8px; }
+  ${duvidas.CSS}
   .dtrecho .esc { color: var(--ok); }
   /* Rodapé (por enquanto sem conteúdo) */
   .rodape { flex: none; height: 26px; border-top: 1px solid var(--border); background: var(--surface); }
@@ -687,25 +642,7 @@ function corpoAba(t, aba, d) {
       </div>
     </details>`).join('')}</div>`
     : '<div class="vazio-aba">Nenhuma decisão registrada ainda.<br>Elas aparecem quando você responde uma pergunta do Claude ou pede para ele fazer diferente.</div>'}</div>`;
-  if (aba === 'duvidas') {
-    const card = (x) => {
-      const aberta = !x.resposta, ev = x.enviadaEm;
-      const corpo = `${x.contexto ? `<div class="dtrecho"><b>Contexto:</b> ${esc(x.contexto)}</div>` : ''}
-        ${x.resposta ? `<div class="dtrecho resp"><b>Resposta${x.resposta.origem === 'comentario' ? ` · comentário de ${esc(x.resposta.autor || '')}` : ' · dada por você'}:</b> ${esc(x.resposta.texto)}</div>` : ''}
-        ${aberta && x.sugestao ? `<div class="dtrecho sug"><b>Possível resposta de ${esc(x.sugestao.autor || 'alguém')}:</b> “${esc(String(x.sugestao.texto).slice(0, 600))}”<br><i>${esc(x.sugestao.motivo)}</i>
-          <div class="acoes-aba"><button class="fb-btn enviar" data-acao="duvidaConfirmar" data-id="${esc(x.id)}">Confirmar como resposta</button>
-          <button class="fb-btn" data-acao="duvidaRejeitar" data-id="${esc(x.id)}">Não é a resposta</button></div></div>` : ''}
-        <div class="acoes-aba">${!ev ? `<button class="fb-btn enviar" data-acao="duvidaEnviar" data-id="${esc(x.id)}">Enviar para os comentários do ticket</button>` : ''}
-          ${aberta ? `<button class="fb-btn" data-acao="duvidaResponder" data-id="${esc(x.id)}">Dar resposta</button>` : ''}</div>`;
-      const marca = x.resposta ? '✓ Respondida' : ev ? `Aguardando resposta${x.sugestao ? ' · resposta sugerida' : ''}` : 'Não enviada';
-      return `<details class="decisao duvida${ev ? ' enviada' : ''}"${!ev || x.sugestao ? ' open' : ''}>
-        <summary><span class="quando">${esc(quando(x.em))}</span> <b>${esc(x.id)}</b> <span class="origem">${marca}</span><span class="dtexto">${esc(x.texto)}</span></summary>${corpo}</details>`;
-    };
-    const l = d.duvidas.slice().reverse(), novas = l.filter((x) => !x.enviadaEm), enviadas = l.filter((x) => x.enviadaEm);
-    return `<div class="folha">${l.length ? `${novas.length ? `<div class="hist">${novas.map(card).join('')}</div>` : ''}
-      ${enviadas.length ? `<div class="caixa-enviadas"><div class="titulo-caixa">Enviadas ao ticket (${enviadas.length})</div><div class="hist">${enviadas.map(card).join('')}</div></div>` : ''}`
-      : '<div class="vazio-aba">Nenhuma dúvida registrada ainda.<br>No modo refinamento, quando você escolher <b>Tirar dúvida</b> numa pergunta do Claude, ela aparece aqui.</div>'}</div>`;
-  }
+  if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
 }
 
@@ -936,7 +873,7 @@ exports.provider = (ctx) => {
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, require('./refinamento/analise'), conversas, duvidas].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
@@ -975,49 +912,6 @@ exports.provider = (ctx) => {
     },
     atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
     vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
-    // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
-    async duvidaEnviar({ id }) {
-      const t = ticketAberto();
-      const l = t ? duvidasDe(pasta(t.chave)) : [];
-      const x = l.find((y) => y.id === id);
-      if (!x || x.enviadaEm) return;
-      const mencoes = await escolherMencoes(t, ctx.secrets);
-      if (!mencoes) return;
-      const ok = await vscode.window.showWarningMessage(`Comentar no ${t.chave}?`, { modal: true, detail: (mencoes.length ? `Menciona: ${mencoes.map((m) => '@' + m.nome).join(', ')}` : 'Sem menção a ninguém.') + '\n\n' + textoDuvida(x) }, 'Enviar');
-      if (!ok) return;
-      try { await jira.comentar(ctx.secrets, { key: t.chave, site: t.site }, textoDuvida(x), mencoes); }
-      catch (e) { return vscode.window.showErrorMessage(e.message); }
-      x.enviadaEm = new Date().toISOString();
-      gravar(t.chave, DUVIDAS, l);
-      vscode.window.showInformationMessage(`${x.id} enviada para os comentários do ${t.chave}.`);
-      atualizarJira(t.chave);
-    },
-    // Fecha a dúvida (só o humano) e, se era a última, a spec pode seguir.
-    fecharDuvida(t, id, resposta) {
-      const l = duvidasDe(pasta(t.chave)), x = l.find((y) => y.id === id);
-      if (!x || x.resposta) return;
-      x.resposta = { ...resposta, em: new Date().toISOString() }; x.sugestao = null;
-      gravar(t.chave, DUVIDAS, l);
-      orq.respondidas.push(`${id} (dúvida) → ${resposta.texto}`);
-      render();
-      if (!l.some((y) => !y.resposta)) orq.seguir(ticketDe(t.chave));
-    },
-    async duvidaResponder({ id }) {
-      const t = ticketAberto(), x = t && duvidasDe(pasta(t.chave)).find((y) => y.id === id);
-      if (!x || x.resposta) return;
-      const texto = (await vscode.window.showInputBox({ title: `${id}: ${x.texto}`.slice(0, 120), prompt: 'Resposta da dúvida', ignoreFocusOut: true }))?.trim();
-      if (texto) this.fecharDuvida(t, id, { texto, origem: 'manual' });
-    },
-    duvidaConfirmar({ id }) {
-      const t = ticketAberto(), s = t && duvidasDe(pasta(t.chave)).find((y) => y.id === id)?.sugestao;
-      if (s) this.fecharDuvida(t, id, { texto: s.texto, origem: 'comentario', autor: s.autor, comentarioId: s.comentarioId, link: s.link });
-    },
-    duvidaRejeitar({ id }) {
-      const t = ticketAberto(), l = t ? duvidasDe(pasta(t.chave)) : [], x = l.find((y) => y.id === id);
-      if (!x?.sugestao) return;
-      (x.descartados ||= []).push(x.sugestao.comentarioId); x.sugestao = null;
-      gravar(t.chave, DUVIDAS, l); render();
-    },
     jira() { const t = ticketAberto(); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); },
     // ▶ Iniciar refinamento: modo aguardando_inicio + conversa nova que o hook do plugin sdd acorda com o /sdd:iniciar.
     // A spec mora no repositório de specs (craftingTable.specsDir), em <CHAVE>-<slug>/. Spec já existente: continua de onde parou.
