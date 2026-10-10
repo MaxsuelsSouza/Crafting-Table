@@ -123,7 +123,8 @@ function montarGrupo(grupo, real) {
         get html() { return htmls[id]; },
         set html(h) { htmls[id] = h; if (ativo(id)) desenhar(); },
         get options() { return real.webview.options; },
-        set options(o) { alvos.forEach((a) => { a.webview.options = { ...a.webview.options, ...o, enableScripts: true, localResourceRoots: opcoes.localResourceRoots }; }); },
+        // as raízes que cada seção pede (evidências, tickets) somam-se à da extensão; sem isso as miniaturas não carregam
+        set options(o) { (o.localResourceRoots || []).forEach((r) => { if (!opcoes.localResourceRoots.some((x) => x.fsPath === r.fsPath)) opcoes.localResourceRoots.push(r); }); alvos.forEach((a) => { a.webview.options = { ...a.webview.options, ...o, enableScripts: true, localResourceRoots: opcoes.localResourceRoots }; }); },
         get cspSource() { return real.webview.cspSource; },
         asWebviewUri: (u) => real.webview.asWebviewUri(u),
         postMessage: (m) => (ativo(id) ? Promise.all(alvos.map((a) => a.webview.postMessage(m))).then((r) => r.some(Boolean)) : Promise.resolve(false)),
