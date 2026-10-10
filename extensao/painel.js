@@ -651,7 +651,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
 // Caixa "Vinculados a você" (presa embaixo da tela): tickets do Jira com você de responsável que ainda não estão na
 // lista. Clique abre só a visualização; Puxar traz para a lista (lá ele baixa título, status e anexos); Remover esconde.
 // v = { itens, etapas, filtro, ocultos, erro, carregando, semCredencial }.
-function caixaMeus(v, lista) {
+function caixaMeus(v, lista, modo = 'tickets') {
   if (!v) return '';
   const naLista = new Set(lista.map((t) => t.chave)), ocultos = new Set(v.ocultos || []);
   const itens = (v.itens || []).filter((i) => !naLista.has(i.key) && !ocultos.has(i.key));
@@ -659,7 +659,9 @@ function caixaMeus(v, lista) {
   const corpo = v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
     : v.erro ? `<div class="meus-vazio erro">${esc(v.erro)}</div>`
     : !v.itens ? '<div class="meus-vazio">Carregando do Jira…</div>'
-    : !itens.length ? '<div class="meus-vazio">Nada novo vinculado a você.</div>'
+    : modo === 'qa' && !v.label ? '<div class="meus-vazio">Escolha a label de QA no seletor acima.</div>'
+    : !itens.length ? `<div class="meus-vazio">${modo === 'qa' ? `Nada novo com a label ${esc(v.label || '')} em Pronto para QA ou Teste integrado`
+      : `Nada novo vinculado a você${modo === 'impl' ? ' em Buffer, Não iniciado ou Em andamento' : ''}`}.</div>`
     : itens.map((i) => `<div class="meu" data-acao="meuVer" data-id="${esc(i.key)}" data-busca="${esc(`${i.key} ${i.resumo || ''} ${i.status || ''} ${i.pai || ''}`.toLowerCase())}" title="Ver o ticket">
         <div class="meu-l1"><span class="chave">${esc(i.key)}</span><span class="meu-tipo">${esc(i.tipo || '')}</span><span class="pill">${esc(i.status || '')}</span></div>
         <div class="meu-tit">${esc(i.resumo || '')}</div>
@@ -668,9 +670,11 @@ function caixaMeus(v, lista) {
           <button data-acao="meuRemover" data-id="${esc(i.key)}" title="Tirar desta caixa">✕ Remover</button></div></div>`).join('');
   const opcoes = [['', 'Abertos'], ...(v.etapas || []).map((e) => [e, e])];
   if (v.filtro && !(v.etapas || []).includes(v.filtro)) opcoes.push([v.filtro, v.filtro]);
-  return `<div class="meus"><div class="meus-t">Vinculados a você<span>
-    <select class="meus-etapa" id="filtroMeus" title="Filtrar pela etapa do ticket no board">${opcoes.map(([val, rot]) =>
-      `<option value="${esc(val)}" ${(v.filtro || '') === val ? 'selected' : ''}>${esc(rot)}</option>`).join('')}</select>
+  return `<div class="meus"><div class="meus-t">${modo === 'qa' ? 'Com a label' : 'Vinculados a você'}<span>
+    ${modo !== 'qa' ? '' : `<select class="meus-etapa" id="filtroLabel" title="Labels do Jira que contêm QA">${['', ...(v.labels || []), ...(v.label && !(v.labels || []).includes(v.label) ? [v.label] : [])].map((l) =>
+      `<option value="${esc(l)}" ${(v.label || '') === l ? 'selected' : ''}>${esc(l || 'Escolha a label')}</option>`).join('')}</select>`}
+    ${modo !== 'tickets' ? '' : `<select class="meus-etapa" id="filtroMeus" title="Filtrar pela etapa do ticket no board">${opcoes.map(([val, rot]) =>
+      `<option value="${esc(val)}" ${(v.filtro || '') === val ? 'selected' : ''}>${esc(rot)}</option>`).join('')}</select>`}
     ${v.itens ? itens.length : ''}
     <button class="ct-ico" data-acao="meusAtualizar" title="Atualizar do Jira">${v.carregando ? '…' : IC.atualizar}</button></span></div>
     ${v.aviso ? `<div class="meus-vazio erro">${esc(v.aviso)}</div>` : ''}<div class="meus-lista">${corpo}</div>
@@ -747,9 +751,11 @@ const telaPrevia = (key, dados) => `${estilo}
       <button data-acao="meuRemover" data-id="${esc(key)}">✕ Remover dos vinculados</button></div></header>
   <main class="rolagem">${dados?.erro ? `<p class="erro">${esc(dados.erro)}</p>` : dados ? jira.folhaTicket(dados) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>'}</main>`;
 
-const telaLista = (lista, erro, meus) => `${estilo}
+const LISTAS = [['tickets', 'Tickets', 'Tickets'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
+const telaLista = (lista, erro, meus, modo = 'tickets') => `${estilo}
+  <style>.topo .rotulo[data-acao] { cursor: pointer; } .topo .rotulo[data-acao]:hover { color: var(--accent); } .topo .rotulo.is-on { color: var(--text); font-weight: 600; }</style>
   <div class="rolagem">
-  <div class="topo"><span class="rotulo">Tickets</span><span class="titulo"></span>
+  <div class="topo">${LISTAS.map(([id, nome, dica]) => `<span class="rotulo ${modo === id ? 'is-on' : ''}" data-acao="listaModo" data-id="${id}" title="${dica}">${nome}</span>`).join('')}<span class="titulo"></span>
     <span class="extra">${lista.length ? `${lista.length} ticket${lista.length === 1 ? '' : 's'}` : ''}</span></div>
   <div class="barras">${lista.length ? `<label class="busca-t">${IC.lupa}<input id="filtroT" type="search" placeholder="Pesquisar" title="Pesquisa por chave, título ou status (Esc limpa)" spellcheck="false"></label>
     <button class="ordem-t" id="ordemT" title="Mais recentes primeiro (clique para inverter)">↑↓</button>` : '<span class="espaco"></span>'}
@@ -769,7 +775,7 @@ const telaLista = (lista, erro, meus) => `${estilo}
   <p class="nada-t" id="nadaT" hidden>Nenhum ticket encontrado.</p>
   ${lista.length ? '' : '<div class="folha"><div class="centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do Jira.</div></div>'}
   </div>
-  ${caixaMeus(meus, lista)}`;
+  ${caixaMeus(meus, lista, modo)}`;
 
 function telaConstituicao(r, est, abertos, impactos = []) {
   if (!est) return `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>specs/NNN-…/</code> em ${esc(path.basename(r.spec?.repo || 'repositório'))} e começa pelo passo 0.</div>`;
@@ -1098,6 +1104,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     aplicar();
   }
 
+  document.getElementById('filtroLabel')?.addEventListener('change', (e) => enviar({ acao: 'labelQA', id: e.target.value }));
   document.getElementById('filtroMeus')?.addEventListener('change', (e) => enviar({ acao: 'meusFiltro', id: e.target.value }));
 
   // Pilha de perguntas: ‹ › troca o card de cima, ▦ alterna para a grade com todas. Lembra a pergunta e o modo.
@@ -1218,7 +1225,10 @@ exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
   const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
   const cacheJira = {}; // chave -> dados do Jira (ou { erro })
-  let meus = null; // { itens, etapas, filtro, erro, carregando, semCredencial, em }: caixa "Vinculados a você"
+  // Lista mostrada: Tickets, Implementações ou QA (ticket.lista: 'impl' | 'qa'). Cada uma tem a sua caixa de vinculados.
+  let modoLista = ctx.globalState.get('listaModo') || 'tickets';
+  const listaDe = (t) => t.lista || (t.implementacao ? 'impl' : 'tickets');
+  const meusPor = {}; // modo -> { itens, etapas, filtro, erro, carregando, semCredencial, em }: caixa "Vinculados a você"
   let etapasJira = null; // colunas do board [{ nome, ids }] (buscadas uma vez por sessão)
   // Configurações (⚙): settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
   const cfg = () => vscode.workspace.getConfiguration('craftingTable');
@@ -1318,26 +1328,35 @@ exports.provider = (ctx) => {
   // Mudou a configuração (aqui ou nas settings): esquece o que foi buscado com a configuração antiga.
   ctx.subscriptions?.push(vscode.workspace.onDidChangeConfiguration((ev) => {
     if (!ev.affectsConfiguration('craftingTable')) return;
-    etapasJira = null; meus = null;
+    etapasJira = null; for (const k in meusPor) delete meusPor[k];
     if (cfgAberta) render();
   }));
   let previa = null; const cachePrevia = {}; // ticket vinculado aberto só para ver (chave) e os dados dele
   const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
+  // Implementações: só os que estão em Buffer, Não iniciado ou Em andamento/In progress (pelo nome do status, sem acento).
+  // QA: os com a label de QA (não o responsável) em Pronto para QA ou Teste integrado.
+  const STATUS_LISTA = { impl: new Set(['buffer', 'naoiniciado', 'emandamento', 'inprogress']), qa: new Set(['prontoparaqa', 'prontop/qa', 'testeintegrado']) };
+  const statusNorm = (st) => String(st || '').normalize('NFD').replace(/[\u0300-\u036f\s]/g, '').toLowerCase();
+  const labelQA = () => ctx.globalState.get('labelQA') || '';
+  let labelsQA = null; // labels do Jira com "QA" (buscadas uma vez por sessão)
   const carregarMeus = async (forcar) => {
+    const k = modoLista, meus = meusPor[k], fixo = k !== 'tickets';
     if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
-    if (!forcar && !(await ctx.secrets.get('jira.token'))) { meus = { semCredencial: true, em: Date.now() }; return render(); }
-    meus = { ...(meus || {}), carregando: true, semCredencial: false };
+    if (!forcar && !(await ctx.secrets.get('jira.token'))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return render(); }
+    meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };
     render();
-    const filtro = ctx.globalState.get('meusFiltro') || '';
+    const filtro = fixo ? '' : ctx.globalState.get('meusFiltro') || '';
     const projeto = projetoJira();
     try {
       // Etapas = colunas do board Downstream (buscadas uma vez); a escolhida vira os status dela na busca.
       let avisoBoard = '';
-      if (!etapasJira) etapasJira = await jira.etapas(ctx.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []).catch((e) => { avisoBoard = e.message; return null; });
+      if (!etapasJira && !fixo) etapasJira = await jira.etapas(ctx.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []).catch((e) => { avisoBoard = e.message; return null; });
       const coluna = (etapasJira || []).find((c) => c.nome === filtro);
-      const itens = await jira.meus(ctx.secrets, siteJira(), coluna?.ids);
-      meus = { itens, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: ctx.globalState.get('meusOcultos') || [], em: Date.now() };
-    } catch (e) { meus = { erro: e.message, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
+      if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(ctx.secrets, siteJira(), 'qa');
+      let itens = k === 'qa' && !labelQA() ? [] : await jira.meus(ctx.secrets, siteJira(), coluna?.ids, k === 'qa' ? labelQA() : '');
+      if (fixo) itens = itens.filter((i) => STATUS_LISTA[k].has(statusNorm(i.status)));
+      meusPor[k] = { itens, label: labelQA(), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: ctx.globalState.get('meusOcultos') || [], em: Date.now() };
+    } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
     render();
   };
   const baixando = new Set(); // ids de anexos sendo baixados
@@ -1362,7 +1381,8 @@ exports.provider = (ctx) => {
       aberto = null; sessao.focar(null);
       if (cfgAberta) { view.webview.html = pagina(nonce, telaConfig({ aba: cfgAba, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado, reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) })); avisarMoldura(); return; }
       if (previa) { view.webview.html = pagina(nonce, telaPrevia(previa, cachePrevia[previa])); avisarMoldura(); return; }
-      view.webview.html = pagina(nonce, telaLista(tickets.listar(), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}));
+      const meus = meusPor[modoLista];
+      view.webview.html = pagina(nonce, telaLista(tickets.listar().filter((x) => listaDe(x) === modoLista), null, meus ? { ...meus, ocultos: ctx.globalState.get('meusOcultos') || [] } : {}, modoLista));
       avisarMoldura();
       if (!meus?.carregando) carregarMeus(false);
       return;
@@ -1799,6 +1819,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       await salvarCfg('repositorios', l);
       checar(['repos']);
     },
+    async labelQA({ id }) { await ctx.globalState.update('labelQA', id || ''); carregarMeus(true); },
     async meusFiltro({ id }) { await ctx.globalState.update('meusFiltro', id || ''); carregarMeus(true); },
     // Vinculado: clique só mostra o ticket; Puxar traz para a lista (e já busca título, status e anexos); Remover esconde.
     async meuVer({ id }) {
@@ -1811,15 +1832,17 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     },
     previaFechar() { previa = null; render(); },
     previaJira({ id }) { vscode.env.openExternal(vscode.Uri.parse(`${siteJira()}/browse/${id}`)); },
+    async listaModo({ id }) { modoLista = id; await ctx.globalState.update('listaModo', id); render(); },
     meuPuxar({ id }) {
-      if (!tickets.ler(id)) {
-        try { tickets.criar(`${siteJira()}/browse/${id}`); } catch (e) { return vscode.window.showErrorMessage(e.message); }
-      }
+      const t0 = tickets.ler(id);
+      if (!t0) {
+        try { tickets.criar(`${siteJira()}/browse/${id}`, { lista: modoLista }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      } else if (listaDe(t0) !== modoLista) tickets.gravar({ ...t0, lista: modoLista, implementacao: undefined }); // puxado na outra aba: muda de lista
       if (cachePrevia[id] && !cachePrevia[id].erro) cacheJira[id] = cachePrevia[id];
       previa = null;
       render();
       atualizarJira(id); // título, status e anexos (a aba Docs mostra os que faltam baixar)
-      vscode.window.setStatusBarMessage(`$(arrow-up) ${id} foi para a lista de tickets`, 4000);
+      vscode.window.setStatusBarMessage(`$(arrow-up) ${id} foi para a lista de ${LISTAS.find(([id]) => id === modoLista)[1]}`, 4000);
     },
     async meuRemover({ id }) {
       await ctx.globalState.update('meusOcultos', [...new Set([...(ctx.globalState.get('meusOcultos') || []), id])]);
@@ -1842,7 +1865,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: 'Link do ticket no Jira', placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
       if (!link) return;
       let t;
-      try { jira.lerLink(link); t = tickets.criar(link.trim()); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      try { jira.lerLink(link); t = tickets.criar(link.trim(), { lista: modoLista }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      if (listaDe(t) !== modoLista) t = tickets.gravar({ ...t, lista: modoLista, implementacao: undefined });
       this.abrir({ id: t.chave });
     },
     async excluir({ id }) {

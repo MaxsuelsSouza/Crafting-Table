@@ -215,12 +215,25 @@ async function eu(secrets, site) {
 
 // Tickets em que você é o responsável (mais recentes primeiro). statusIds: os status de uma coluna do board;
 // sem eles, só os não concluídos.
-async function meus(secrets, site, statusIds) {
+// label: em vez do responsável, os tickets com essa label (QA não se vincula ao ticket, marca com label).
+async function meus(secrets, site, statusIds, label) {
   const filtro = statusIds?.length ? `status in (${statusIds.map((x) => Number(x)).filter(Boolean).join(',')})` : 'statusCategory != Done';
-  const jql = `assignee = currentUser() AND ${filtro} ORDER BY updated DESC`;
+  const quem = label ? `labels = "${String(label).replace(/["\\]/g, '')}"` : 'assignee = currentUser()';
+  const jql = `${quem} AND ${filtro} ORDER BY updated DESC`;
   const r = await api(secrets, site, `search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype,parent&maxResults=50`);
   return (r.issues || []).map((i) => ({ key: i.key, resumo: i.fields.summary, status: i.fields.status?.name, tipo: i.fields.issuetype?.name,
     subtarefa: !!i.fields.issuetype?.subtask, pai: i.fields.parent?.key || null }));
+}
+
+// Labels do site que contêm o texto (sem diferença de maiúsculas), em ordem alfabética. Ex.: as de QA (MAXSUEL_QA…).
+async function labels(secrets, site, contem) {
+  const todas = [];
+  for (let ini = 0; ; ini += 1000) {
+    const r = await api(secrets, site, `label?startAt=${ini}&maxResults=1000`);
+    todas.push(...(r.values || []));
+    if (r.isLast !== false || !(r.values || []).length) break;
+  }
+  return todas.filter((l) => l.toLowerCase().includes(contem.toLowerCase())).sort();
 }
 
 // Etapas = colunas do board (na ordem do board), cada uma com os status que ela agrupa.
@@ -343,5 +356,5 @@ const folhaTicket = (t) => `
     </details>
   </div>`;
 
-exports.jira = { lerLink, buscar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
+exports.jira = { lerLink, buscar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, labels, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
 exports._teste = { lerLink, esc, mdParaAdf, adfTexto };
