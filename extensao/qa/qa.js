@@ -4,9 +4,9 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
-const maestro = require('./maestro');
-const aoVivo = require('./componentes/ao-vivo');
-const cardCenario = require('./componentes/card-cenario');
+const maestro = require('../maestro');
+const aoVivo = require('../componentes/ao-vivo');
+const cardCenario = require('./card-cenario');
 const { dataBr } = cardCenario;
 
 // Módulo QA (lista QA do painel). O ▶ roda tudo em ordem (executar): planejamento → mapa de cenários → ambiente → massa → um
@@ -320,7 +320,7 @@ async function viaComandos(dir, d) {
 }
 
 // ── Prompts do Claude em segundo plano (execução). A skill testes-funcionais é o método; as paradas dela viram registro.
-const QA_STATE = path.join(__dirname, 'bin', 'qa-state');
+const QA_STATE = path.join(__dirname, 'qa-state');
 const REGRAS = 'Modo não interativo: onde a skill manda parar e confirmar, não pergunte; registre e siga, ou conclua como bloqueado. '
   + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE, liberar usuário ou permissão), publicar no Jira, commit e push. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;

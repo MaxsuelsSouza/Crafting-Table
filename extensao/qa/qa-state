@@ -7,7 +7,7 @@
 //   qa-state massa M3 valida|consumida|invalida
 //   qa-state analise <<'FIM' … FIM        (análise do ambiente que parou; texto pela entrada padrão)
 //   qa-state status
-const qa = require('../qa');
+const qa = require('./qa');
 const dir = process.env.QA_DIR;
 const [obj, a, b, ...resto] = process.argv.slice(2);
 const opt = {};

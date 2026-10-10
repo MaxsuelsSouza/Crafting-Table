@@ -10,7 +10,7 @@ const emulador = require('./emulador');
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.
 const sessao = require('./sessao');
 const aoVivo = require('./componentes/ao-vivo');
-const cardCenario = require('./componentes/card-cenario');
+const cardCenario = require('./qa/card-cenario');
 const ADB = path.join(emulador.SDK, 'platform-tools', 'adb');
 const IMAGEM = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const VIDEO = new Set(['.mp4', '.webm', '.mov']);
@@ -175,7 +175,7 @@ exports.provider = (ctx) => {
       view.webview.options = { enableScripts: true, localResourceRoots: raizes.map((r) => vscode.Uri.file(r)) };
     }
     // Evidências por cenário do QA (qa/evidencias/CTnn/<execução>/): também abrem pelo clique.
-    const doQa = dirQa ? require('./qa').cenarios(dirQa).cenarios.flatMap((c) => (c.execucoes || []).flatMap((x) => require('./qa').arquivosDe(dirQa, x)))
+    const doQa = dirQa ? require('./qa/qa').cenarios(dirQa).cenarios.flatMap((c) => (c.execucoes || []).flatMap((x) => require('./qa/qa').arquivosDe(dirQa, x)))
       .map((full) => ({ nome: path.basename(full), full, tipo: IMAGEM.has(path.extname(full).toLowerCase()) ? 'imagem' : VIDEO.has(path.extname(full).toLowerCase()) ? 'video' : 'outro' })) : [];
     todos = [...arquivos, ...extras.flatMap((f) => f.arquivos), ...doQa];
     const grade = (lista, apagavel) => `<div class="grade">${lista.map((a) => `
@@ -196,7 +196,7 @@ exports.provider = (ctx) => {
         ${ticket && ticket !== 'sem-ticket' ? `<span class="ticket">${esc(ticket)}</span>` : ''}
       </div>
       ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-      ${dirQa ? require('./qa').html(dirQa, (f) => view.webview.asWebviewUri(vscode.Uri.file(f))) : ''}
+      ${dirQa ? require('./qa/qa').html(dirQa, (f) => view.webview.asWebviewUri(vscode.Uri.file(f))) : ''}
       ${arquivos.length ? `<div class="folha"><p class="contagem">${arquivos.length} evidência${arquivos.length === 1 ? '' : 's'}</p>${grade(arquivos, true)}</div>` : ''}
       ${extras.map((f) => `<div class="folha"><p class="contagem" title="${esc(f.dir)}">${esc(f.titulo)} <span class="tag">somente leitura</span></p>${grade(f.arquivos, false)}</div>`).join('')}`;
     erro = null;

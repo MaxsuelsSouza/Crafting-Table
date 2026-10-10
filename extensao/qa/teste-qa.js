@@ -55,7 +55,7 @@ assert.ok(!qa.refazer(d3, 'CT02')); // arquivado não volta
 assert.ok(!qa.html(d3).includes('Cenários · plano')); // sem aprovação, a lista não aparece
 
 // Ao vivo: mais recente em cima, agrupado por etapa (título no topo do bloco).
-const { recentesPrimeiro } = require('./componentes/ao-vivo')._teste;
+const { recentesPrimeiro } = require('../componentes/ao-vivo')._teste;
 const vivoL = [{ tipo: 'etapa', texto: 'E1' }, { tipo: 'acao', texto: 'a1' }, { tipo: 'acao', texto: 'a2' }, { tipo: 'etapa', texto: 'E2' }, { tipo: 'fim', texto: 'b1' }];
 assert.strictEqual(recentesPrimeiro(vivoL).map((x) => x.texto).join(','), 'E2,b1,E1,a2,a1');
 assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao', texto: 'y' }]).map((x) => x.texto).join(','), 'y,x');
@@ -117,7 +117,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
 
   // qa-state (CLI) pela QA_DIR.
   const { execFileSync } = require('child_process');
-  const cli = (...a) => execFileSync(path.join(__dirname, 'bin', 'qa-state'), a, { env: { ...process.env, QA_DIR: d4 }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+  const cli = (...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: d4 }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
   const ex = iniciarCenario(d4, 'CT02', null);
   const print = path.join(d4, 'p.png'); fs.writeFileSync(print, 'x');
   cli('evidencia', 'CT02', print);
@@ -128,7 +128,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.throws(() => cli('cenario', 'CT02', 'concluir', '--status', 'passou')); // só cenário em execução
 
   // ▶ inteiro: plano com 2 CTs, ambiente simulado, massa levantada, CT01 passa, pausa durante o CT02 → descartado; retomada termina.
-  const maestro = require('./maestro');
+  const maestro = require('../maestro');
   const back = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-back-'));
   fs.mkdirSync(path.join(back, 'testes-funcionais'));
   fs.writeFileSync(path.join(back, 'testes-funcionais', 'preparar-ambiente.py'),
@@ -142,10 +142,10 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     prompts.push(o.titulo);
     setTimeout(() => {
       const env = { ...process.env, QA_DIR: o.env.QA_DIR };
-      if (/massa/.test(o.titulo)) execFileSync(path.join(__dirname, 'bin', 'qa-state'), ['massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'], { env });
+      if (/massa/.test(o.titulo)) execFileSync(path.join(__dirname, 'qa-state'), ['massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'], { env });
       const id = o.titulo.match(/CT\d+/)?.[0];
       if (id && id === pausarNo) qa.pausar(dir);
-      else if (id) execFileSync(path.join(__dirname, 'bin', 'qa-state'), ['cenario', id, 'concluir', '--status', 'passou'], { env });
+      else if (id) execFileSync(path.join(__dirname, 'qa-state'), ['cenario', id, 'concluir', '--status', 'passou'], { env });
       o.aoMudar();
     }, 5);
     return true;
@@ -173,7 +173,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.ok(h5.includes('print-0.png') && h5.includes('print-1.png') && h5.includes('data-acao="pastaCenario"') && h5.includes('data-cen="CT02"'));
 
   // Card de cenário: execução sem evidência, ↻ Refazer só nos concluídos e cenário fora do plano apagado e sem Refazer.
-  const cardCen = require('./componentes/card-cenario').card, ctxC = { dir: d5, uri: () => '', arquivos: () => [] };
+  const cardCen = require('./card-cenario').card, ctxC = { dir: d5, uri: () => '', arquivos: () => [] };
   const semExec = cardCen({ id: 'CT09', titulo: 'T', status: 'pendente', texto: 'x' }, ctxC);
   assert.ok(semExec.includes('Ainda não executado') && !semExec.includes('qaRefazer'));
   const arqC = cardCen({ id: 'CT08', status: 'passou', arquivado: true, execucoes: [{ status: 'passou', evidencias: 'e' }] }, ctxC);
@@ -187,7 +187,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     'import json,sys\nprint("dotnet: erro ao subir a API")\nprint(json.dumps({"parou_em":"api","pendentes":1,"itens":[{"etapa":"api","item":"API","verdito":"PENDENTE","detalhe":"porta 5111 fechada"}]}))\nsys.exit(1)\n');
   prompts.length = 0;
   maestro.rodar = (dir, o) => { prompts.push(o.titulo); setTimeout(() => {
-    execFileSync(path.join(__dirname, 'bin', 'qa-state'), ['analise'], { env: { ...process.env, QA_DIR: o.env.QA_DIR }, input: 'Causa: RabbitMQ fora do ar.' }); o.aoMudar(); }, 5); return true; };
+    execFileSync(path.join(__dirname, 'qa-state'), ['analise'], { env: { ...process.env, QA_DIR: o.env.QA_DIR }, input: 'Causa: RabbitMQ fora do ar.' }); o.aoMudar(); }, 5); return true; };
   await qa.executar(d6, deps);
   assert.deepStrictEqual(prompts, ['QA · Analisando por que o ambiente parou']);
   assert.ok(fs.readFileSync(path.join(d6, qa.LOG_AMB), 'utf8').includes('dotnet: erro ao subir a API'));
@@ -210,13 +210,13 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   filho.kill(); await new Promise((r) => filho.on('exit', r));
   assert.ok(!qa.rodando(d7));
   // maestro: .ao-vivo.pid só conta se o processo vivo for o claude.
-  const mae = require('./maestro'), d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-claude-'));
+  const mae = require('../maestro'), d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-claude-'));
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), String(process.pid));
   assert.ok(!mae.vivo(process.pid)); // node, não claude
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), '999999');
   assert.ok(!mae.vivo(999999));
   // Ao vivo: rajada de linhas sai uma a cada meio segundo.
-  const viv = require('./componentes/ao-vivo'), d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
+  const viv = require('../componentes/ao-vivo'), d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
   ['a', 'b', 'c'].forEach((texto) => viv.anotar(d9, { tipo: 'acao', texto }));
   await new Promise((r) => setTimeout(r, 100));
   assert.strictEqual(viv.linhas(d9).length, 1);
