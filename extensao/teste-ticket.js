@@ -22,3 +22,16 @@ assert.deepStrictEqual([tk.ticketDa('s2'), tk.listaDa('s2'), tk.listaDa('s1')], 
 assert.deepStrictEqual(tk.listasDe({ lista: 'impl' }), ['impl']); // formato antigo
 assert.deepStrictEqual(tk.listasDe({ implementacao: true }), ['impl']);
 console.log('ok abas');
+
+// Menu de abas: aba ligada, contador, separador e o alvo do clique dentro da página x na moldura de outra seção.
+const { menu } = require('./componentes/menu-abas');
+const itens = [{ id: 'docs', nome: 'Docs' }, { id: 'duvidas', nome: 'Dúvidas', badge: 2, dica: '2 em aberto' }, '|', { secao: 'outra', nome: 'Outra' }];
+const dentro = menu(itens, { aba: 'docs', secao: 'principal', principal: 'principal', dentro: true });
+assert.ok(dentro.includes('<button data-acao="aba" data-id="docs" class="is-on">Docs</button>'));
+assert.ok(dentro.includes('data-id="duvidas">Dúvidas <span class="ct-badge" title="2 em aberto">2</span>'));
+assert.ok(dentro.includes('<span class="ct-sep"></span><button data-secao="outra">Outra</button>'));
+const fora = menu(itens, { aba: 'docs', secao: 'outra', principal: 'principal', dentro: false });
+assert.ok(fora.includes('<button data-secao="principal" data-aba="docs">Docs</button>'), 'na moldura a aba não fica ligada e troca de seção');
+assert.ok(fora.includes('<button data-secao="outra" class="is-on">Outra</button>'));
+assert.ok(!menu([{ id: 'x', nome: 'X', badge: 0 }], { principal: 'p' }).includes('ct-badge'), 'contador zero some');
+console.log('ok menu');

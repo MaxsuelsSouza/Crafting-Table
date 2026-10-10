@@ -12,6 +12,7 @@ const tickets = require('./tickets');
 const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./locais'); // onde cada coisa mora
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
+const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
 const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -192,12 +193,18 @@ const IC = {
   lixo: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg>'
 };
 
-const ABAS = [['docs', 'Docs'], ['spec', 'Spec'], ['ticket', 'Ticket'], ['analise', 'Análise'], ['tarefas', 'Tarefas'], ['decisoes', 'Decisões'], ['duvidas', 'Dúvidas']];
-const ABAS_SEM_TICKET = [['docs', 'Docs'], ['decisoes', 'Decisões']];
-const ABAS_FORA_REFINO = [['docs', 'Docs'], ['ticket', 'Ticket'], ['decisoes', 'Decisões']]; // Implementações e QA
-const abasDe = (t) => (t.id === SEM_TICKET ? ABAS_SEM_TICKET : naRaiz() ? ABAS : sessao.focoLista() === 'qa' ? [...ABAS_FORA_REFINO, ['massa', 'Massa']] : ABAS_FORA_REFINO);
-// [id da seção, nome]. Evidências é só do QA, e lá fica logo depois de Docs (cabecalho); fora do QA não aparece.
+// Abas do menu do ticket em cada lista (componentes/menu-abas.js): { id, nome } = aba desta página, { secao, nome } = outra seção.
+// Evidências é só do QA, logo depois de Docs.
 const EVID = 'claudeAbas.evidencias';
+const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
+const ABAS = {
+  tickets: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
+  impl: [DOCS, TICKET, DECISOES],
+  qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
+  semTicket: [DOCS, DECISOES]
+};
+/** @returns {{ id?: string, secao?: string, nome: string }[]} */
+const abasDe = (t) => ABAS[t.id === SEM_TICKET ? 'semTicket' : sessao.focoLista()] || ABAS.impl;
 const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
 
 // Cabeçalho e rodapé do ticket aberto: na página do painel os botões falam com ele direto (data-acao);
@@ -231,13 +238,7 @@ const CSS_MOLDURA = `<style>
   .ct-bola { width: 7px; height: 7px; border-radius: 50%; background: var(--cor); flex: none; }
   .ct-pills .ct-ico { width: 22px; height: 22px; } .ct-pills .ct-ico svg { width: 13px; height: 13px; }
   .ct-novo { --cor: var(--text-dim); } .ct-andando { --cor: var(--warn); } .ct-ok { --cor: var(--ok); }
-  .ct-menu { display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; margin-bottom: 8px; border-radius: var(--r-lg);
-    background: var(--surface); border: 1px solid var(--border); }
-  .ct-menu button { flex: none; height: 24px; padding: 0 7px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer; font: inherit; font-size: 11.5px; color: var(--text); }
-  .ct-menu button:hover { background: var(--surface-2); }
-  .ct-badge { display: inline-block; min-width: 14px; padding: 0 4px; margin-left: 2px; border-radius: var(--r-pill); font-size: 9.5px; line-height: 14px; text-align: center; background: var(--accent); color: var(--on-cor); font-weight: 600; }
-  .ct-menu button.is-on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 600; }
-  .ct-menu .ct-sep { width: 1px; margin: 3px 3px; background: var(--border); }
+  ${menuAbas.CSS}
   .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--border);
     background: var(--bg); font-family: var(--fc-font); font-size: 11.5px; color: var(--text-dim); }
   .ct-rod details { position: relative; }
@@ -301,15 +302,11 @@ function pillRefino(t) {
 function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
-  const abas = abasDe(t), refino = !semTicket && naRaiz();
-  const pend = semTicket ? 0 : duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length;
-  const pendT = semTicket ? 0 : tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length;
-  const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) em aberto: a spec só avança quando todas forem respondidas">${pend}</span>`
-    : id === 'tarefas' && pendT ? `${nome} <span class="ct-badge" title="${pendT} tarefa(s) esperando sua decisão">${pendT}</span>` : nome);
-  const abaBtn = (/** @type {string[]} */ [id, nome]) => (dentro
-    ? `<button data-acao="aba" data-id="${id}" class="${secao === PRINCIPAL && aba === id ? 'is-on' : ''}">${rot(id, nome)}</button>`
-    : `<button data-secao="${PRINCIPAL}" data-aba="${id}">${rot(id, nome)}</button>`);
-  const secaoBtn = (/** @type {string[]} */ [id, nome]) => `<button data-secao="${id}" class="${secao === id ? 'is-on' : ''}">${nome}</button>`;
+  const refino = !semTicket && naRaiz();
+  const contador = (id) => (id === 'duvidas' ? [duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length, 'dúvida(s) em aberto: a spec só avança quando todas forem respondidas']
+    : id === 'tarefas' ? [tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length, 'tarefa(s) esperando sua decisão'] : [0, '']);
+  const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
+    '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
@@ -324,8 +321,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
       ${refino && emRefino(t) ? pillRefino(t) : ''}
       <button class="ct-ico" ${b('atualizar')} title="Atualizar status e anexos do Jira">${IC.atualizar}</button>`}</div>
     ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
-    <nav class="ct-menu">${abas.map((a) => abaBtn(a) + (a[0] === 'docs' && !semTicket && sessao.focoLista() === 'qa' ? secaoBtn([EVID, 'Evidências']) : '')).join('')}<span class="ct-sep"></span>
-      ${FORA().map(secaoBtn).join('')}</nav>
+    ${menuAbas.menu(itens, { aba, secao, principal: PRINCIPAL, dentro })}
   </header>`;
 }
 
@@ -1403,7 +1399,7 @@ exports.provider = (ctx) => {
       if (!meus?.carregando) carregarMeus(false);
       return;
     }
-    if (!abasDe(t).some(([id]) => id === aba)) aba = 'docs';
+    if (!abasDe(t).some((a) => a.id === aba)) aba = 'docs';
     // Confere os arquivos da spec antes de desenhar: edição depois de aprovado volta o passo para revisão.
     if (aba === 'spec' && dirSpec(t) && fs.existsSync(path.join(dirSpec(t), 'sdd-state.json')) && sddState()) {
       try { require('child_process').execFileSync(sddState(), ['check', '--ref', pasta(t.id)], { timeout: 5000, stdio: 'ignore' }); } catch {}

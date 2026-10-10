@@ -6,7 +6,7 @@ process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-home-'));
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
-const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas } = require('./painel')._teste;
+const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas, cabecalho } = require('./painel')._teste;
 
 // ── mudancas.js: passos em atenção, snapshot, alterou, restaurar ──
 const imp = (o) => ({ id: '9', autor: 'PO Fulano', data: '2026-10-08T10:00:00Z', link: 'https://j/9', texto: 'o botão agora é vermelho', resumo: 'Cor do botão muda', ...o });
@@ -91,4 +91,12 @@ assert.strictEqual(lerI()[0].status, 'aplicado');
 fs.writeFileSync(arq, JSON.stringify([{ id: '9', autor: 'X', status: 'analisando' }]));
 assert.strictEqual(sdd('impacto', 'registrar', '9', '--nivel', 'nenhum', '--resumo', 'obrigado').status, 0);
 assert.strictEqual(lerI()[0].status, 'analisado');
+
+// menu do cabeçalho: cada lista com as suas abas (componentes/menu-abas.js); Evidências logo depois de Docs só no QA
+const sessao = require('./sessao');
+const abasNa = (lista) => { sessao.focoLista = () => lista; return [...cabecalho({ id: 'WMS-1', chave: 'WMS-1' }, { aba: 'docs', secao: 'claudeAbas.painel', dentro: true })
+  .matchAll(/data-(?:id|secao)="([^"]+)"[^>]*>(?:Docs|Spec|Ticket|Análise|Tarefas|Decisões|Dúvidas|Massa|Evidências|Conversas)/g)].map((m) => m[1]); };
+assert.deepStrictEqual(abasNa('tickets'), ['docs', 'spec', 'ticket', 'analise', 'tarefas', 'decisoes', 'duvidas', 'claudeAbas.conversas']);
+assert.deepStrictEqual(abasNa('impl'), ['docs', 'ticket', 'decisoes', 'claudeAbas.conversas']);
+assert.deepStrictEqual(abasNa('qa'), ['docs', 'claudeAbas.evidencias', 'ticket', 'decisoes', 'massa', 'claudeAbas.conversas']);
 console.log('ok');
