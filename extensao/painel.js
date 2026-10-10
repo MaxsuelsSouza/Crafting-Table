@@ -13,7 +13,7 @@ const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar, ler,
 const { IC } = require('./componentes/icones');
 const { markdown } = require('./componentes/markdown');
 const { quando, iniciais } = require('./componentes/formato');
-const { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe } = require('./notificacoes'); // sino do ticket
+const { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe, cmdsAberto } = require('./notificacoes'); // sino do ticket
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
@@ -240,7 +240,6 @@ function cabecalho(t, { aba, secao, dentro = false }) {
 }
 
 // Notificações (notificacoes.js). Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
-let cmdsAberto = false; // caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado)
 const rodape = (t, dentro = false) => {
   const dir = t && pastaAba(t.id);
   const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || '') || 0;
@@ -248,7 +247,7 @@ const rodape = (t, dentro = false) => {
   const novas = l.filter(nova).length;
   const cmds = require('./comandos').api?.lista() || [], emus = require('./emulador').api?.lista() || [];
   const acao = dentro ? 'data-acao' : 'data-painel';
-  const caixaCmds = `<details class="ct-cmds"${cmdsAberto ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
+  const caixaCmds = `<details class="ct-cmds"${cmdsAberto() ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
     <div class="ct-notifs">${cmds.length ? cmds.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
       title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
     ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
@@ -1252,8 +1251,16 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       avisar: (texto) => { try { fs.appendFileSync(path.join(dir, NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo: 'fim', texto: `${t.chave} · ${texto}` }) + '\n'); } catch {} }
     };
   };
+  // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
+  const servicos = {
+    render: () => render(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
+    pasta, pastaAba, gravar, notificar, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s),
+    secrets: ctx.secrets, globalState: ctx.globalState
+  };
+  const modulosAcoes = [require('./notificacoes')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
+    ...modulosAcoes,
     meusAtualizar() { carregarMeus(true); },
     async labelQA({ id }) { await ctx.globalState.update('labelQA', id || ''); carregarMeus(true); },
     async meusFiltro({ id }) { await ctx.globalState.update('meusFiltro', id || ''); carregarMeus(true); },
@@ -1321,10 +1328,6 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     },
     atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); vigiarComentarios(); } },
     vigiarAgora() { return vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
-    cmdsAlternar() { cmdsAberto = !cmdsAberto; },
-    cmdAlternar({ id }) { require('./comandos').api?.alternar({ id }); },
-    emuAlternar({ id }) { require('./emulador').api?.alternar({ id }); },
-    notifLidas() { const dir = aberto && pastaAba(aberto); if (dir) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, LIDAS), new Date().toISOString()); } },
     // Prévia + confirmação antes de publicar: o comentário fica visível para todo o time no Jira.
     async duvidaEnviar({ id }) {
       const t = ticketAberto();

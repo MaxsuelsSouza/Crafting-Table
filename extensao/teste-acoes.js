@@ -8,6 +8,7 @@ const fontes = lerJs(__dirname).map((f) => fs.readFileSync(f, 'utf8'));
 const usados = new Set();
 for (const s of fontes) {
   for (const m of s.matchAll(/data-(?:acao|painel|tacao)="([\w:-]*)"/g)) if (m[1]) usados.add(m[1]);
+  for (const m of s.matchAll(/(?:\$\{acao\}|'data-painel'\})="([\w:-]+)"/g)) usados.add(m[1]); // rodape(): ${acao}="nome"
   for (const m of s.matchAll(/\bacao: '([\w:-]+)'/g)) usados.add(m[1]); // botao({ acao }), enviar({ acao }), postMessage({ acao })
 }
 
@@ -19,6 +20,14 @@ for (const s of fontes) {
   if (ini < 0) continue;
   const corpo = s.slice(ini).split(/^ {2}\};/m)[0];
   for (const m of corpo.matchAll(/^ {4}(?:async\s+)?([A-Za-z_]\w*)\s*(?:\(|:)/gm)) handlers.add(m[1]);
+}
+
+// Módulos: handlers declarados como `const acoes = (s) => ({` (ou `(servicos) => ({`) com chaves a 2 espaços, fechando em `});` na coluna 0.
+// Contrato: o módulo exporta `acoes(servicos)` e o painel.js lista o módulo em `modulosAcoes`.
+for (const s of fontes) {
+  const ini = s.search(/^const acoes = \(\w*\) => \(\{/m);
+  if (ini < 0) continue;
+  for (const m of s.slice(ini).split(/^\}\);/m)[0].matchAll(/^ {2}(?:async\s+)?([A-Za-z_]\w*)\s*(?:\(|:)/gm)) handlers.add(m[1]);
 }
 
 // Exceções legítimas: tratadas fora do `acoes` do painel.js.

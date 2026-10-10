@@ -13,4 +13,16 @@ const notifsDe = (dir) => {
   return linhas.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).reverse().slice(0, 50);
 };
 
-module.exports = { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe };
+
+// Caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado).
+let aberta = false;
+const cmdsAberto = () => aberta;
+// Contrato: `acoes(servicos)` devolve { nome: handler }; o painel espalha no seu `acoes`. Sem `this`.
+const acoes = (s) => ({
+  cmdsAlternar() { aberta = !aberta; },
+  cmdAlternar({ id }) { require('./comandos').api?.alternar({ id }); },
+  emuAlternar({ id }) { require('./emulador').api?.alternar({ id }); },
+  notifLidas() { const dir = s.aberto && s.pastaAba(s.aberto); if (dir) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, LIDAS), new Date().toISOString()); } }
+});
+
+module.exports = { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe, cmdsAberto, acoes };
