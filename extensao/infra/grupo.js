@@ -108,6 +108,7 @@ function montarGrupo(grupo, real) {
   let atual = !moldura && ids.includes(memoria.get(`grupo.${grupo}`)) ? memoria.get(`grupo.${grupo}`) : principal;
   const ativo = (id) => id === atual;
   const vis = {}, msg = {}, htmls = {};
+  real.subtitulo = (t) => { real.description = t; }; // o VS Code já escreve "Crafting Table:" antes do título da view
   const alvos = [real]; // a view da barra lateral e, na tela cheia, a aba do editor: todas mostram a mesma coisa
   const desenhar = () => alvos.forEach((a) => { a.webview.html = comMenu(htmls[atual], grupo, atual, moldura, a.webview); });
   const opcoes = { enableScripts: true, localResourceRoots: [vscode.Uri.file(require('path').join(__dirname, '..'))] };
@@ -130,6 +131,7 @@ function montarGrupo(grupo, real) {
         postMessage: (m) => (ativo(id) ? Promise.all(alvos.map((a) => a.webview.postMessage(m))).then((r) => r.some(Boolean)) : Promise.resolve(false)),
         onDidReceiveMessage: sub(msg[id])
       },
+      set title(t) { alvos.forEach((a) => a.subtitulo(t)); }, // 'QA / WMS-1': descrição da view e título da aba da tela cheia
       get visible() { return ativo(id) && alvos.some((a) => a.visible); },
       onDidChangeVisibility: sub(vis[id]),
       onDidDispose: real.onDidDispose,
@@ -181,7 +183,7 @@ async function abrirTelaCheia() {
   else {
     const p = vscode.window.createWebviewPanel('claudeAbas.cheia', 'Crafting Table', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.file(require('path').join(__dirname, '..'))] });
     p.iconPath = vscode.Uri.file(require('path').join(__dirname, '..', 'icons', 'crafting-table.png'));
-    const alvo = { webview: p.webview, get visible() { return p.visible; }, onDidChangeVisibility: (f) => p.onDidChangeViewState(f), onDidDispose: p.onDidDispose };
+    const alvo = { webview: p.webview, subtitulo(t) { p.title = 'Crafting Table / ' + t; }, get visible() { return p.visible; }, onDidChangeVisibility: (f) => p.onDidChangeViewState(f), onDidDispose: p.onDidDispose };
     painelCheia = p;
     p.onDidDispose(() => { montados[g]?.remover(alvo); painelCheia = null; vscode.commands.executeCommand('setContext', 'claudeAbas.cheia', false); });
     montados[g].adicionar(alvo);

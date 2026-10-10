@@ -82,6 +82,8 @@ exports.provider = (ctx) => {
     fechar();
     const nonce = crypto.randomBytes(16).toString('hex');
     let t = aberto === SEM_TICKET ? { id: SEM_TICKET, conversas: [] } : aberto && comSpec(ticketDe(aberto));
+    // diz em que módulo (e ticket) a pessoa está
+    view.title = (conf.aberta() ? 'Configuração' : require('../componentes/menu-modulos').nome(lista.modo())) + (t && t.id !== SEM_TICKET ? ' / ' + t.id : '');
     // Todos os passos aprovados: o modo refinamento termina sozinho.
     if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
     if (!t) {
