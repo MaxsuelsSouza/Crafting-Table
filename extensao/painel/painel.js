@@ -68,7 +68,7 @@ exports.provider = (ctx) => {
   }));
   const conf = configuracao.criar(ctx, { render: () => render(), voltar: IC.voltar, aoAbrir: () => { lista.fecharPrevia(); aberto = null; sessao.focar(null); } });
   let avisarMoldura = () => {}, pedirSecao = (/** @type {string} */ _secao) => {};
-  for (const m of ['comandos', 'emulador']) require('..' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
+  for (const m of ['comandos', 'emulador']) require('../modulos/' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
     if (!require('../infra/grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
@@ -197,7 +197,7 @@ exports.provider = (ctx) => {
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('..' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('../modulos/' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
       view.onDidChangeVisibility(() => { if (view.visible) { conversas.reconciliar(servicos); render(); } });
       conversas.reconciliar(servicos);
       render();

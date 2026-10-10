@@ -118,7 +118,7 @@ const plugins = (v) => [
 ].join('\n');
 
 // Cofre e Comandos (+ Emuladores) são telas de outros módulos: o clique volta com o prefixo do dono (cofre:, comandos:, emulador:).
-const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('..' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
+const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('../modulos/' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
 
 const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
