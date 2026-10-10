@@ -10,7 +10,7 @@ const { IC } = require('../componentes/icones');
 const { cfg } = require('../configuracao/configuracao');
 const { NOTIF } = require('../notificacoes');
 const jira = require('../ticket').jira;
-const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (painel.js)
+const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (moldura.js)
 
 const depsQa = (s, t) => {
   const dir = s.pastaAba(t.id), emu = require('../emulador');

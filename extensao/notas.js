@@ -11,7 +11,7 @@ const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Aparência da nota, copiada do Atelier (makeStickyNoteContent / typography.ts): post-it amarelo, Mono 14.
 const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: FC.digitalSoft, alinhamento: 'left' };
 
-// Peças do editor (barras de formatação, busca, papel e o script), também usadas na aba Docs do ticket (painel.js).
+// Peças do editor (barras de formatação, busca, papel e o script), também usadas na aba Docs do ticket (componentes/aba-docs.js).
 // O script fala com a extensão por { tipo: 'salvar' | 'estilo' | 'mencionar' | 'colar', sid } e recebe { tipo: 'colado', texto }.
 const CSS_NOTAS = `<style>
   /* ── Barra de formatação do Atelier (renderer/styles/nodes/format-bar.css) ── */

@@ -157,7 +157,7 @@ exports.provider = (ctx) => {
     render();
   };
 
-  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (painel.js): ela pede o html e repassa os cliques.
+  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (moldura.js): ela pede o html e repassa os cliques.
   exports.api = {
     html: () => cache ?? tela(botoes(), {}),
     lista: () => botoes().map((b) => ({ id: b.id, nome: b.nome, comando: b.comando, pasta: b.pasta, rodando: Boolean(terminalDe(b)) })),

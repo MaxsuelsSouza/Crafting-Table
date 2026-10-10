@@ -209,4 +209,4 @@ const iniciar = (servicos, ctx) => {
   ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
 };
 
-module.exports = { iniciar, etapa, seguir, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos, esperaHumano };
+module.exports = { iniciar, etapa, seguir, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };

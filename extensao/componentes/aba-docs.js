@@ -12,7 +12,7 @@ const notas = require('../notas').editor;
 // Usado em corpoAba (painel.js).
 // Para usar numa tela: CSS no <style> e corpo(d, semTicket) no corpo. O script é o do editor de notas (notas.scriptNotas,
 // posto pela pagina() do painel quando a aba é docs). Cliques pelo data-acao que já existe: docAbrir, docMencionar,
-// anexoBaixar, anexoTodos (painel.js). Redesenhe quando a pasta do ticket mudar (o painel já vigia, menos as notas).
+// anexoBaixar, anexoTodos (aba-docs.js). Redesenhe quando a pasta do ticket mudar (o painel já vigia, menos as notas).
 //   d: { docs (documentos.listar), origens (.origem.json), jira (anexos), baixando (Set de ids), dir }
 
 const sigla = (nome) => esc(path.extname(nome).slice(1, 5).toUpperCase() || 'ARQ');

@@ -169,4 +169,4 @@ const CSS = `
   .mud-ok { margin-top: 6px; padding: 2px 10px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 11px; }
 `;
 
-module.exports = { NIVEL, VISIVEIS, CSS, acoes, alterou, pendentes, passosAfetados, cardsAfetados, snapshot, restaurar, caixaDecisao, caixaMudancas };
+module.exports = { NIVEL, CSS, acoes, alterou, pendentes, passosAfetados, cardsAfetados, snapshot, restaurar, caixaDecisao, caixaMudancas };

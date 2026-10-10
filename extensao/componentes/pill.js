@@ -3,7 +3,7 @@ const { esc } = require('../ticket')._teste;
 const { corStatus } = require('../ticket').jira;
 
 // Componente "Pill": a etiqueta arredondada de status. Usado no card do ticket e na caixa de vinculados (lista de tickets)
-// e no cabeçalho do ticket aberto (painel.js: coluna no board, modo refinamento, Sem ticket vinculado).
+// e no cabeçalho do ticket aberto (moldura.js: coluna no board, modo refinamento, Sem ticket vinculado).
 // Para usar numa tela: CSS no <style> e pill(texto, opções) ou status(st, opções) no corpo. Sem script; redesenhe com a tela.
 //   cor: 'novo' | 'andando' | 'ok' (as do status no Jira, ticket.js corStatus) | 'ia' (refinando) | 'pausada'
 //   grande: a do cabeçalho (mais alta, com borda e bola); bola: mostra a bola (padrão: só na grande)

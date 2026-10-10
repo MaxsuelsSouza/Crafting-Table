@@ -1,7 +1,7 @@
 // @ts-check
 
 // Componente "Menu de abas": a barra do cabeçalho do ticket (Docs, Spec, Ticket, Decisões, Massa, Dúvidas…) e, depois do
-// separador, as outras seções do grupo (Evidências, Conversas). Usado no cabeçalho do ticket (painel.js) nas listas
+// separador, as outras seções do grupo (Evidências, Conversas). Usado no cabeçalho do ticket (moldura.js) nas listas
 // Refinamento, Implementações e QA; cada lista diz quais abas mostra (ABAS em moldura.js).
 // Para usar numa tela: CSS no <style> e menu(itens, { aba, secao, principal, dentro }) no corpo. Sem script próprio:
 // os cliques vão pelo que já existe (data-acao="aba" na página do painel; data-secao/data-aba pelo grupo.js na moldura).

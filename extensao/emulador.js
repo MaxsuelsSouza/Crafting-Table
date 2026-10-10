@@ -203,7 +203,7 @@ exports.provider = () => {
     }
   };
 
-  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (painel.js): ela pede o html e repassa os cliques.
+  // A tela mora em Configurações → Comandos e o atalho no rodapé do ticket (moldura.js): ela pede o html e repassa os cliques.
   exports.api = {
     html: () => ultimo || '',
     lista: () => avdsCache.map((avd) => ({ id: avd, nome: nomeBonito(avd), rodando: Boolean(achar(avd)), ocupado: ocupados[avd] || null })),

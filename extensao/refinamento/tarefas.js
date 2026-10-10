@@ -305,4 +305,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { telaTarefas, STATUS_T, COLUNAS_T, script, CSS, acoes };
+module.exports = { telaTarefas, script, CSS, acoes };

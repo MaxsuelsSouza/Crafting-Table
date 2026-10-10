@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Componente "Ao vivo": a caixa que mostra, em pilha (mais recente em cima), o que o Claude em segundo plano e os passos
-// da própria extensão estão fazendo. Usado na aba Spec (painel.js) e nas Evidências do QA (qa.js).
+// da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js) e nas Evidências do QA (qa.js).
 // O log fica em <pasta>/.ao-vivo.jsonl ({ em, tipo, texto, detalhe? }); a caixa expandida é marcada por .ao-vivo.expandido.
 // Para usar numa tela: CSS no <style>, caixa(dir, rodando, alvo) no corpo, script(chave) no <script> e redesenhar
 // quando um dos ARQUIVOS mudar na pasta. O botão Ver tudo/Recolher manda data-painel="vivoExpandir" (painel.js).

@@ -112,7 +112,7 @@ function corpo(d) {
       : '<div class="vazio-aba">Nenhuma dúvida registrada ainda.<br>No modo refinamento, quando você escolher <b>Tirar dúvida</b> numa pergunta do Claude, ela aparece aqui.</div>'}</div>`;
 }
 
-// Regras exclusivas das dúvidas (.dtrecho, .decisao, .hist, .quando, .origem e .acoes-aba são da aba Decisões também e ficam no painel).
+// Regras exclusivas das dúvidas (.dtrecho, .decisao, .hist, .quando, .origem e .acoes-aba são da aba Decisões também e ficam em moldura.js).
 const CSS = `.duvida { padding: 4px 0 10px 12px; }
   .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
   .duvida .dtexto { margin: 4px 0; font-size: 12.5px; line-height: 1.5; }

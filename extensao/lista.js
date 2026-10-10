@@ -11,7 +11,7 @@ const menuModulos = require('./componentes/menu-modulos');
 const { cfg, siteJira, projetoJira } = require('./configuracao/configuracao');
 
 // Lista de tickets (Refinamento, Implementações ou QA) e a caixa "Vinculados a você" de cada uma. Estado de módulo (singleton:
-// o painel é criado uma vez); o painel lê por modo/resetar/fecharPrevia/previaAberta/corpo/carregarSeNecessario e iniciar().
+// o painel é criado uma vez); o painel lê por modo/resetar/fecharPrevia/corpo/carregarSeNecessario e iniciar().
 
 // Caixa de vinculados de cada módulo (componentes/vinculados.js): título, seletor do topo e quais status do Jira entram.
 const VINCULADOS = {
@@ -34,7 +34,6 @@ let labelsQA = null; // labels do Jira com "QA" (buscadas uma vez por sessão)
 // Mudou a configuração: esquece o que foi buscado com a configuração antiga.
 const resetar = () => { etapasJira = null; for (const k in meusPor) delete meusPor[k]; };
 const fecharPrevia = () => { previa = null; };
-const previaAberta = () => previa;
 
 // Visualização de um ticket vinculado (sem trazer para a lista): o mesmo conteúdo da aba Ticket.
 const telaPrevia = (estilo, key, dados) => `${estilo}
@@ -116,4 +115,4 @@ const acoes = (s) => ({
   async meusMostrar() { await s.globalState.update('meusOcultos', []); s.render(); }
 });
 
-module.exports = { acoes, iniciar, modo, naLista, porNaLista, resetar, fecharPrevia, previaAberta, corpo, carregarSeNecessario, VINCULADOS };
+module.exports = { acoes, iniciar, modo, naLista, porNaLista, resetar, fecharPrevia, corpo, carregarSeNecessario, VINCULADOS };

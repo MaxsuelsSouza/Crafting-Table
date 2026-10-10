@@ -9,7 +9,7 @@ const { botao } = require('../componentes/botao');
 //   cardTeste(id, titulo, estado, corpo): card com o estado do teste (✅ ok / ⚠ motivo / testando…) e o botão Testar
 //   linha(rotulo, valor, idEditar?, extra?, dicaRotulo?) · dica(texto) · acoes(html): peças do corpo
 
-// estado: { ok, curto?, texto? } do teste de cada seção (painel.js CHECAR); sem estado = ainda testando.
+// estado: { ok, curto?, texto? } do teste de cada seção (configuracao.js CHECAR); sem estado = ainda testando.
 const selo = (x) => (!x ? '<span class="cfg-st cfg-esp">testando…</span>' : x.ok ? '<span class="cfg-st cfg-ok">✅ ok</span>' : `<span class="cfg-st cfg-mal">⚠ ${esc(x.curto || 'atenção')}</span>`);
 
 const card = ({ titulo, selo = '', acao = '', msg = '', corpo = '' }) => `<div class="cfg-card"><div class="cfg-t"><b>${titulo}</b>${selo}${acao}</div>${msg}${corpo}</div>`;

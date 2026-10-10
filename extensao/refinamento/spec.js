@@ -364,4 +364,4 @@ const CSS = `
   .aten { flex: none; color: #f58a1f; font-size: 13px; cursor: help; }
 `;
 
-module.exports = { STATUS, MODO_ATIVO, emRefino, botaoRefino, pillRefino, modo, abertos, telaConstituicao, cartaoAgora, corpoAba, scriptPilha, CSS, acoes };
+module.exports = { STATUS, emRefino, botaoRefino, pillRefino, modo, abertos, telaConstituicao, corpoAba, scriptPilha, CSS, acoes };

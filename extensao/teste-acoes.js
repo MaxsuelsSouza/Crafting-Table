@@ -9,6 +9,7 @@ const usados = new Set();
 for (const s of fontes) {
   for (const m of s.matchAll(/data-(?:acao|painel|tacao)="([\w:-]*)"/g)) if (m[1]) usados.add(m[1]);
   for (const m of s.matchAll(/(?:\$\{acao\}|'data-painel'\})="([\w:-]+)"/g)) usados.add(m[1]); // rodape(): ${acao}="nome"
+  for (const m of s.matchAll(/\$\{b\('([\w:-]+)'\)\}/g)) usados.add(m[1]); // botões do cabeçalho/QA/refinamento: ${b('nome')} (b monta data-acao ou data-painel)
   for (const m of s.matchAll(/\bacao: '([\w:-]+)'/g)) usados.add(m[1]); // botao({ acao }), enviar({ acao }), postMessage({ acao })
 }
 

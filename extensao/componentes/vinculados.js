@@ -4,10 +4,10 @@ const pill = require('./pill');
 
 // Componente "Vinculados": a caixa presa embaixo da lista de tickets (componentes/lista-tickets.js) com os tickets do Jira
 // que ainda não estão na lista. Cada módulo (Refinamento, Implementações, QA) diz o título, o seletor do topo e quais status
-// do Jira entram (VINCULADOS em painel.js). Clique só mostra o ticket; Puxar traz para a lista; Remover esconde.
+// do Jira entram (VINCULADOS em lista.js). Clique só mostra o ticket; Puxar traz para a lista; Remover esconde.
 // Para usar numa tela: CSS (e pill.CSS) no <style>, caixa(v, lista, o) no corpo e script() no <script>. Na busca do Jira,
 // filtrar(itens, o.status) deixa só os status do módulo. Cliques por data-acao: meuVer, meuPuxar, meuRemover, meusAtualizar,
-// meusMostrar; os seletores mandam labelQA e meusFiltro (painel.js). Redesenhe quando a busca do Jira voltar.
+// meusMostrar; os seletores mandam labelQA e meusFiltro (lista.js). Redesenhe quando a busca do Jira voltar.
 //   v: { itens, etapas, filtro, label, labels, ocultos, erro, aviso, carregando, semCredencial }
 //   o: { titulo, seletor?: 'etapa' | 'label', status?: ['Em andamento|In progress', ...] }
 //      status: o primeiro nome de cada item aparece no texto; os outros (depois de |) são o mesmo status com outro nome.
@@ -70,7 +70,7 @@ const script = () => `
   document.getElementById('filtroLabel')?.addEventListener('change', (e) => enviar({ acao: 'labelQA', id: e.target.value }));
   document.getElementById('filtroMeus')?.addEventListener('change', (e) => enviar({ acao: 'meusFiltro', id: e.target.value }));`;
 
-// .ct-ico vem do cabeçalho (painel.js CSS_MOLDURA); .chave do card-ticket.
+// .ct-ico vem do cabeçalho (moldura.js CSS_MOLDURA); .chave do card-ticket.
 const CSS = `
   .meus { flex: none; display: flex; flex-direction: column; max-height: 45vh; margin: 8px 12px 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--sombra); overflow: hidden; }
   .meus-t { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; font-size: 10px; font-weight: 600;

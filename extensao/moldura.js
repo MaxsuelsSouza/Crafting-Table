@@ -148,9 +148,6 @@ const rodape = (t, dentro = false) => {
 };
 
 const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
-  html, body { height: 100%; }
-  body { display: flex; flex-direction: column; }
-  .rolagem { flex: 1; min-height: 0; overflow-y: auto; }
   .tipo { flex: none; font-size: 9.5px; font-weight: 600; padding: 1px 7px; border-radius: var(--r-pill); color: var(--cor); background: color-mix(in srgb, var(--cor) 15%, transparent); }
   .t-tecnico { --cor: var(--ia); } .t-funcional { --cor: var(--warn); } .t-spec { --cor: var(--ok); }
   .secundario { flex: none; height: 34px; padding: 0 12px; border-radius: var(--r-md); font-size: 12px; font-weight: 600;
@@ -198,8 +195,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   ${aoVivo.CSS}
   ${duvidas.CSS}
   .dtrecho .esc { color: var(--ok); }
-  /* Rodapé (por enquanto sem conteúdo) */
-  .rodape { flex: none; height: 26px; border-top: 1px solid var(--border); background: var(--surface); }
 
   /* Painel do ticket */
   html, body { height: 100%; }
