@@ -141,7 +141,7 @@ O vigia olha os comentários dos tickets com spec a cada 5 min. Cada comentário
 3. **Decisão**: caixa de borda vermelha acima do Ao vivo, passos e cards afetados ficam laranja com ⚠, e Aprovar/Continuar ficam travados (também no `sdd-state`). Opções: *aplicar* (snapshot + o Claude regride a spec), *manter*, *consultar* (vira dúvida para o PO) e **Não prosseguir** (descarta; depois de aplicar, **Desfazer** restaura o snapshot).
 4. **Teams**: o card "Mudança pedida" sai para quem iniciou o refinamento (médio/alto). Como criar o `TEAMS_WEBHOOK`: [README da raiz](../README.md#avisos-no-teams-opcional) ou **⚙ Configurações → Teams → ⓘ**.
 
-Testes: `node extensao/teste-teams.js`, `node extensao/teste-mudancas.js`, `node plugin/plugins/sdd/teste-triagem.js`.
+Testes: `node extensao/teste-teams.js`, `node extensao/refinamento/teste-mudancas.js`, `node plugin/plugins/sdd/teste-triagem.js`.
 
 ## Limitações conhecidas
 

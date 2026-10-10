@@ -160,4 +160,4 @@ instalar.sh instalação em um comando
 
 - Mudou `.js` da extensão: `Ctrl+Shift+P` → **Developer: Reload Window**.
 - Mudou `extensao/package.json` (abas, ícones): feche o VS Code inteiro e abra de novo.
-- Testes rápidos: `node extensao/teste-ticket.js`, `node extensao/teste-teams.js`, `node extensao/teste-mudancas.js`.
+- Testes rápidos: `node extensao/teste-ticket.js`, `node extensao/teste-teams.js`, `node extensao/refinamento/teste-mudancas.js`.

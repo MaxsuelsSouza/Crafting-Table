@@ -10,16 +10,17 @@ assert.throws(() => lerLink('https://x.atlassian.net/jira'));
 assert.strictEqual(esc('<b>"x"</b>'), '&#60;b&#62;&#34;x&#34;&#60;/b&#62;');
 console.log('ok');
 
-// Abas: o mesmo ticket em Tickets, Implementações e QA, cada uma com a sua pasta e as suas conversas.
+// Abas: o mesmo ticket em Refinamento, Implementações e QA, cada uma com a sua pasta e as suas conversas.
 process.env.HOME = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ct-'));
 const tk = require('./tickets'), path = require('path');
-tk.criar('https://x.atlassian.net/browse/WMS-7', { listas: ['tickets', 'qa'] });
+tk.criar('https://x.atlassian.net/browse/WMS-7', { listas: ['refinamento', 'qa'] });
 assert.strictEqual(tk.pasta('WMS-7'), path.join(tk.RAIZ, 'WMS-7'));
 assert.strictEqual(tk.pasta('WMS-7', 'qa'), path.join(tk.RAIZ, 'WMS-7', 'qa'));
 assert.strictEqual(tk.pasta('WMS-7', '../x'), path.join(tk.RAIZ, 'WMS-7')); // aba desconhecida não sai da pasta
 tk.vincular('s1', 'WMS-7'); tk.vincular('s2', 'WMS-7', 'qa');
-assert.deepStrictEqual([tk.ticketDa('s2'), tk.listaDa('s2'), tk.listaDa('s1')], ['WMS-7', 'qa', 'tickets']);
+assert.deepStrictEqual([tk.ticketDa('s2'), tk.listaDa('s2'), tk.listaDa('s1')], ['WMS-7', 'qa', 'refinamento']);
 assert.deepStrictEqual(tk.listasDe({ lista: 'impl' }), ['impl']); // formato antigo
+assert.deepStrictEqual(tk.listasDe({ listas: ['tickets', 'qa'] }), ['refinamento', 'qa']); // nome antigo do módulo
 assert.deepStrictEqual(tk.listasDe({ implementacao: true }), ['impl']);
 console.log('ok abas');
 
@@ -68,7 +69,7 @@ const lista = require('./componentes/lista-tickets');
 const vazia = lista.corpo([], {}, { modo: 'qa', vinculados: { titulo: 'T' } });
 assert.ok(vazia.includes('id="filtroT"') && vazia.includes('id="ordemT"') && vazia.includes('data-acao="novo"') && vazia.includes('Nenhum ticket ainda'));
 assert.ok(vazia.includes('class="rotulo is-on" data-acao="listaModo" data-id="qa"'));
-const cheia = lista.corpo([{ chave: 'W-1', titulo: 'Oi', status: 'Em andamento', conversas: [1], refinando: true }], {}, { modo: 'tickets', vinculados: { titulo: 'T' } });
+const cheia = lista.corpo([{ chave: 'W-1', titulo: 'Oi', status: 'Em andamento', conversas: [1], refinando: true }], {}, { modo: 'refinamento', vinculados: { titulo: 'T' } });
 assert.ok(cheia.includes('1 conversa<') && cheia.includes('st-andando') && cheia.includes('● refinando') && cheia.indexOf('data-id="W-1"') < cheia.indexOf('class="sem-ticket"'));
 console.log('ok lista');
 

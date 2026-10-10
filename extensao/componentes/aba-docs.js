@@ -3,7 +3,7 @@ const path = require('path');
 const { esc } = require('../ticket')._teste;
 const notas = require('../notas').editor;
 
-// Componente "Aba Docs": a primeira aba do menu do ticket, igual em todas as listas (Tickets, Implementações, QA e Sem ticket).
+// Componente "Aba Docs": a primeira aba do menu do ticket, igual em todas as listas (Refinamento, Implementações, QA e Sem ticket).
 // Três caixas: Documentos (clique abre, @ menciona no Claude), Encontrados no ticket (anexos do Jira ainda não baixados) e Notas.
 // Usado em corpoAba (painel.js).
 // Para usar numa tela: CSS no <style> e corpo(d, semTicket) no corpo. O script é o do editor de notas (notas.scriptNotas,

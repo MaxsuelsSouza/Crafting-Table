@@ -3,7 +3,7 @@ const { esc } = require('../ticket')._teste;
 const pill = require('./pill');
 
 // Componente "Vinculados": a caixa presa embaixo da lista de tickets (componentes/lista-tickets.js) com os tickets do Jira
-// que ainda não estão na lista. Cada módulo (Tickets, Implementações, QA) diz o título, o seletor do topo e quais status
+// que ainda não estão na lista. Cada módulo (Refinamento, Implementações, QA) diz o título, o seletor do topo e quais status
 // do Jira entram (VINCULADOS em painel.js). Clique só mostra o ticket; Puxar traz para a lista; Remover esconde.
 // Para usar numa tela: CSS (e pill.CSS) no <style>, caixa(v, lista, o) no corpo e script() no <script>. Na busca do Jira,
 // filtrar(itens, o.status) deixa só os status do módulo. Cliques por data-acao: meuVer, meuPuxar, meuRemover, meusAtualizar,

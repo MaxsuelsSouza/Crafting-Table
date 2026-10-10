@@ -3,7 +3,7 @@ const menuModulos = require('./menu-modulos');
 const cardTicket = require('./card-ticket');
 const vinculados = require('./vinculados');
 
-// Componente "Lista de tickets": a tela inicial do painel (painel.js), igual nos três módulos (Tickets, Implementações, QA):
+// Componente "Lista de tickets": a tela inicial do painel (painel.js), igual nos três módulos (Refinamento, Implementações, QA):
 // menu de módulos, barra com pesquisa, ↑↓ (ordem) e ＋ Ticket (sempre visíveis), os cards dos tickets com o card Sem ticket
 // por último, e a caixa de vinculados presa embaixo.
 // Para usar numa tela: CSS e pill.CSS no <style>, corpo(lista, meus, { modo, vinculados }) no corpo e script(chave) e

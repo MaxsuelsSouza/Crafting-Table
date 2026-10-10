@@ -1,12 +1,12 @@
 // @ts-check
-// node teste-mudancas.js — fluxo de mudança por comentário: análise só leitura, decisão pendente, snapshot/desfazer e telas
+// node refinamento/teste-mudancas.js — fluxo de mudança por comentário: análise só leitura, decisão pendente, snapshot/desfazer e telas
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
 const { spawnSync } = require('child_process');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-home-'));
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
-const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas, cabecalho } = require('./painel')._teste;
+const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas, cabecalho } = require('../painel')._teste;
 
 // ── mudancas.js: passos em atenção, snapshot, alterou, restaurar ──
 const imp = (o) => ({ id: '9', autor: 'PO Fulano', data: '2026-10-08T10:00:00Z', link: 'https://j/9', texto: 'o botão agora é vermelho', resumo: 'Cor do botão muda', ...o });
@@ -62,7 +62,7 @@ const th = telaTarefas({ chave: 'WMS-1' }, tarefas, [pend]);
 assert.strictEqual(conta(th, /class="tcard[^"]*tatencao/g), 1, 'só t02 está afetado');
 
 // ── sdd-state: análise registra opções e trava iniciar/aprovar até decidir ──
-const SDD = path.join(__dirname, '../plugin/plugins/sdd/bin/sdd-state');
+const SDD = path.join(__dirname, '../../plugin/plugins/sdd/bin/sdd-state');
 const sdd = (...a) => spawnSync('node', [SDD, ...a, '--ref', ref], { encoding: 'utf8' });
 const ref = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-ref-')), repo = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-repo-'));
 fs.writeFileSync(path.join(ref, 'meta.json'), JSON.stringify({ titulo: 'Botao' }));
@@ -93,10 +93,10 @@ assert.strictEqual(sdd('impacto', 'registrar', '9', '--nivel', 'nenhum', '--resu
 assert.strictEqual(lerI()[0].status, 'analisado');
 
 // menu do cabeçalho: cada lista com as suas abas (componentes/menu-abas.js); Evidências logo depois de Docs só no QA
-const sessao = require('./sessao');
+const sessao = require('../sessao');
 const abasNa = (lista) => { sessao.focoLista = () => lista; return [...cabecalho({ id: 'WMS-1', chave: 'WMS-1' }, { aba: 'docs', secao: 'claudeAbas.painel', dentro: true })
   .matchAll(/data-(?:id|secao)="([^"]+)"[^>]*>(?:Docs|Spec|Ticket|Análise|Tarefas|Decisões|Dúvidas|Massa|Evidências|Conversas)/g)].map((m) => m[1]); };
-assert.deepStrictEqual(abasNa('tickets'), ['docs', 'spec', 'ticket', 'analise', 'tarefas', 'decisoes', 'duvidas', 'claudeAbas.conversas']);
+assert.deepStrictEqual(abasNa('refinamento'), ['docs', 'spec', 'ticket', 'analise', 'tarefas', 'decisoes', 'duvidas', 'claudeAbas.conversas']);
 assert.deepStrictEqual(abasNa('impl'), ['docs', 'ticket', 'decisoes', 'claudeAbas.conversas']);
 assert.deepStrictEqual(abasNa('qa'), ['docs', 'claudeAbas.evidencias', 'ticket', 'decisoes', 'massa', 'claudeAbas.conversas']);
 console.log('ok');

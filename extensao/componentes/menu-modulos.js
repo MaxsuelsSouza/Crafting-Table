@@ -1,11 +1,11 @@
 // @ts-check
 
-// Componente "Menu de módulos": Tickets · Implementações · QA no topo da lista de tickets (componentes/lista-tickets.js).
+// Componente "Menu de módulos": Refinamento · Implementações · QA no topo da lista de tickets (componentes/lista-tickets.js).
 // Para usar numa tela: CSS no <style> e menu(modo, extra) no corpo. Sem script: o clique vai por data-acao="listaModo"
 // (painel.js). Redesenhe com a tela (módulo trocado).
 //   modo: id do módulo ligado · extra: HTML à direita (a contagem de tickets)
 
-const MODULOS = [['tickets', 'Tickets', 'Tickets'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
+const MODULOS = [['refinamento', 'Refinamento', 'Tickets em refinamento (spec SDD)'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
 const nome = (modo) => MODULOS.find(([id]) => id === modo)?.[1] || modo;
 
 const menu = (modo, extra = '') => `<div class="topo">${MODULOS.map(([id, nome, dica]) =>

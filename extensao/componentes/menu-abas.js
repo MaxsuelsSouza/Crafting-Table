@@ -2,7 +2,7 @@
 
 // Componente "Menu de abas": a barra do cabeçalho do ticket (Docs, Spec, Ticket, Decisões, Massa, Dúvidas…) e, depois do
 // separador, as outras seções do grupo (Evidências, Conversas). Usado no cabeçalho do ticket (painel.js) nas listas
-// Tickets, Implementações e QA; cada lista diz quais abas mostra (ABAS em painel.js).
+// Refinamento, Implementações e QA; cada lista diz quais abas mostra (ABAS em painel.js).
 // Para usar numa tela: CSS no <style> e menu(itens, { aba, secao, principal, dentro }) no corpo. Sem script próprio:
 // os cliques vão pelo que já existe (data-acao="aba" na página do painel; data-secao/data-aba pelo grupo.js na moldura).
 // Redesenhe junto com a tela (aba ou seção trocada, contador mudou).

@@ -6,7 +6,7 @@ const path = require('path');
 // Um ticket = pasta ~/.claude/tickets/<CHAVE>/ com .ticket.json e tudo das conversas vinculadas
 // (documentos na raiz, .notas.html, evidencias/, .decisoes.json — mesmo layout da pasta de uma conversa).
 // Vínculo conversa → ticket: .conversas/<sid> contém a chave (ou chave/aba). Sem vínculo, a conversa usa ~/.claude/documentos/<sid>.
-// Abas: o mesmo ticket pode estar em Tickets (refinamento, raiz da pasta), Implementações (impl/) e QA (qa/).
+// Abas: o mesmo ticket pode estar em Refinamento (raiz da pasta), Implementações (impl/) e QA (qa/).
 // Cada aba tem a sua subpasta (conversas, documentos, notas, decisões, evidências), para uma não poluir a análise da outra.
 // Sem dependência do vscode: também roda em bin/migrar-tickets.js.
 const RAIZ = path.join(os.homedir(), '.claude', 'tickets');
@@ -16,7 +16,10 @@ const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
 const SUBPASTAS = ['impl', 'qa'];
 const pasta = (chave, lista) => path.join(RAIZ, chave, SUBPASTAS.includes(lista) ? lista : '');
-const listasDe = (t) => t.listas || [t.lista || (t.implementacao ? 'impl' : 'tickets')];
+// Módulo Refinamento (antes "tickets"): dados gravados com o nome antigo continuam valendo.
+const REFINAMENTO = 'refinamento';
+const modulo = (l) => (l === 'tickets' ? REFINAMENTO : l);
+const listasDe = (t) => (t.listas || [t.lista || (t.implementacao ? 'impl' : REFINAMENTO)]).map(modulo);
 const lerJson = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 
 const ler = (chave) => lerJson(path.join(pasta(chave), '.ticket.json'), null);
@@ -42,7 +45,7 @@ function listar() {
 
 const vinculo = (sid) => { try { return fs.readFileSync(path.join(VINCULOS, sid), 'utf8').trim() || null; } catch { return null; } };
 const ticketDa = (sid) => vinculo(sid)?.split('/')[0] || null;
-const listaDa = (sid) => (SUBPASTAS.includes(vinculo(sid)?.split('/')[1]) ? vinculo(sid).split('/')[1] : 'tickets');
+const listaDa = (sid) => (SUBPASTAS.includes(vinculo(sid)?.split('/')[1]) ? vinculo(sid).split('/')[1] : REFINAMENTO);
 function vincular(sid, chave, lista) {
   const t = ler(chave);
   if (!t) throw new Error(`Ticket ${chave} não existe`);
@@ -60,4 +63,4 @@ function arquivar(chave) {
   fs.renameSync(pasta(chave), path.join(ARQUIVADOS, `${chave}-${Date.now()}`));
 }
 
-module.exports = { RAIZ, chaveDo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, arquivar };
+module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, arquivar };

@@ -30,7 +30,7 @@ const pasta = (id) => {
 
 // Ticket aberto no painel (e a aba da lista em que foi aberto): as seções de dentro dele (evidências, conversas)
 // mostram o ticket naquela aba, não a conversa.
-let foco = null, focoLista = 'tickets';
+let foco = null, focoLista = tickets.REFINAMENTO;
 const atual = () => foco || conversaAtual();
 
 // Avisa quando a conversa ativa muda (nova conversa, troca na barra lateral + mensagem).
@@ -49,7 +49,7 @@ module.exports = {
   RAIZ, TICKETS, conversaAtual, pasta, ticketDa, workspace, atual,
   foco: () => foco,
   focoLista: () => focoLista,
-  focar: (chave, lista = 'tickets') => { if (chave !== foco || lista !== focoLista) { foco = chave; focoLista = lista; mudou.fire(atual()); } },
+  focar: (chave, lista = tickets.REFINAMENTO) => { if (chave !== foco || lista !== focoLista) { foco = chave; focoLista = lista; mudou.fire(atual()); } },
   onDidChange: mudou.event,
   iniciar: () => { vigiar(); return { dispose: () => observador?.close() }; }
 };

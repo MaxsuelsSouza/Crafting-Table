@@ -9,7 +9,7 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./locais'); // onde cada coisa mora
+const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./refinamento/locais'); // onde cada coisa mora
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
@@ -17,13 +17,13 @@ const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anex
 const pill = require('./componentes/pill'); // pills de status (cabeçalho do ticket, cards e vinculados)
 const listaTickets = require('./componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
 const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
-const menuModulos = require('./componentes/menu-modulos'); // Tickets · Implementações · QA
+const menuModulos = require('./componentes/menu-modulos'); // Refinamento · Implementações · QA
 const configuracao = require('./configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
-const mudancas = require('./mudancas');
+const mudancas = require('./refinamento/mudancas');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 
-// Aba Tickets: a lista e, com um ticket aberto, o ticket ocupando a view inteira —
+// Módulo Refinamento: a lista e, com um ticket aberto, o ticket ocupando a view inteira —
 // cabeçalho fixo (voltar, status no board, ▶ ✦ 🎫, menu), corpo com rolagem própria e rodapé (notificações).
 // Comandos, Emulador, Evidências, Cofre e Conversas são de outros módulos: o grupo.js mostra cada um dentro
 // da moldura deste painel (moldura()), com o mesmo cabeçalho e rodapé.
@@ -34,7 +34,7 @@ const { SEM_TICKET } = require('./componentes/card-ticket');
 const PRINCIPAL = 'claudeAbas.painel';
 const pasta = (id) => tickets.pasta(id);
 const pastaDe = (id) => (id === SEM_TICKET ? (sessao.conversaAtual() ? sessao.pasta(sessao.conversaAtual()) : null) : pasta(id));
-// Pasta da aba em que o ticket está aberto (Tickets = raiz; Implementações e QA = impl/ e qa/, tickets.js): documentos,
+// Pasta da aba em que o ticket está aberto (Refinamento = raiz; Implementações e QA = impl/ e qa/, tickets.js): documentos,
 // notas, decisões e notificações das conversas daquela aba. Refinamento (spec, tarefas, dúvidas, impactos) segue na raiz.
 // id pode vir como CHAVE/aba (nota salva depois de trocar de aba não cai na aba errada).
 const pastaAba = (id) => {
@@ -42,7 +42,7 @@ const pastaAba = (id) => {
   const [chave, lista] = id.split('/');
   return lista ? tickets.pasta(chave, lista) : sessao.pasta(chave);
 };
-const naRaiz = () => sessao.focoLista() === 'tickets'; // ticket aberto na aba Tickets (a do refinamento)
+const naRaiz = () => sessao.focoLista() === tickets.REFINAMENTO; // ticket aberto no módulo Refinamento
 const idAba = (id) => (id === SEM_TICKET || naRaiz() ? id : `${id}/${sessao.focoLista()}`);
 const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 const lerTexto = (arq) => { try { return fs.readFileSync(arq, 'utf8'); } catch { return null; } };
@@ -147,7 +147,7 @@ const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisado
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
 // Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
-// Fora da aba Tickets, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
+// Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
 function docsDoTicket(t) {
   const docs = docsDe(pastaAba(t.id));
   if (!naRaiz()) { const jira = ler(path.join(pasta(t.id), ORIGEM), {}); docs.push(...docsDe(pasta(t.id)).filter((d) => jira[d.nome])); }
@@ -175,7 +175,7 @@ const IC = {
 const EVID = 'claudeAbas.evidencias';
 const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
 const ABAS = {
-  tickets: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
+  refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
   impl: [DOCS, TICKET, DECISOES],
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
   semTicket: [DOCS, DECISOES]
@@ -955,7 +955,7 @@ const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoL
 
 // Caixa de vinculados de cada módulo (componentes/vinculados.js): título, seletor do topo e quais status do Jira entram.
 const VINCULADOS = {
-  tickets: { titulo: 'Vinculados a você', seletor: 'etapa' },
+  refinamento: { titulo: 'Vinculados a você', seletor: 'etapa' },
   impl: { titulo: 'Vinculados a você', status: ['Buffer', 'Não iniciado', 'Em andamento|In progress'] },
   qa: { titulo: 'Com a label', seletor: 'label', status: ['Pronto para QA|Pronto p/ QA', 'Teste integrado'] }
 };
@@ -964,8 +964,8 @@ exports.provider = (ctx) => {
   let view, aberto = null, aba = 'docs', lado = 'backend', observador;
   const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
   const cacheJira = {}; // chave -> dados do Jira (ou { erro })
-  // Lista mostrada: Tickets, Implementações ou QA (ticket.lista: 'impl' | 'qa'). Cada uma tem a sua caixa de vinculados.
-  let modoLista = ctx.globalState.get('listaModo') || 'tickets';
+  // Lista mostrada: Refinamento, Implementações ou QA (ticket.lista: 'impl' | 'qa'). Cada uma tem a sua caixa de vinculados.
+  let modoLista = tickets.modulo(ctx.globalState.get('listaModo')) || tickets.REFINAMENTO;
   const naLista = (t, l = modoLista) => tickets.listasDe(t).includes(l);
   // Põe o ticket também nesta aba (não tira das outras); grava listas no lugar do lista/implementacao de antes.
   const porNaLista = (t) => (naLista(t) ? t : tickets.gravar({ ...t, listas: [...tickets.listasDe(t), modoLista], lista: undefined, implementacao: undefined }));
@@ -987,7 +987,7 @@ exports.provider = (ctx) => {
   const labelQA = () => ctx.globalState.get('labelQA') || '';
   let labelsQA = null; // labels do Jira com "QA" (buscadas uma vez por sessão)
   const carregarMeus = async (forcar) => {
-    const k = modoLista, meus = meusPor[k], fixo = k !== 'tickets';
+    const k = modoLista, meus = meusPor[k], fixo = k !== tickets.REFINAMENTO;
     if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
     if (!forcar && !(await ctx.secrets.get('jira.token'))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return render(); }
     meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };

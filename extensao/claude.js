@@ -16,7 +16,7 @@ async function colar(texto) {
 }
 
 // Conversa mais recente do ticket naquela aba (Tickets, Implementações ou QA) que ainda tem histórico, de qualquer projeto.
-exports.ultimaConversa = (t, lista = 'tickets') => {
+exports.ultimaConversa = (t, lista = require('./tickets').REFINAMENTO) => {
   const { historico } = require('./conversas')._teste;
   const fs = require('fs'), { listaDa } = require('./tickets');
   return t.conversas.filter((sid) => listaDa(sid) === lista && fs.existsSync(historico(sid)))
