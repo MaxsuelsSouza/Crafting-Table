@@ -8,10 +8,11 @@
 // Redesenhe junto com a tela (aba ou seção trocada, contador mudou).
 //   itens: { id, nome, badge?, dica? } = aba da seção principal · { secao, nome } = outra seção · '|' = separador
 //   dentro: true na página da própria seção principal; false na moldura em volta de outra seção.
+//   acao: o data-acao das abas na página (padrão 'aba'; as Configurações usam 'cfgAba').
 
-const botao = (it, { aba, secao, principal, dentro }) => {
+const botao = (it, { aba, secao, principal, dentro, acao = 'aba' }) => {
   const on = it.secao ? secao === it.secao : secao === principal && aba === it.id;
-  const alvo = it.secao ? `data-secao="${it.secao}"` : dentro ? `data-acao="aba" data-id="${it.id}"` : `data-secao="${principal}" data-aba="${it.id}"`;
+  const alvo = it.secao ? `data-secao="${it.secao}"` : dentro ? `data-acao="${acao}" data-id="${it.id}"` : `data-secao="${principal}" data-aba="${it.id}"`;
   const badge = it.badge ? ` <span class="ct-badge"${it.dica ? ` title="${it.dica}"` : ''}>${it.badge}</span>` : '';
   return `<button ${alvo}${on ? ' class="is-on"' : ''}>${it.nome}${badge}</button>`;
 };

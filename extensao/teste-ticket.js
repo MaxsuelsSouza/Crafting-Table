@@ -71,3 +71,23 @@ assert.ok(vazia.includes('class="rotulo is-on" data-acao="listaModo" data-id="qa
 const cheia = lista.corpo([{ chave: 'W-1', titulo: 'Oi', status: 'Em andamento', conversas: [1], refinando: true }], {}, { modo: 'tickets', vinculados: { titulo: 'T' } });
 assert.ok(cheia.includes('1 conversa<') && cheia.includes('st-andando') && cheia.includes('● refinando') && cheia.indexOf('data-id="W-1"') < cheia.indexOf('class="sem-ticket"'));
 console.log('ok lista');
+
+// Botão, card de comando e Configurações: variante vira classe, o clique vai por data-*, o escape vale, o menu das Configurações usa cfgAba.
+const { botao, mini } = require('./componentes/botao');
+const b = botao('X', { variante: 'contorno', perigo: true, acao: 'matar', id: 'a"b', dados: { pid: 7 }, desligado: true });
+assert.ok(b.startsWith('<button class="bt bt-contorno bt-perigo" data-acao="matar" data-id="a&#34;b" data-pid="7"') && b.includes(' disabled>'));
+assert.ok(!botao('X').includes('data-') && mini('x') === '<span class="bt-mini">x</span>');
+const { comando, procs } = require('./componentes/card-comando');
+const cmd = { id: 'i1', nome: 'Metro <x>', comando: 'yarn start', pasta: '/a/b' };
+assert.ok(comando(cmd, false).includes('data-acao="rodar"') && comando(cmd, true).includes('class="bt bt-parar"') && comando(cmd, true).includes('rodando'));
+assert.ok(comando(cmd, true, [{ pid: 1, args: 'node' }]).includes('Matar todos (1)') && procs([], 'i1').includes('Nenhum processo'));
+assert.ok(!comando(cmd, false).includes('<x>') && !comando(cmd, false).includes('class="procs"'));
+const cfg = require('./configuracao');
+const val = { modelo: '', esforco: '', jiraSite: 's', jiraProjeto: 'WMS', jiraBoard: 'B', etapasExtras: [], specsDir: '/x', specsRemoto: '', repositorios: [], bancoConexao: '', bancoAmbiente: '', bancoSqlcl: '', bancoSensiveis: [] };
+const base = { valores: val, estado: { jira: { ok: false, curto: 'sem token', texto: 'falhou' } }, reposAuto: [{ caminho: '/r/api', camada: 'backend' }], voltar: '<i></i>', versao: '1' };
+const geral = cfg.tela({ ...base, aba: 'geral' });
+assert.ok(geral.includes('data-acao="cfgAba" data-id="plugins"') && geral.includes('data-id="cfgTestar"') === false && geral.includes('data-acao="cfgTestar" data-id="jira"'));
+assert.ok(geral.includes('⚠ sem token') && geral.includes('testando…') && geral.includes('Atualizar agora') && geral.includes('✅ em dia'));
+assert.ok(!geral.includes('data-acao="cfgRepoEditar"') && geral.includes('Detectados automaticamente')); // lista automática não edita
+assert.ok(cfg.tela({ ...base, aba: 'plugins', plugins: [{ id: 'p@m', uso: 'u', skills: [], instalado: true, versao: '1', ligado: true }] }).includes('data-acao="pluginAlternar" data-id="p@m"'));
+console.log('ok botao/cards/configuracao');

@@ -5,7 +5,9 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { descendentes, matar } = require('./comandos').processos;
-const { icone, ESTILO_NOTAS } = require('./comandos').ui;
+const { ESTILO_NOTAS } = require('./comandos').ui;
+const { botao, mini, icone } = require('./componentes/botao');
+const cardComando = require('./componentes/card-comando');
 const { esc } = require('./ticket')._teste;
 
 // Lista os AVDs da máquina e liga com janela. O gRPC fica só para o print da aba Evidências,
@@ -96,20 +98,7 @@ exports.print = (emu) => new Promise((resolve, reject) => {
   c.getScreenshot({ format: 'PNG' }, meta, (err, img) => { c.close(); err ? reject(err) : resolve(img.image); });
 });
 
-const estiloEmu = ESTILO_NOTAS + `<style>
-  .cartoes > li.ligado { border-left: 3px solid var(--ok); }
-  .cartoes > li.ocupado { border-left: 3px solid var(--warn); }
-  .cartoes > li.ligado:hover { border-left-color: var(--ok); }
-  .cartoes > li.ocupado:hover { border-left-color: var(--warn); }
-  .card { display: flex; align-items: center; gap: 10px; }
-  /* Só o símbolo: ▶ verde para rodar, ■ vermelho para parar, sem círculo nem borda. */
-  .run { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-md); padding: 0; display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 400; background: transparent; color: var(--ok, var(--ok)); }
-  .run:hover { background: var(--surface-2); }
-  .run.stop { color: var(--perigo, var(--danger)); }
-  .run:disabled { opacity: .4; cursor: default; }
-  .corpo { flex: 1; min-width: 0; }
-  .corpo .nome { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+const estiloEmu = ESTILO_NOTAS + `<style>${cardComando.CSS}
   .tag { flex: none; font-size: 9.5px; font-weight: 500; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
   .estado { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
   .ponto { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-dim); }
@@ -117,11 +106,7 @@ const estiloEmu = ESTILO_NOTAS + `<style>
   .ocupado .ponto { background: var(--warn); animation: pulso .9s infinite; }
   .ligado .estado .txt { color: var(--ok); }
   .ocupado .estado .txt { color: var(--warn); }
-  @keyframes pulso { 50% { opacity: .3; } }
   .mono { font-family: var(--fc-mono); font-size: 10.5px; }
-  .cartoes .procs { margin: 8px 0 0 38px; padding: 6px 8px; border-left: none; border-radius: var(--r-md); background: var(--surface-2); }
-  .cartoes .proc .pid { min-width: 0; padding: 0 6px; border-radius: var(--r-pill); font-size: 10.5px; background: var(--surface); color: var(--accent); }
-  .cartoes .procs .todos { font-size: 11px; margin-top: 6px; }
 </style>`;
 
 // Small_Phone -> Small Phone; os clones do wms-hub ganham uma etiqueta.
@@ -136,28 +121,20 @@ const tela = (avds, ligados, ocupados, procs) => `${estiloEmu}
     const ocupado = ocupados[avd];
     const estado = ocupado || (emu ? (emu.semJanela ? 'rodando sem janela' : 'rodando') : 'parado');
     const classe = ocupado ? 'ocupado' : emu ? 'ligado' : '';
-    return `<li class="${classe} ${procs[avd] ? 'com-procs' : ''}"><div class="card">
-      ${emu
-        ? `<button class="run stop" data-acao="parar" data-id="${esc(avd)}" title="Desligar" ${ocupado ? 'disabled' : ''}>■</button>`
-        : `<button class="run" data-acao="ligar" data-id="${esc(avd)}" title="Ligar" ${ocupado ? 'disabled' : ''}>▶</button>`}
-      <div class="corpo" title="${esc(avd)}">
-        <div class="nome">${esc(nomeBonito(avd))}${avd.startsWith('WmsHub_') ? '<span class="tag">wms-hub</span>' : ''}</div>
+    return cardComando.card({
+      estado: classe, abertos: Boolean(procs[avd]),
+      run: emu ? botao('■', { variante: 'parar', acao: 'parar', id: avd, titulo: 'Desligar', desligado: Boolean(ocupado) })
+        : botao('▶', { variante: 'executar', acao: 'ligar', id: avd, titulo: 'Ligar', desligado: Boolean(ocupado) }),
+      corpoAttr: ` title="${esc(avd)}"`,
+      corpo: `<div class="nome">${esc(nomeBonito(avd))}${avd.startsWith('WmsHub_') ? '<span class="tag">wms-hub</span>' : ''}</div>
         <div class="estado"><span class="ponto"></span><span class="txt">${esc(estado)}</span>
-          ${emu ? `<span class="mono">${esc(emu.serial)} · PID ${emu.pid}</span>` : ''}</div>
-      </div>
-      <span class="mini">
-        <button data-acao="mencionar" data-id="${esc(avd)}" title="Mencionar no Claude">@</button>
-        <button class="${procs[avd] ? 'aberto' : ''}" data-acao="processos" data-id="${esc(avd)}" title="Processos">⋯</button>
-        <button class="ico perigo" data-acao="wipe" data-id="${esc(avd)}" title="Wipe data: apaga os dados e liga do zero">${icone('limpar')}</button>
-      </span></div>
-      ${procs[avd] ? `<div class="procs">${procs[avd].length ? `
-        ${procs[avd].map((p) => `<div class="proc">
-          <span class="pid">${p.pid}</span><span class="args" title="${esc(p.args)}">${esc(p.args)}</span>
-          <button data-acao="matar" data-id="${esc(avd)}" data-pid="${p.pid}" title="Matar ${p.pid}">✕</button>
-        </div>`).join('')}
-        <button class="todos" data-acao="matarTodos" data-id="${esc(avd)}">Matar todos (${procs[avd].length})</button>`
-        : '<p class="vazio">Nenhum processo rodando.</p>'}</div>` : ''}
-    </li>`;
+          ${emu ? `<span class="mono">${esc(emu.serial)} · PID ${emu.pid}</span>` : ''}</div>`,
+      mini: mini([
+        botao('@', { acao: 'mencionar', id: avd, titulo: 'Mencionar no Claude' }),
+        botao('⋯', { acao: 'processos', id: avd, titulo: 'Processos', classe: procs[avd] ? 'aberto' : '' }),
+        botao(icone('limpar'), { perigo: true, acao: 'wipe', id: avd, titulo: 'Wipe data: apaga os dados e liga do zero' })].join('')),
+      procs: procs[avd] ? cardComando.procs(procs[avd], avd) : ''
+    });
   }).join('')}</ul>`
   : '<div class="folha"><div class="centro"><div class="icone">📱</div>Nenhum emulador encontrado.<br>Crie um AVD no Android Studio (Device Manager).</div></div>'}`;
 

@@ -5,7 +5,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { esc } = require('./ticket')._teste;
-const { pagina, icone, ESTILO_NOTAS } = require('./comandos').ui;
+const { pagina, ESTILO_NOTAS } = require('./comandos').ui;
+const { icone } = require('./componentes/botao');
 const sessao = require('./sessao');
 
 // Conversas do Claude Code deste projeto e tudo o que cada uma deixou na máquina.

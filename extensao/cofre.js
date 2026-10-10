@@ -5,7 +5,8 @@ const net = require('net');
 const path = require('path');
 const { spawn } = require('child_process');
 const { esc } = require('./ticket')._teste;
-const { icone, ESTILO_NOTAS } = require('./comandos').ui;
+const { ESTILO_NOTAS } = require('./comandos').ui;
+const { botao, mini, icone } = require('./componentes/botao');
 const { RAIZ } = require('./sessao');
 
 // Segredos para o Claude USAR sem receber o valor. Valores no SecretStorage do VS Code (cifrado pelo
@@ -59,17 +60,16 @@ const tela = (itens) => `${estiloCofre}
   <div class="barras">
     <span class="dica">${itens.length ? `${itens.filter((s) => s.env).length} liberado${itens.filter((s) => s.env).length === 1 ? '' : 's'} para o Claude` : ''}</span>
     <span class="espaco"></span>
-    <button class="primario" data-acao="adicionar">＋ Segredo</button>
+    ${botao('＋ Segredo', { variante: 'principal', grande: true, acao: 'adicionar' })}
   </div>
   <div class="aviso"><span>🔒</span><span>Com a chave <b>env</b> ligada, o Claude usa o segredo como <code>$NOME</code> pelo comando <code>cofre</code>, sem ver o valor.</span></div>
   ${itens.length ? `<ul class="cartoes">${itens.map((s) => `<li class="${s.env ? '' : 'off'}">
     <span class="cadeado">${CADEADO}</span>
     <div class="corpo"><div class="nome">${esc(s.nome)}</div><div class="valor">••••••••</div></div>
-    <span class="mini">
-      <button data-acao="mencionar" data-id="${esc(s.nome)}" title="Mencionar no Claude">@</button>
-      <button class="ico" data-acao="editar" data-id="${esc(s.nome)}" title="Trocar o valor">${icone('editar')}</button>
-      <button class="ico perigo" data-acao="remover" data-id="${esc(s.nome)}" title="Remover">${icone('lixo')}</button>
-    </span>
+    ${mini([
+      botao('@', { acao: 'mencionar', id: s.nome, titulo: 'Mencionar no Claude' }),
+      botao(icone('editar'), { acao: 'editar', id: s.nome, titulo: 'Trocar o valor' }),
+      botao(icone('lixo'), { perigo: true, acao: 'remover', id: s.nome, titulo: 'Remover' })].join(''))}
     <button class="chave" role="switch" aria-checked="${s.env}" data-acao="env" data-id="${esc(s.nome)}"
       title="${s.env ? 'O Claude pode usar (clique para bloquear)' : 'Bloqueado para o Claude (clique para liberar)'}"><span class="trilho"></span>env</button>
   </li>`).join('')}</ul>`

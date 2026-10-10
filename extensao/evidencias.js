@@ -57,8 +57,6 @@ const estilo = `
   .pasta { font-size: 10.5px; color: var(--text-dim); margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acoes { display: flex; align-items: center; gap: 4px; margin: 14px 0 4px; }
   .acoes .espaco { flex: 1; }
-  .primario { background: var(--accent); color: var(--on-cor); font-weight: 600; }
-  .primario:hover { background: var(--accent-soft); }
   .gravar:hover, .icone:hover { background: var(--surface-2); }
   .gravar::before, .gravando::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 7px; vertical-align: 0; }
   .gravando { color: var(--danger); font-weight: 600; background: color-mix(in srgb, var(--danger) 12%, transparent); }
