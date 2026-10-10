@@ -1,15 +1,16 @@
+// @ts-check
 // node teste-teams.js — VS Code simulado + fetch falso, HOME temporário
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-'));
 const avisos = [];
-const Module = require('module'); const load = Module._load;
+const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? { window: { showWarningMessage: (m) => avisos.push(m), setStatusBarMessage: (m) => avisos.push(m) } } : r === './emulador' ? {} : load(r, ...a));
 const tickets = require('./tickets');
 const { ciclo } = require('./teams')._teste;
 
 const URL = 'https://x.logic.azure.com/segredo123';
 let posts = [], status = 200;
-global.fetch = async (u, o) => { posts.push({ u, corpo: JSON.parse(o.body) }); return { ok: status < 400, status }; };
+global.fetch = /** @type {any} */ (async (u, o) => { posts.push({ u, corpo: JSON.parse(o.body) }); return { ok: status < 400, status }; });
 const estado = {}, secrets = { get: async () => secrets.url }, ctx = { secrets, globalState: { get: (k) => estado[k], update: async (k, v) => { estado[k] = v; } } };
 
 tickets.criar('https://ex.atlassian.net/browse/WMS-1');

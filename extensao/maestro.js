@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -7,7 +8,8 @@ const { spawn } = require('child_process');
 // faz em <pasta do ticket>/.ao-vivo.jsonl ({ em, tipo, texto }), que a aba Spec mostra ao vivo.
 // Sem AskUserQuestion (não existe em -p): perguntas passam pelo sdd-state e pela aba.
 // A sessão fica em .ao-vivo.sid para continuar a mesma conversa (--resume) quando precisar.
-const VIVO = '.ao-vivo.jsonl', SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
+const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
+const { anotar } = require('./componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
 // Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
 // Confere que o pid ainda é um claude (o executável, não um caminho com "claude" no meio): pid pode ser reaproveitado.
@@ -22,6 +24,7 @@ const nome = (p) => path.basename(String(p || ''));
 // ── Textos do Ao vivo: tudo o que o usuário lê sai daqui (padronize/ajuste só neste bloco) ──
 // Tipos: etapa (título da execução), fala (o que o Claude diz), acao (o que ele faz), aviso (bloqueio), erro, fim.
 const PASSOS = ['Constituição', 'Especificação', 'Clarificação', 'Plano técnico', 'Tarefas', 'Análise de qualidade', 'Implementação'];
+/** @type {[RegExp, string][]} */
 const DOCS = [ // caminho → nome que o usuário entende
   [/constitution\.md$/, 'a constituição'],
   [/constituicao-wms-mapeamento\.md$/, 'o mapeamento do código (base da constituição)'],
@@ -29,6 +32,7 @@ const DOCS = [ // caminho → nome que o usuário entende
   [/analise\.md$/, 'a análise de consistência'], [/\.ticket\.json$/, 'os dados do ticket'], [/SKILL\.md$/, 'o método SDD'],
   [/\.notas\.html$/, 'as notas do ticket'], [/\.handoff-backend\.md$/, 'a análise do backend'], [/\.handoff-mobile\.md$/, 'a análise do mobile']
 ];
+/** @type {[RegExp, string][]} */
 const REPOS = [[/novo-wms-backend/, 'backend'], [/wms-mobile/, 'mobile'], [/WMS\/specs/, 'specs']];
 const doc = (p) => {
   const achado = DOCS.find(([r]) => r.test(p || ''));
@@ -102,14 +106,14 @@ function linhas(e) {
 
 // Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
-function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd, ferramentas = [], extras = [], env = {}, continuar = false, aoMudar = () => {} }) {
+function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} }) {
   if (rodandoEm(dir)) return false;
   const gravar = (l) => anotar(dir, l);
   let sid = null;
   try { sid = continuar ? fs.readFileSync(path.join(dir, SID), 'utf8').trim() : null; } catch {}
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
-  const p = spawn(claudeBin(), args, { cwd: cwd || dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+  const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
   try { fs.writeFileSync(path.join(dir, PID), String(p.pid)); } catch {}
   gravar({ tipo: 'etapa', texto: titulo });
@@ -138,87 +142,8 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd, ferramentas = 
   return true;
 }
 
-// Linha no Ao vivo (do Claude ou de passos da própria extensão). Fila por pasta: uma linha a cada meio segundo, para dar
-// tempo de ler (o Claude e o ▶ escrevem em rajada). Fila acima de 20 linhas acelera para não ficar minutos atrasada.
-const INTERVALO = 500, INTERVALO_FILA_LONGA = 100;
-const filas = new Map(); // pasta -> { linhas, ultimo, timer }
-function anotar(dir, l) {
-  const f = filas.get(dir) || { linhas: [], ultimo: 0, timer: null };
-  filas.set(dir, f);
-  f.linhas.push(l);
-  escoar(dir, f);
-}
-function escoar(dir, f) {
-  if (f.timer || !f.linhas.length) return;
-  const passo = f.linhas.length > 20 ? INTERVALO_FILA_LONGA : INTERVALO;
-  f.timer = setTimeout(() => {
-    f.timer = null;
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(path.join(dir, VIVO), JSON.stringify({ em: new Date().toISOString(), ...f.linhas.shift() }) + '\n');
-    } catch {}
-    f.ultimo = Date.now();
-    escoar(dir, f);
-  }, Math.max(0, f.ultimo + passo - Date.now()));
-}
-
-// n = Infinity: o log inteiro (caixa expandida). Linha corrompida não derruba a caixa.
-const aoVivo = (dir, n = 40) => {
-  let linhas;
-  try { linhas = fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n'); } catch { return []; }
-  return linhas.slice(-n).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
-};
-const totalVivo = (dir) => { try { return fs.readFileSync(path.join(dir, VIVO), 'utf8').trim().split('\n').filter(Boolean).length; } catch { return 0; } };
-// Caixa expandida (todo o log, do primeiro ao mais recente): marcada por arquivo, para a tela que vigia a pasta redesenhar sozinha.
-const EXPANDIDO = '.ao-vivo.expandido';
-const expandido = (dir) => fs.existsSync(path.join(dir, EXPANDIDO));
-const alternarExpandido = (dir) => (expandido(dir) ? fs.rmSync(path.join(dir, EXPANDIDO), { force: true }) : fs.writeFileSync(path.join(dir, EXPANDIDO), ''));
-// Caixa pronta para a tela: lê o log (40 linhas, ou tudo se expandida) e põe o botão Ver tudo/Recolher (alvo: 'qa' | 'spec').
-const caixaVivo = (dir, rodandoAgora, alvo) => {
-  const exp = expandido(dir);
-  return aoVivoHtml(aoVivo(dir, exp ? Infinity : 40), rodandoAgora, { expandido: exp, total: totalVivo(dir), alvo });
-};
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-// Caixa "Ao vivo" (aba Spec e Evidências do QA): o que o Claude em segundo plano (maestro.js) está fazendo.
-// Tipos antigos (antes da padronização) caem no equivalente novo.
-const TIPO_VIVO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
-const ICONE_VIVO = { fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
-const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-// Mais recente em cima: blocos por etapa (a etapa mais nova primeiro), o título da etapa no topo do bloco e as linhas dele da mais nova para a mais antiga.
-const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO_VIVO[x.tipo] || x.tipo) === 'etapa' || !g.length ? g.push([x]) : g.at(-1).push(x), g), [])
-  .reverse().flatMap(([cab, ...resto]) => ((TIPO_VIVO[cab.tipo] || cab.tipo) === 'etapa' ? [cab, ...resto.reverse()] : [...resto.reverse(), cab]));
-const aoVivoHtml = (l, vivo, o = {}) => (l.length ? `<div class="caixa-t">Ao vivo<span>${vivo ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}
-  ${o.alvo && (o.expandido || o.total > l.length) ? `<button class="vivo-exp" data-painel="vivoExpandir" data-id="${esc(o.alvo)}" title="${o.expandido ? 'Voltar às últimas 40 linhas' : 'Mostrar o log inteiro, do primeiro ao mais recente'}">${o.expandido ? 'Recolher' : `Ver tudo (${o.total})`}</button>` : ''}</span></div>
-  <div class="folha ao-vivo ${o.expandido ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
-    const tipo = TIPO_VIVO[x.tipo] || x.tipo;
-    return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
-      : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE_VIVO[tipo] || '·'}</span>
-        <span class="vt">${esc(x.texto.slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`;
-  }).join('')}</div>` : '');
-
-const CSS_VIVO = `
-  .ao-vivo.expandido { max-height: 70vh; }
-  .vivo-exp { margin-left: 8px; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: var(--r-md); background: none; color: var(--text);
-    font: inherit; font-size: 10.5px; cursor: pointer; }
-  .vivo-exp:hover { background: var(--surface-2); }
-  .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
-  .vivo { display: flex; gap: 6px; padding: 2px 0; }
-  .vivo .vi { flex: none; width: 12px; text-align: center; color: var(--text-dim); }
-  .vivo .vt { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
-  .vivo .vq { flex: none; color: var(--text-dim); font-size: 10px; }
-  .v-etapa { margin: 8px 0 2px; padding: 3px 6px; border-radius: var(--r-md); background: color-mix(in srgb, var(--ia) 14%, transparent);
-    color: var(--ia); font-weight: 600; font-size: 11.5px; }
-  .v-etapa:first-child { margin-top: 0; }
-  .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
-  .v-fala .vt { font-style: italic; }
-  .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
-  .v-fim .vi { color: var(--ok, var(--ok)); }
-  .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--ia); animation: pulsa 1.2s infinite; }
-  @keyframes pulsa { 50% { opacity: .3; } }
-`;
 // Mata todas as execuções em segundo plano (claude -p); devolve quantas eram.
 const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
 const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, anotar, aoVivo, aoVivoHtml, caixaVivo, alternarExpandido, expandido, CSS_VIVO, parar, matarTodos, rodando: rodandoEm, vivo, VIVO, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd, recentesPrimeiro } };
+module.exports = { rodar, parar, matarTodos, rodando: rodandoEm, vivo, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd } };

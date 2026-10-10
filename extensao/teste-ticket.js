@@ -1,5 +1,6 @@
+// @ts-check
 // node teste-ticket.js
-const Module = require('module'); const load = Module._load;
+const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
 const assert = require('assert');
 const { lerLink, esc } = require('./ticket')._teste;

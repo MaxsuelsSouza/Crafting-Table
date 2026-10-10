@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));

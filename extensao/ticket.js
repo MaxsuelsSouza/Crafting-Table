@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -269,7 +270,7 @@ async function etapas(secrets, site, projeto, nomeBoard, extras = []) {
 }
 
 // Troca a descrição de um ticket (ex.: subtarefa [QA] que já existia: o plano novo entra no lugar).
-async function atualizarDescricao(secrets, { site }, key, md, { titulo, estimativa } = {}) {
+async function atualizarDescricao(secrets, { site }, key, md, { titulo, estimativa } = /** @type {{ titulo?: string, estimativa?: number }} */ ({})) {
   await api(secrets, site, `issue/${key}`, { method: 'PUT', body: JSON.stringify({ fields: { description: mdParaAdf(md), ...(titulo ? { summary: String(titulo).slice(0, 250) } : {}) } }) });
   if (estimativa) {
     try { await api(secrets, site, `issue/${key}`, { method: 'PUT', body: JSON.stringify({ fields: { timetracking: { originalEstimate: estimativa } } }) }); }

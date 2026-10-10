@@ -1,8 +1,9 @@
+// @ts-check
 // node teste-mudancas.js — fluxo de mudança por comentário: análise só leitura, decisão pendente, snapshot/desfazer e telas
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
 const { spawnSync } = require('child_process');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mud-home-'));
-const Module = require('module'); const load = Module._load;
+const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? new Proxy({}, { get: () => new Proxy(function () {}, { get: () => () => {}, apply: () => {} }) }) : load(r, ...a));
 const mud = require('./mudancas');
 const { caixaDecisao, caixaMudancas, telaConstituicao, telaTarefas } = require('./painel')._teste;

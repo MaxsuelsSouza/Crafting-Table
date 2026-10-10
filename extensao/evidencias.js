@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -8,6 +9,7 @@ const emulador = require('./emulador');
 
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.
 const sessao = require('./sessao');
+const aoVivo = require('./componentes/ao-vivo');
 const ADB = path.join(emulador.SDK, 'platform-tools', 'adb');
 const IMAGEM = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const VIDEO = new Set(['.mp4', '.webm', '.mov']);
@@ -121,9 +123,9 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
   });
   // Redesenho a cada linha do Ao vivo: a página e a caixa Ao vivo voltam para onde estavam (sem pular para o topo).
   const st = () => vscode.getState() || {};
-  const pag = document.scrollingElement, av = document.getElementById('aoVivo');
+  const pag = document.scrollingElement;
   pag.scrollTop = st().evPagina || 0;
-  if (av) av.scrollTop = st().evVivo || 0;
+  ${aoVivo.script('evVivo')}
   // Cenários expandidos continuam expandidos depois do redesenho.
   for (const d of document.querySelectorAll('details[data-cen]')) {
     if ((st().evAbertos || []).includes(d.dataset.cen)) d.open = true;
@@ -134,7 +136,6 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
     });
   }
   addEventListener('scroll', () => vscode.setState({ ...st(), evPagina: pag.scrollTop }), { passive: true });
-  av?.addEventListener('scroll', () => vscode.setState({ ...st(), evVivo: av.scrollTop }), { passive: true });
   const desde = ${gravandoDesde || 0};
   const rel = document.getElementById('relogio');
   if (desde && rel) setInterval(() => {
@@ -172,7 +173,7 @@ exports.provider = (ctx) => {
       if (dirQa) {
         fs.mkdirSync(dirQa, { recursive: true });
         let espera;
-        vigiaQa = fs.watch(dirQa, (_, nome) => { if (['.ao-vivo.jsonl', '.ao-vivo.expandido', '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
+        vigiaQa = fs.watch(dirQa, (_, nome) => { if ([...aoVivo.ARQUIVOS, '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
       }
     }
     const arquivos = listar(dir);

@@ -1,9 +1,11 @@
+// @ts-check
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 const crypto = require('crypto');
 const maestro = require('./maestro');
+const aoVivo = require('./componentes/ao-vivo');
 
 // Módulo QA (lista QA do painel). O ▶ roda tudo em ordem (executar): planejamento → mapa de cenários → ambiente → massa → um
 // `claude -p` por cenário. Estado em arquivos da pasta qa/ do ticket, então pausar/retomar é só parar entre execuções.
@@ -130,7 +132,7 @@ function refazer(dir, id) {
 // ── Execuções de um cenário. A extensão abre (iniciarCenario); o Claude fecha com `qa-state cenario CTnn concluir`.
 // Evidências de cada execução em evidencias/CTnn/<id da execução>/.
 const RESULTADOS = ['passou', 'falhou', 'bloqueado'];
-const carimbo = (d = new Date()) => new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
+const carimbo = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
 const fila = (r) => r.cenarios.filter((c) => !c.arquivado && ['pendente', 'desatualizado'].includes(c.status));
 function iniciarCenario(dir, id, sha) {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id);
@@ -171,7 +173,7 @@ function ultimoRefresh(agora, hora = '06:00') {
 }
 const massaValida = (i, agora, hora) => i.estado === 'valida' && new Date(i.medidaEm) >= ultimoRefresh(agora, hora);
 const semMassa = (dir, ids, agora, hora) => ids.filter((id) => !massa(dir).itens.some((i) => (i.cenarios || []).includes(id) && massaValida(i, agora, hora)));
-function massaAdd(dir, { papel, cenarios: cens, dados, consulta }) {
+function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '' }) {
   const m = massa(dir), id = `M${m.itens.reduce((n, i) => Math.max(n, Number(i.id.slice(1)) || 0), 0) + 1}`;
   m.itens.push({ id, papel: papel || '', cenarios: cens || [], dados: dados || {}, consulta: consulta || '', medidaEm: new Date().toISOString(), estado: 'valida' });
   gravarJson(path.join(dir, MASSA), m);
@@ -200,7 +202,7 @@ const shaDe = (repo) => { try { return repo ? execFileSync('git', ['-C', repo, '
 const preparos = new Map(); // dir -> processo do preparar-ambiente (a pausa mata)
 const LOG_AMB = '.ambiente.log'; // saída completa do último preparo (rodapé → Ambiente: log ao vivo; base da análise do Claude)
 async function preparar(dir, chave, backend, d = {}) {
-  const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · Ambiente');
   gravarJson(path.join(dir, AMBIENTE), { ...(ambiente(dir) || {}), preparando: true, parou_em: null, erro: null, analise: null, em: new Date().toISOString() });
   vivo('acao', 'Procurando nos Comandos (Configurações) o que sobe API, Metro e emulador');
@@ -216,7 +218,7 @@ async function preparar(dir, chave, backend, d = {}) {
   return prepararPelaSkill(dir, chave, backend);
 }
 function prepararPelaSkill(dir, chave, backend) {
-  const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const script = backend && scriptPreparo(backend);
   if (!script) {
     vivo('erro', backend ? 'Não achei o preparar-ambiente.py (nem no backend, nem na skill testes-funcionais)' : 'Sem repositório backend configurado (Configurações → repositórios)');
@@ -286,7 +288,7 @@ async function esperar(teste, segundos, parar) {
 }
 const adbSaida = (adb, args) => { try { return execFileSync(adb, args, { timeout: 15000 }).toString(); } catch { return ''; } };
 async function viaComandos(dir, d) {
-  const vivo = (tipo, texto) => { maestro.anotar(dir, { tipo, texto }); fs.appendFileSync(path.join(dir, LOG_AMB), `[${new Date().toLocaleTimeString('pt-BR')}] ${texto}\n`); };
+  const vivo = (tipo, texto) => { aoVivo.anotar(dir, { tipo, texto }); fs.appendFileSync(path.join(dir, LOG_AMB), `[${new Date().toLocaleTimeString('pt-BR')}] ${texto}\n`); };
   fs.writeFileSync(path.join(dir, LOG_AMB), `Ambiente pelos Comandos das Configurações · ${new Date().toISOString()}\n\n`);
   const lista = d.comandos?.lista() || [], achou = papeisDe(lista);
   vivo('acao', lista.length ? `Comandos nas Configurações: ${lista.map((b) => b.nome).join(', ')}` : 'Nenhum comando cadastrado em Configurações → Comandos');
@@ -388,7 +390,7 @@ const pausado = (dir) => estado(dir).execucao === 'pausado';
 async function executar(dir, d) {
   if (rodando(dir)) return;
   ativos.add(dir); mudar(dir, { execucao: 'rodando', host: process.pid }); d.aoMudar?.();
-  const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   try {
     if (estado(dir).fase !== 'plano_aprovado') return vivo('aviso', 'Aprove o planejamento antes de dar início');
     vivo('etapa', 'QA · 3. Execução');
@@ -450,7 +452,7 @@ const mudar = (dir, e) => gravarJson(path.join(dir, ESTADO), { ...estado(dir), .
 
 // ▶ do QA: acha o plano no Jira e versiona em Docs. Plano novo (ou mudado) espera a aprovação do humano; já aprovado, lista os cenários.
 async function verificarPlano(dir, chave, api) {
-  const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · 1. Planejamento');
   vivo('acao', `Lendo as subtarefas do ${chave} no Jira`);
   mudar(dir, { fase: 'procurando', erro: null, chave });
@@ -484,7 +486,7 @@ const mdDaVersao = (dir, v) => { const t = fs.readFileSync(path.join(dir, v.arqu
 function aprovar(dir) {
   const e = estado(dir), v = versaoAtual(dir);
   if (e.fase !== 'plano_encontrado' || !v) return false;
-  const vivo = (tipo, texto) => maestro.anotar(dir, { tipo, texto });
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const m = sincronizar(dir, mdDaVersao(dir, v), v.v);
   vivo('etapa', 'QA · 2. Cenários');
   vivo('fim', `Planejamento v${v.v} aprovado`);
@@ -509,7 +511,7 @@ const FERRAMENTAS_PLANO = ['Skill', 'Read', 'Glob', 'Grep', 'Bash(jq:*)', 'Bash(
     'getJiraIssueTypeMetaWithFields', 'createJiraIssue', 'editJiraIssue', 'addCommentToJiraIssue'].map((f) => `mcp__claude_ai_Atlassian__${f}`)];
 
 // Bloco do topo da seção Evidências no QA: cartão do planejamento + Ao vivo. Botões vão ao painel (data-painel, grupo.js).
-const CSS = `<style>${maestro.CSS_VIVO}
+const CSS = `<style>${aoVivo.CSS}
   .caixa-t { margin: 0 12px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); display: flex; gap: 6px; }
   .caixa-t span { margin-left: auto; text-transform: none; letter-spacing: 0; }
   .qa-card { margin: 10px 12px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); font-size: 12px; }
@@ -573,7 +575,7 @@ function html(dir, uri = () => '') {
   // Plano já aprovado: o cartão dele desce para baixo do Ao vivo (em cima ficam execução e ambiente).
   // O ambiente fica só no rodapé do painel (status, log ao vivo e a análise do Claude num modal).
   return CSS + (aprovado ? '' : card) + (aprovado ? execucaoHtml(dir, e, rodando) : '')
-    + maestro.caixaVivo(dir, rodando, 'qa') + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
+    + aoVivo.caixa(dir, rodando, 'qa') + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
 }
 function execucaoHtml(dir, e, rodando) {
   const r = cenarios(dir).cenarios.filter((c) => !c.arquivado), pend = fila({ cenarios: r }).length, feitos = r.filter((c) => RESULTADOS.includes(c.status)).length;

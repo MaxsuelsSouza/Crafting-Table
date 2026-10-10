@@ -1,3 +1,4 @@
+// @ts-check
 // Acesso SÓ LEITURA ao banco para o mapeamento do passo 3, pelo SQLcl (conexões salvas dele: a senha fica cifrada lá).
 // Usado pelo script bin/mapa-db (o Claude) e pela aba "Banco de dados" das Configurações (a extensão). Sem dependência de vscode.
 const fs = require('fs');

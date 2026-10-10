@@ -1,3 +1,4 @@
+// @ts-check
 const { CSS: MARCA, fontesCss } = require('./marca');
 const vscode = require('vscode');
 

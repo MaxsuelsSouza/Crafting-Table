@@ -1,3 +1,4 @@
+// @ts-check
 // SessionStart: entrega as regras do foco ao Claude (o texto vai para o contexto da sessão). Nunca bloqueia.
 const fs = require('fs');
 const path = require('path');

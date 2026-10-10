@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 const crypto = require('crypto');
 const path = require('path');
@@ -168,6 +169,11 @@ async function perguntar(atual = {}) {
   return { nome, comando, pasta: pasta[0].fsPath };
 }
 
+
+/** @typedef {{ id: string, nome: string, comando: string, pasta: string, rodando: boolean }} Botao */
+/** @typedef {{ html: () => string, lista: () => Botao[], alternar: (m: { id: string }) => any, acao: (m: any) => any, atualizar: () => void }} Api */
+// Ponte com o painel (Configurações → Comandos e rodapé do ticket); null enquanto a seção não está montada.
+exports.api = /** @type {Api | null} */ (null);
 exports.provider = (ctx) => {
   const botoes = () => ctx.globalState.get('botoes', []);
   const salvar = (l) => ctx.globalState.update('botoes', l);

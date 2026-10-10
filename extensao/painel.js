@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
@@ -10,6 +11,7 @@ const sessao = require('./sessao');
 const tickets = require('./tickets');
 const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./locais'); // onde cada coisa mora
 const maestro = require('./maestro');
+const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const mudancas = require('./mudancas');
 const banco = require('./plugins/mapa/lib/banco');
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -126,7 +128,7 @@ const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : 
 // Devolve [{ id, nome }] (vazio = ninguém) ou undefined se cancelou.
 function escolherMencoes(t, secrets) {
   return new Promise((resolve) => {
-    const qp = vscode.window.createQuickPick(), escolhidas = new Map();
+    const qp = /** @type {vscode.QuickPick<vscode.QuickPickItem & { fim?: boolean, p?: any }>} */ (vscode.window.createQuickPick()), escolhidas = new Map();
     qp.ignoreFocusOut = true; qp.matchOnDescription = true;
     qp.placeholder = 'Digite parte do nome ou do e-mail para buscar no Jira';
     let seq = 0, timer, fim = false;
@@ -177,7 +179,6 @@ function docsDoTicket(t) {
 // ── Telas ──
 const IC = {
   voltar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>',
-  play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 2.8v10.4L13 8z"/></svg>',
   pausa: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>',
   claude: '<svg viewBox="0 0 24 24" style="fill:var(--accent)"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>',
   jira: '<svg viewBox="0 0 24 24" fill="none" style="stroke:var(--accent-soft)" stroke-width="1.8"><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4z"/></svg>',
@@ -297,7 +298,7 @@ function pillRefino(t) {
   return `<span class="ct-pill ct-refino ${modo === 'pausado' ? 'ct-pausada' : ''}" title="${dica}"><span class="ct-bola"></span>${texto}</span>`;
 }
 
-function cabecalho(t, { aba, secao, dentro }) {
+function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
   const abas = abasDe(t), refino = !semTicket && naRaiz();
@@ -305,10 +306,10 @@ function cabecalho(t, { aba, secao, dentro }) {
   const pendT = semTicket ? 0 : tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length;
   const rot = (id, nome) => (id === 'duvidas' && pend ? `${nome} <span class="ct-badge" title="${pend} dúvida(s) em aberto: a spec só avança quando todas forem respondidas">${pend}</span>`
     : id === 'tarefas' && pendT ? `${nome} <span class="ct-badge" title="${pendT} tarefa(s) esperando sua decisão">${pendT}</span>` : nome);
-  const abaBtn = ([id, nome]) => (dentro
+  const abaBtn = (/** @type {string[]} */ [id, nome]) => (dentro
     ? `<button data-acao="aba" data-id="${id}" class="${secao === PRINCIPAL && aba === id ? 'is-on' : ''}">${rot(id, nome)}</button>`
     : `<button data-secao="${PRINCIPAL}" data-aba="${id}">${rot(id, nome)}</button>`);
-  const secaoBtn = ([id, nome]) => `<button data-secao="${id}" class="${secao === id ? 'is-on' : ''}">${nome}</button>`;
+  const secaoBtn = (/** @type {string[]} */ [id, nome]) => `<button data-secao="${id}" class="${secao === id ? 'is-on' : ''}">${nome}</button>`;
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
@@ -339,9 +340,9 @@ const notifsDe = (dir) => {
   return linhas.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).reverse().slice(0, 50);
 };
 let cmdsAberto = false; // caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado)
-const rodape = (t, dentro) => {
+const rodape = (t, dentro = false) => {
   const dir = t && pastaAba(t.id);
-  const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || 0) || 0;
+  const l = notifsDe(dir), lidas = Date.parse((dir && lerTexto(path.join(dir, LIDAS))) || '') || 0;
   const nova = (n) => Date.parse(n.em) > lidas; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes
   const novas = l.filter(nova).length;
   const cmds = require('./comandos').api?.lista() || [], emus = require('./emulador').api?.lista() || [];
@@ -633,7 +634,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .meus-vazio.erro { color: var(--danger); }
   .meus-vazio .link { color: var(--accent); text-decoration: underline; }
   .nada-t { margin: 4px 12px; font-size: 12px; color: var(--text-dim); }
-  ${maestro.CSS_VIVO}
+  ${aoVivo.CSS}
   .duvida { padding: 4px 0 10px 12px; }
   .duvida .dlinha { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; }
   .duvida .dtexto { margin: 4px 0; font-size: 12.5px; line-height: 1.5; }
@@ -1013,7 +1014,7 @@ function corpoAba(t, aba, d) {
     <div class="caixa-t">Notas</div>
     <div class="notas-caixa">${notas.corpoNotas(semTicket ? 'Notas desta conversa…' : 'Notas do ticket…')}</div>`;
   }
-  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${maestro.caixaVivo(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
+  if (aba === 'spec') return `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${caixaDecisao(d.impactos)}${caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
@@ -1152,12 +1153,8 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     mostrar();
   }
 
-  // Ao vivo: mais recente em cima. A página é redesenhada a cada linha nova: a caixa e o corpo voltam para onde estavam.
-  const av = document.getElementById('aoVivo');
-  if (av) {
-    av.scrollTop = (vscode.getState() || {}).vivo || 0;
-    av.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), vivo: av.scrollTop }));
-  }
+  // A página é redesenhada a cada linha nova do Ao vivo: a caixa e o corpo voltam para onde estavam.
+  ${aoVivo.script('vivo')}
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;
@@ -1379,7 +1376,7 @@ exports.provider = (ctx) => {
     render();
   };
   const baixando = new Set(); // ids de anexos sendo baixados
-  let avisarMoldura = () => {}, pedirSecao = () => {};
+  let avisarMoldura = () => {}, pedirSecao = (/** @type {string} */ _secao) => {};
   for (const m of ['comandos', 'emulador']) require('./' + m).aoMudar(() => ((cfgAberta && cfgAba === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
@@ -1691,7 +1688,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
       comandos: {
         lista: () => require('./comandos').api?.lista() || [],
-        rodar: (nome) => { const api = require('./comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api.alternar({ id: b.id }); }
+        rodar: (nome) => { const api = require('./comandos').api, b = api?.lista().find((x) => x.nome === nome); if (b && !b.rodando) api?.alternar({ id: b.id }); }
       },
       emulador: { avd: cfg().get('avdPadrao'), aparelhos: () => emu.dispositivos(), ligar: () => emu.ligar(cfg().get('avdPadrao')) },
       adb: path.join(emu.SDK, 'platform-tools', 'adb'),
@@ -1743,6 +1740,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
         await ctx.secrets.delete('jira.email'); await ctx.secrets.delete('jira.token');
         if (await jira.credenciais(ctx.secrets)) checar(['jira', 'board']);
       } else if (id === 'jiraBoard') {
+        /** @type {{ id: number, nome: string, tipo: string }[]} */
         let lista;
         try { lista = await jira.boards(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os boards: ${e.message}`); }
         if (!lista.length) return vscode.window.showWarningMessage(`O projeto ${proj} não tem boards visíveis para você.`);
@@ -1894,7 +1892,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       render();
     },
     async meusMostrar() { await ctx.globalState.update('meusOcultos', []); render(); },
-    abrir({ id, key }) {
+    abrir(/** @type {{ id: string, key?: string }} */ { id, key }) {
       if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(`${t.site}/browse/${key}`)); } // subtarefa
       aberto = id;
       aba = 'docs';
@@ -2026,7 +2024,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
     vivoExpandir({ id }) {
       const t = ticketAberto();
       if (!t || !['qa', 'spec'].includes(id)) return;
-      maestro.alternarExpandido(id === 'qa' ? pastaAba(t.id) : pasta(t.chave));
+      aoVivo.alternarExpandido(id === 'qa' ? pastaAba(t.id) : pasta(t.chave));
       render();
     },
     // Modal do erro do ambiente: a análise do Claude (ou o erro cru, se ainda não houver análise), com log ao vivo e reanálise.
@@ -2046,7 +2044,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       const t = ticketAberto();
       if (!t) return;
       const qa = require('./qa'), dir = pastaAba(t.id), a = qa.ambiente(dir), cmds = require('./comandos').api;
-      for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds.acao({ acao: 'mostrar', id: b.id }); }
+      for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds?.acao({ acao: 'mostrar', id: b.id }); }
       const nome = `QA ${t.chave} · log do ambiente`;
       const term = vscode.window.terminals.find((x) => x.name === nome)
         || vscode.window.createTerminal({ name: nome, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', path.join(dir, qa.LOG_AMB)] });
@@ -2091,8 +2089,8 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       try {
         await jira.comentar(ctx.secrets, { key: sub, site: t.site }, md);
         if (arqs.length) await jira.anexar(ctx.secrets, t.site, sub, arqs.map(([id, f]) => ({ arquivo: f, nome: `${id}-${path.basename(f)}` })));
-        maestro.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
-      } catch (e) { maestro.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no Jira: ${e.message}` }); }
+        aoVivo.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
+      } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no Jira: ${e.message}` }); }
       render();
     },
     qaMassaEstado({ id, op }) { const t = ticketAberto(); try { if (t && typeof id === 'string') require('./qa').massaEstado(pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } render(); },

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @ts-check
 // Migra para ~/.claude/tickets/<CHAVE>/ o que hoje está preso à conversa:
 //   - refinamentos (~/.claude/refinamentos/<id>/meta.json com link do Jira): notas, TODO, handoffs, aprovados, spec
 //   - conversas com ticket (~/.claude/documentos/<sid>/.tickets.json): documentos, notas, evidências, decisões
@@ -11,7 +12,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-if (process.argv.includes('--teste')) return teste();
+if (process.argv.includes('--teste')) { teste(); process.exit(0); }
 
 const tickets = require('../tickets');
 const CLAUDE = path.join(os.homedir(), '.claude');
@@ -130,7 +131,7 @@ function teste() {
   assert.ok(!fs.existsSync(`${c}/tickets`), 'simulação não grava');
   rodar('--aplicar');
   const t = `${c}/tickets/WMS-1`;
-  const meta = JSON.parse(fs.readFileSync(`${t}/.ticket.json`));
+  const meta = JSON.parse(fs.readFileSync(`${t}/.ticket.json`, 'utf8'));
   assert.deepStrictEqual(meta.conversas.sort(), ['s1', 's2']);
   assert.strictEqual(meta.titulo, 'Título');
   assert.deepStrictEqual(meta.spec, { repo: '/w', dir: 'specs/001' });

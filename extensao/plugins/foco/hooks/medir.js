@@ -1,3 +1,4 @@
+// @ts-check
 // PostToolUse (Write/Edit): mede o .md/.txt que o Claude acabou de gravar e, se passou dos limites, devolve
 // (código 2 → o Claude lê) o que enxugar, com exemplos. Limites em ../limites.json. No máximo N avisos por
 // arquivo por sessão, para não virar laço. Qualquer erro sai em silêncio (nunca atrapalha a gravação).

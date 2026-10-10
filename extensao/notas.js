@@ -1,3 +1,4 @@
+// @ts-check
 const { FC } = require('./marca');
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 

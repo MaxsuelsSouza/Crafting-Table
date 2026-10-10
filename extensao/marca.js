@@ -1,3 +1,4 @@
+// @ts-check
 // Paleta da marca Ferreira Costa (tema escuro), a mesma do plugin fcx-common-apresentacoes
 // (skills/fc-deck-engine/assets/fc-tokens.json → "tema_escuro"). FONTE ÚNICA de cor da extensão:
 // nenhuma tela escreve hex; todas usam as variáveis abaixo. Para mudar uma cor, mude só aqui.

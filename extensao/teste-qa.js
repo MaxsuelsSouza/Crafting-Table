@@ -1,3 +1,4 @@
+// @ts-check
 // node teste-qa.js
 const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
@@ -54,7 +55,7 @@ assert.ok(!qa.refazer(d3, 'CT02')); // arquivado não volta
 assert.ok(!qa.html(d3).includes('Cenários · plano')); // sem aprovação, a lista não aparece
 
 // Ao vivo: mais recente em cima, agrupado por etapa (título no topo do bloco).
-const { recentesPrimeiro } = require('./maestro')._teste;
+const { recentesPrimeiro } = require('./componentes/ao-vivo')._teste;
 const vivoL = [{ tipo: 'etapa', texto: 'E1' }, { tipo: 'acao', texto: 'a1' }, { tipo: 'acao', texto: 'a2' }, { tipo: 'etapa', texto: 'E2' }, { tipo: 'fim', texto: 'b1' }];
 assert.strictEqual(recentesPrimeiro(vivoL).map((x) => x.texto).join(','), 'E2,b1,E1,a2,a1');
 assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao', texto: 'y' }]).map((x) => x.texto).join(','), 'y,x');
@@ -207,19 +208,19 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), '999999');
   assert.ok(!mae.vivo(999999));
   // Ao vivo: rajada de linhas sai uma a cada meio segundo.
-  const d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
-  ['a', 'b', 'c'].forEach((texto) => mae.anotar(d9, { tipo: 'acao', texto }));
+  const viv = require('./componentes/ao-vivo'), d9 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
+  ['a', 'b', 'c'].forEach((texto) => viv.anotar(d9, { tipo: 'acao', texto }));
   await new Promise((r) => setTimeout(r, 100));
-  assert.strictEqual(mae.aoVivo(d9).length, 1);
+  assert.strictEqual(viv.linhas(d9).length, 1);
   await new Promise((r) => setTimeout(r, 1000));
-  assert.deepStrictEqual(mae.aoVivo(d9).map((x) => x.texto), ['a', 'b', 'c']);
+  assert.deepStrictEqual(viv.linhas(d9).map((x) => x.texto), ['a', 'b', 'c']);
   // Ao vivo: Ver tudo mostra o log inteiro (do primeiro ao mais recente); Recolher volta às últimas 40.
   for (let i = 0; i < 45; i++) fs.appendFileSync(path.join(d9, '.ao-vivo.jsonl'), JSON.stringify({ em: new Date().toISOString(), tipo: 'acao', texto: `linha ${i}` }) + '\n');
-  assert.ok(mae.caixaVivo(d9, false, 'qa').includes('Ver tudo (48)') && !mae.caixaVivo(d9, false, 'qa').includes('>a<'));
-  mae.alternarExpandido(d9);
-  const tudo = mae.caixaVivo(d9, false, 'qa');
+  assert.ok(viv.caixa(d9, false, 'qa').includes('Ver tudo (48)') && !viv.caixa(d9, false, 'qa').includes('>a<'));
+  viv.alternarExpandido(d9);
+  const tudo = viv.caixa(d9, false, 'qa');
   assert.ok(tudo.includes('Recolher') && tudo.includes('>a<') && tudo.includes('linha 44') && tudo.includes('expandido'));
-  mae.alternarExpandido(d9);
-  assert.ok(!mae.expandido(d9));
+  viv.alternarExpandido(d9);
+  assert.ok(!viv.expandido(d9));
   console.log('ok execução');
 })();

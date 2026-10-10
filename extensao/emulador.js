@@ -1,3 +1,4 @@
+// @ts-check
 const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
@@ -20,7 +21,7 @@ function controller() {
     const grpc = require('@grpc/grpc-js');
     const loader = require('@grpc/proto-loader');
     const def = loader.loadSync(path.join(SDK, 'emulator', 'lib', 'emulator_controller.proto'), { keepCase: true, longs: Number, enums: String, defaults: true });
-    Controller = grpc.loadPackageDefinition(def).android.emulation.control.EmulatorController;
+    Controller = /** @type {any} */ (grpc.loadPackageDefinition(def)).android.emulation.control.EmulatorController;
   }
   return Controller;
 }
