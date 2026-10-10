@@ -9,7 +9,11 @@ const jira = require('./ticket').jira;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const sessao = require('./sessao');
 const tickets = require('./tickets');
-const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar } = require('./refinamento/locais'); // onde cada coisa mora
+const { HANDOFF, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar, ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida } = require('./refinamento/locais'); // onde cada coisa mora
+const { IC } = require('./componentes/icones');
+const { markdown } = require('./componentes/markdown');
+const { quando, iniciais } = require('./componentes/formato');
+const { NOTIF, LIDAS, ICONE_NOTIF, notificar, notifsDe } = require('./notificacoes'); // sino do ticket
 const maestro = require('./maestro');
 const aoVivo = require('./componentes/ao-vivo'); // caixa "Ao vivo" (aba Spec e Evidências do QA)
 const menuAbas = require('./componentes/menu-abas'); // barra de abas do cabeçalho do ticket
@@ -45,8 +49,6 @@ const pastaAba = (id) => {
 };
 const naRaiz = () => sessao.focoLista() === tickets.REFINAMENTO; // ticket aberto no módulo Refinamento
 const idAba = (id) => (id === SEM_TICKET || naRaiz() ? id : `${id}/${sessao.focoLista()}`);
-const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
-const lerTexto = (arq) => { try { return fs.readFileSync(arq, 'utf8'); } catch { return null; } };
 const gravar = (id, nome, dado) => {
   const dir = pastaDe(id);
   if (!dir) return;
@@ -55,9 +57,6 @@ const gravar = (id, nome, dado) => {
 };
 // Análise por camada (cards Backend/Mobile da aba Análise): o mapeamento do passo 3 mora na PASTA DA SPEC (versionado, viaja
 // com a spec para quem for implementar). Fora de ~/.claude de propósito: o Claude Code bloqueia a escrita ali ("arquivo sensível").
-const NOTAS = '.notas.html';
-const ORIGEM = '.origem.json'; // { "arquivo.pdf": { origem: 'jira', id: '123' } }: documentos que vieram de fora
-const TAREFAS = '.tarefas.json'; // cards das tarefas do passo 4 (sdd-state card); aprovar/reprovar é daqui
 // O ticket com id = chave: as funções da spec (vindas do refinamento) usam r.id para achar a pasta.
 const ticketDe = (chave) => { const t = tickets.ler(chave); return t && { ...t, id: chave }; };
 const comSpec = (t) => t && { ...t, specPronta: !!(t.spec?.dir && estadoSpec(t)) }; // estadoSpec vem mais abaixo
@@ -68,43 +67,6 @@ const estadoSpec = (r) => (dirSpec(r) ? ler(path.join(dirSpec(r), 'sdd-state.jso
 const STATUS = { pendente: 'Pendente', em_andamento: 'Claude trabalhando', aguardando_revisao: 'Aguardando sua revisão', aprovado: 'Aprovado', desatualizado: 'Desatualizado' };
 
 
-// Markdown simples para os handoffs (títulos, listas, código, negrito, código inline).
-function markdown(md) {
-  const linhas = esc(md).split('\n');
-  let html = '', lista = false, codigo = false;
-  const inline = (t) => t.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
-  const celulas = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => inline(c.trim()));
-  for (let i = 0; i < linhas.length; i++) {
-    const l = linhas[i];
-    if (l.startsWith('```')) { html += codigo ? '</pre>' : '<pre>'; codigo = !codigo; continue; }
-    if (codigo) { html += l + '\n'; continue; }
-    // Tabela: | a | b | seguida de |---|---|
-    if (/^\s*\|/.test(l) && /^\s*\|?\s*:?-{2,}/.test(linhas[i + 1] || '')) {
-      if (lista) { html += '</ul>'; lista = false; }
-      html += `<table><tr>${celulas(l).map((c) => `<th>${c}</th>`).join('')}</tr>`;
-      for (i += 2; i < linhas.length && /^\s*\|/.test(linhas[i]); i++) html += `<tr>${celulas(linhas[i]).map((c) => `<td>${c}</td>`).join('')}</tr>`;
-      html += '</table>';
-      i--;
-      continue;
-    }
-    const item = l.match(/^\s*[-*] (.*)/) || l.match(/^\s*\d+\. (.*)/);
-    if (item && !lista) { html += '<ul>'; lista = true; }
-    if (!item && lista) { html += '</ul>'; lista = false; }
-    const h = l.match(/^(#{1,4}) (.*)/);
-    if (h) html += `<h${h[1].length + 2}>${inline(h[2])}</h${h[1].length + 2}>`;
-    else if (item) html += `<li>${inline(item[1])}</li>`;
-    else if (l.trim()) html += `<p>${inline(l)}</p>`;
-  }
-  return html + (lista ? '</ul>' : '') + (codigo ? '</pre>' : '');
-}
-
-const quando = (iso) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-const decisoesDe = (dir) => {
-  const l = dir ? ler(path.join(dir, '.decisoes.json'), []) : [];
-  return Array.isArray(l) ? l.slice().sort((a, b) => String(b.data).localeCompare(String(a.data))) : [];
-};
-const DUVIDAS = '.duvidas.json'; // gravado pelo `sdd-state duvida add` (opção "Tirar dúvida" nas perguntas do Claude)
-const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : []; return Array.isArray(l) ? l : []; };
 // Busca pessoas no Jira enquanto digita; Enter numa pessoa a menciona (Enter de novo remove), "Concluir" segue.
 // Devolve [{ id, nome }] (vazio = ninguém) ou undefined se cancelou.
 function escolherMencoes(t, secrets) {
@@ -142,10 +104,6 @@ function escolherMencoes(t, secrets) {
     titulo(); inicio(); qp.show();
   });
 }
-const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.contexto ? `\nContexto: ${x.contexto}` : ''}`;
-const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l : []; };
-const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
-const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 const docsDe = (dir) => (dir ? require('./documentos')._teste.listar(dir) : []);
 // Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
 // Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
@@ -158,18 +116,6 @@ function docsDoTicket(t) {
 }
 
 // ── Telas ──
-const IC = {
-  voltar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L5 8l5 5"/></svg>',
-  pausa: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>',
-  claude: '<svg viewBox="0 0 24 24" style="fill:var(--accent)"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>',
-  jira: '<svg viewBox="0 0 24 24" fill="none" style="stroke:var(--accent-soft)" stroke-width="1.8"><path d="M3 8a2 2 0 002-2h14a2 2 0 002 2v2a2 2 0 000 4v2a2 2 0 00-2 2H5a2 2 0 00-2-2v-2a2 2 0 000-4z"/></svg>',
-  atualizar: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8a5 5 0 11-1.5-3.6M13 2.5v2.8h-2.8"/></svg>',
-  play: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3l8 5-8 5z"/></svg>',
-  parar: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="8" height="8" rx="1"/></svg>',
-  sino: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 11V7a4 4 0 018 0v4l1 1H3z"/><path d="M6.5 13.5a1.5 1.5 0 003 0"/></svg>',
-  grade: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>',
-  engrenagem: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7L3.4 3.4"/></svg>'
-};
 
 // Abas do menu do ticket em cada lista (componentes/menu-abas.js): { id, nome } = aba desta página, { secao, nome } = outra seção.
 // Evidências é só do QA, logo depois de Docs.
@@ -293,16 +239,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   </header>`;
 }
 
-// Notificações: .notificacoes.jsonl da pasta (hook notificacoes.py e sdd-state); lidas = mais antigas que .notificacoes.lidas.
-// Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
-const NOTIF = '.notificacoes.jsonl', LIDAS = '.notificacoes.lidas';
-const ICONE_NOTIF = { fim: '✓', permissao: '⚠', sdd: '◆', duvida: '?', aviso: '•', jira: '◇', mudanca: '⚠' };
-// Grava uma linha no 🔔 do ticket (o encaminhador do Teams lê as mesmas linhas).
-const notificar = (chave, tipo, texto) => { try { fs.appendFileSync(path.join(pasta(chave), NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo, texto }) + '\n'); } catch {} };
-const notifsDe = (dir) => {
-  const linhas = (dir && lerTexto(path.join(dir, NOTIF))) || '';
-  return linhas.split('\n').flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).reverse().slice(0, 50);
-};
+// Notificações (notificacoes.js). Abrir o 🔔 marca como lidas (o contador some pelo CSS na hora e no próximo desenho pelo arquivo).
 let cmdsAberto = false; // caixa Comandos do rodapé aberta (a tela se redesenha a cada terminal aberto/fechado)
 const rodape = (t, dentro = false) => {
   const dir = t && pastaAba(t.id);
@@ -664,7 +601,6 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
 // alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
 const STATUS_T = { pendente: 'Pendente', em_alteracao: 'Claude alterando', aprovada: 'Aprovada', reprovada: 'Reprovada' };
 const COLUNAS_T = [['Pendentes', ['pendente', 'em_alteracao']], ['Aprovadas', ['aprovada']], ['Reprovadas', ['reprovada']]];
-const iniciais = () => (os.userInfo().username.split(/[._-]/).map((x) => x[0]).join('').slice(0, 2) || 'EU').toUpperCase();
 function telaTarefas(t, l, impactos = []) {
   const atencao = mudancas.cardsAfetados(impactos);
   if (!l.length) return `<div class="folha"><div class="vazio-aba">Nenhuma tarefa ainda.<br>No passo 4 da spec o Claude cria as tarefas e elas aparecem aqui como cards,
