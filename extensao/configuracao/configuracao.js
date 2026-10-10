@@ -3,14 +3,14 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { esc } = require('./ticket')._teste;
-const jira = require('./ticket').jira;
-const tickets = require('./tickets');
-const maestro = require('./maestro');
-const banco = require('./plugins/mapa/lib/banco');
-const { botao } = require('./componentes/botao');
-const menuAbas = require('./componentes/menu-abas');
-const cardConfig = require('./componentes/card-config');
+const { esc } = require('../ticket')._teste;
+const jira = require('../ticket').jira;
+const tickets = require('../tickets');
+const maestro = require('../maestro');
+const banco = require('../plugins/mapa/lib/banco');
+const { botao } = require('../componentes/botao');
+const menuAbas = require('../componentes/menu-abas');
+const cardConfig = require('./card-config');
 const { card, cardTeste, selo, linha, dica, acoes } = cardConfig;
 
 // Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre e um card por seção), com os cliques e os testes de cada seção.
@@ -33,7 +33,7 @@ function pluginInstalado(prefixo) {
   return info?.installPath || null;
 }
 // Plugins e skills que a extensão usa. "local" = mora na extensão e só o maestro carrega (--plugin-dir); os demais vêm do Claude Code.
-const MAPA_DIR = path.join(__dirname, 'plugins', 'mapa'), FOCO_DIR = path.join(__dirname, 'plugins', 'foco');
+const MAPA_DIR = path.join(__dirname, '..', 'plugins', 'mapa'), FOCO_DIR = path.join(__dirname, '..', 'plugins', 'foco');
 const USADOS = [
   { id: 'sdd@crafting-local', skills: ['sdd:sdd', 'sdd:iniciar', 'sdd:continuar'], uso: 'Spec: passos 0–6, sdd-state, hooks de guarda' },
   { id: 'mapa', local: MAPA_DIR, skills: ['mapa:mapear'], uso: 'Mapeamento do código e banco (passo 3)' },
@@ -62,7 +62,7 @@ const reposAuto = (specs) => [['backend', 'novo-wms-backend'], ['mobile', 'wms-m
   .map(([camada, n]) => ({ caminho: path.join(path.dirname(specs), n), camada })).filter((r) => fs.existsSync(r.caminho));
 const salvarCfg = (k, v) => cfg().update(k, v, vscode.ConfigurationTarget.Global);
 const exec = (cmd, args, opts = {}) => new Promise((ok) => require('child_process').execFile(cmd, args, { timeout: 20000, ...opts }, (e, out, err) => ok({ ok: !e, out: String(out || '').trim(), err: String(err || e?.message || '').trim() })));
-const REPO = path.resolve(fs.realpathSync(__dirname), '..');
+const REPO = path.resolve(fs.realpathSync(__dirname), '..', '..');
 let avisoInstalacao = null; // { motivos: string[] } | null: o instalar.sh precisa rodar de novo (preenchido por conferirInstalacao)
 const aviso = () => avisoInstalacao;
 
@@ -118,7 +118,7 @@ const plugins = (v) => [
 ].join('\n');
 
 // Cofre e Comandos (+ Emuladores) são telas de outros módulos: o clique volta com o prefixo do dono (cofre:, comandos:, emulador:).
-const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('./' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
+const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('../' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
 
 const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
@@ -243,8 +243,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   const acoes = {
     cfgAba({ id }) {
       cfgAba = ['cofre', 'comandos', 'plugins'].includes(id) ? id : 'geral';
-      require('./cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
-      if (cfgAba === 'comandos') { require('./comandos').api?.atualizar(); require('./emulador').api?.atualizar(); }
+      require('../cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
+      if (cfgAba === 'comandos') { require('../comandos').api?.atualizar(); require('../emulador').api?.atualizar(); }
       render();
     },
     atualizarExtensao() {
@@ -348,7 +348,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         'A URL é uma senha: quem tiver consegue postar no chat. Vazou? Apague o fluxo e crie outro.'
       ].join('\n') }, ABRIR, TESTAR);
       if (r === ABRIR) acoes.cfgTeamsAbrir();
-      else if (r === TESTAR) { await require('./teams').testar(ctx); checar(['teams']); }
+      else if (r === TESTAR) { await require('../teams').testar(ctx); checar(['teams']); }
     },
     cfgTeamsAbrir() { vscode.env.openExternal(vscode.Uri.parse('https://make.powerautomate.com/manage/flows')); },
     async cfgBancoLimpar() { await salvarCfg('bancoConexao', ''); await salvarCfg('bancoAmbiente', ''); checar(['banco']); },
@@ -403,7 +403,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('./package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado,
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado,
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };

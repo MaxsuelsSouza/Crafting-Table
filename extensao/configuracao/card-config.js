@@ -1,9 +1,9 @@
 // @ts-check
 const { esc } = require('../ticket')._teste;
-const { botao } = require('./botao');
+const { botao } = require('../componentes/botao');
 
 // Componente "Card de configuração": a caixa de cada seção das Configurações (Instalação, Agente de IA, Jira, Board, Repositórios,
-// Banco, Teams, Plugins, Extensão). Usado só por configuracao.js. Para usar: CSS no <style> e card(...) no corpo;
+// Banco, Teams, Plugins, Extensão). Usado só por configuracao.js (mesma pasta). Para usar: CSS no <style> e card(...) no corpo;
 // sem script (os botões mandam data-acao: cfgEditar, cfgTestar… em painel.js). Redesenhe com a tela.
 //   card({ titulo, selo?, acao?, msg?, corpo }): selo = a etiqueta de estado ao lado do título · acao = botão à direita do título
 //   cardTeste(id, titulo, estado, corpo): card com o estado do teste (✅ ok / ⚠ motivo / testando…) e o botão Testar
