@@ -174,8 +174,19 @@ async function api(secrets, site, rota, opcoes = {}) {
 }
 
 // Comentário no ticket.
-async function comentar(secrets, { key, site }, texto) {
-  return api(secrets, site, `issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body: mdParaAdf(texto) }) });
+// mencoes: [{ id, nome }] viram menções reais (notificam) numa linha no começo do comentário.
+async function comentar(secrets, { key, site }, texto, mencoes = []) {
+  const body = mdParaAdf(texto);
+  if (mencoes.length) body.content.unshift({ type: 'paragraph', content: mencoes.flatMap((m) => [{ type: 'mention', attrs: { id: m.id, text: `@${m.nome}` } }, { type: 'text', text: ' ' }]) });
+  return api(secrets, site, `issue/${key}/comment`, { method: 'POST', body: JSON.stringify({ body }) });
+}
+
+// Pessoas que podem ser mencionadas no ticket: [{ id, nome }].
+async function pessoas(secrets, { key, site }, busca) {
+  const q = encodeURIComponent(busca || '');
+  let r = await api(secrets, site, `user/assignable/search?issueKey=${key}&maxResults=20&query=${q}`);
+  if (!r.length && busca) r = await api(secrets, site, `user/search?maxResults=20&query=${q}`); // quem não é atribuível ainda pode ser mencionado
+  return r.filter((u) => (u.accountType || 'atlassian') === 'atlassian' && u.active !== false).map((u) => ({ id: u.accountId, nome: u.displayName }));
 }
 
 // ADF → texto simples (parágrafos e itens em linhas próprias), para o Claude ler o comentário.
@@ -332,5 +343,5 @@ const folhaTicket = (t) => `
     </details>
   </div>`;
 
-exports.jira = { lerLink, buscar, comentar, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
+exports.jira = { lerLink, buscar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
 exports._teste = { lerLink, esc, mdParaAdf, adfTexto };

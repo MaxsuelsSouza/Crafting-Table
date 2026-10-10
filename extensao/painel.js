@@ -112,6 +112,43 @@ const decisoesDe = (dir) => {
 };
 const DUVIDAS = '.duvidas.json'; // gravado pelo `sdd-state duvida add` (opção "Tirar dúvida" nas perguntas do Claude)
 const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : []; return Array.isArray(l) ? l : []; };
+// Busca pessoas no Jira enquanto digita; Enter numa pessoa a menciona (Enter de novo remove), "Concluir" segue.
+// Devolve [{ id, nome }] (vazio = ninguém) ou undefined se cancelou.
+function escolherMencoes(t, secrets) {
+  return new Promise((resolve) => {
+    const qp = vscode.window.createQuickPick(), escolhidas = new Map();
+    qp.ignoreFocusOut = true; qp.matchOnDescription = true;
+    qp.placeholder = 'Digite parte do nome ou do e-mail para buscar no Jira';
+    let seq = 0, timer, fim = false;
+    const titulo = () => { const ja = [...escolhidas.values()].map((p) => '@' + p.nome).join(', '); qp.title = ja ? `Mencionando: ${ja}` : `Mencionar alguém no comentário do ${t.chave}?`; };
+    const concluir = () => ({ label: escolhidas.size ? '$(check) Concluir menções' : '$(check) Enviar sem menção', alwaysShow: true, fim: true });
+    const pessoa = (p) => ({ label: p.nome, description: escolhidas.has(p.id) ? 'mencionada · Enter remove' : '', alwaysShow: true, p });
+    const inicio = () => { qp.busy = false; qp.items = [concluir(), ...[...escolhidas.values()].map(pessoa)]; };
+    qp.onDidChangeValue((v) => {
+      clearTimeout(timer);
+      const n = ++seq;
+      if (!v.trim()) return inicio();
+      qp.busy = true;
+      timer = setTimeout(async () => {
+        let itens;
+        try { const achadas = await jira.pessoas(secrets, { key: t.chave, site: t.site }, v.trim()); itens = achadas.length ? achadas.map(pessoa) : [{ label: `Ninguém encontrado para "${v}"`, alwaysShow: true }]; }
+        catch (e) { itens = [{ label: `$(error) ${e.message}`, alwaysShow: true }]; }
+        if (n !== seq) return;
+        qp.busy = false; qp.items = itens;
+      }, 300);
+    });
+    qp.onDidAccept(() => {
+      const i = qp.activeItems[0];
+      if (!i) return;
+      if (i.fim) { fim = true; resolve([...escolhidas.values()]); return qp.hide(); }
+      if (!i.p) return;
+      if (escolhidas.has(i.p.id)) escolhidas.delete(i.p.id); else escolhidas.set(i.p.id, i.p);
+      titulo(); qp.value = ''; inicio();
+    });
+    qp.onDidHide(() => { clearTimeout(timer); qp.dispose(); if (!fim) resolve(undefined); });
+    titulo(); inicio(); qp.show();
+  });
+}
 const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.contexto ? `\nContexto: ${x.contexto}` : ''}`;
 const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l : []; };
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
@@ -1829,9 +1866,11 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
       const l = t ? duvidasDe(pasta(t.chave)) : [];
       const x = l.find((y) => y.id === id);
       if (!x || x.enviadaEm) return;
-      const ok = await vscode.window.showWarningMessage(`Comentar no ${t.chave}?`, { modal: true, detail: textoDuvida(x) }, 'Enviar');
+      const mencoes = await escolherMencoes(t, ctx.secrets);
+      if (!mencoes) return;
+      const ok = await vscode.window.showWarningMessage(`Comentar no ${t.chave}?`, { modal: true, detail: (mencoes.length ? `Menciona: ${mencoes.map((m) => '@' + m.nome).join(', ')}` : 'Sem menção a ninguém.') + '\n\n' + textoDuvida(x) }, 'Enviar');
       if (!ok) return;
-      try { await jira.comentar(ctx.secrets, { key: t.chave, site: t.site }, textoDuvida(x)); }
+      try { await jira.comentar(ctx.secrets, { key: t.chave, site: t.site }, textoDuvida(x), mencoes); }
       catch (e) { return vscode.window.showErrorMessage(e.message); }
       x.enviadaEm = new Date().toISOString();
       gravar(t.chave, DUVIDAS, l);
