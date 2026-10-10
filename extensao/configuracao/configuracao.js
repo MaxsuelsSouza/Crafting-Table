@@ -35,19 +35,20 @@ function pluginInstalado(prefixo) {
 // Plugins e skills que a extensão usa. "local" = mora na extensão e só o maestro carrega (--plugin-dir); os demais vêm do Claude Code.
 const MAPA_DIR = path.join(__dirname, '..', 'plugins', 'mapa'), FOCO_DIR = path.join(__dirname, '..', 'plugins', 'foco');
 const USADOS = [
-  { id: 'sdd@crafting-local', skills: ['sdd:sdd', 'sdd:iniciar', 'sdd:continuar'], uso: 'Spec: passos 0–6, sdd-state, hooks de guarda' },
-  { id: 'mapa', local: MAPA_DIR, skills: ['mapa:mapear'], uso: 'Mapeamento do código e banco (passo 3)' },
-  { id: 'foco', local: FOCO_DIR, skills: [], uso: 'Hooks: regras PT-BR e limite de tamanho dos .md' },
-  { id: 'fcx-qa-test-planning@fcxlabs', skills: ['jira-qa-planner', 'test-estimation'], uso: 'Método do passo 6 (plano de testes); lido, não invocado' },
+  { id: 'sdd@crafting-local', base: true, modulos: { refinamento: 'essencial' }, skills: ['sdd:sdd', 'sdd:iniciar', 'sdd:continuar'], uso: 'Spec: passos 0–6, sdd-state, hooks de guarda' },
+  { id: 'mapa', base: true, local: MAPA_DIR, modulos: { refinamento: 'essencial' }, skills: ['mapa:mapear'], uso: 'Mapeamento do código e banco (passo 3)' },
+  { id: 'foco', base: true, local: FOCO_DIR, modulos: { refinamento: 'usa' }, skills: [], uso: 'Hooks: regras PT-BR e limite de tamanho dos .md' },
+  { id: 'fcx-qa-test-planning@fcxlabs', auto: true, modulos: { qa: 'essencial', refinamento: 'usa' }, skills: ['jira-qa-planner', 'test-estimation'], uso: 'Método do passo 6 (plano de testes); lido, não invocado' },
+  { id: 'testes-funcionais', pasta: path.join(os.homedir(), '.claude', 'skills', 'testes-funcionais'), modulos: { qa: 'essencial' }, skills: ['testes-funcionais'], uso: 'Execução dos testes e preparo do ambiente (preparar-ambiente.py)' },
   { id: 'i-have-adhd@i-have-adhd', desliga: true, skills: [], uso: 'Desligado nas execuções do maestro (o foco o substitui)' },
 ];
-function listarPlugins() {
+function listarPlugins(nova = {}) {
   const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {});
   const lista = reg.plugins || reg;
   const ligados = ler(path.join(os.homedir(), '.claude', 'settings.json'), {}).enabledPlugins || {};
   return USADOS.map((u) => {
     const v = lista[u.id]; const info = Array.isArray(v) ? v[0] : v;
-    return { ...u, instalado: !!(u.local || info), versao: info?.version || '', ligado: u.local ? true : ligados[u.id] !== false };
+    return { ...u, instalado: !!(u.local || info || (u.pasta && fs.existsSync(u.pasta))), versao: info?.version || '', ligado: u.local ? true : ligados[u.id] !== false, atualizar: !!nova[u.id] };
   });
 }
 function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
@@ -108,10 +109,33 @@ const geral = (v) => {
   ].join('\n');
 };
 
+const MKT_FC = { nome: 'fcxlabs', url: 'https://gitlab.fcxlabs.com/ai-tools/marketplace-claude/-/raw/main/marketplace.json' };
+const MODULOS = [['refinamento', 'Refinamento'], ['implementacao', 'Implementação'], ['qa', 'QA']];
+const porModulo = (v) => MODULOS.map(([m, nome]) => {
+  const ps = (v.plugins || []).filter((p) => !p.base && p.modulos?.[m]);
+  return card({ titulo: nome, corpo: ps.length ? ps.map((p) => linha(esc(p.id.split('@')[0]) + bolinha(p),
+    `${p.modulos[m] === 'essencial' ? '<b>essencial</b>' : 'usado'} · ${esc(p.uso)}<br><span class="cfg-dim">${p.instalado ? 'ok' : '<b>não instalado</b>'}${p.auto ? ' · atualiza e instala pelo marketplace' : ''}</span>`, '', autoBtn(p, v), p.id)).join('')
+    : '<div class="cfg-dim">Nenhum plugin: este módulo não aciona o Claude.</div>' });
+}).join('\n');
+
+const autoBtn = (p, v) => (p.auto ? botao(v.pluginsAuto ? '⟳ Automático: ligado' : '⟳ Automático: desligado', { variante: 'contorno', acao: 'pluginAuto' }) : '');
+const bolinha = (p) => (p.atualizar ? ' <span class="cfg-bol" title="Atualização disponível no marketplace"></span>' : '');
+const lista = (ps, v) => ps.map((p) => linha(esc(p.id.split('@')[0]) + bolinha(p),
+  `${esc(p.uso)}<br><span class="cfg-dim">${p.local ? 'da extensão' : p.instalado ? `${esc(p.versao)} · ${p.ligado ? 'ligado' : 'desligado'}` : '<b>não instalado</b>'}${p.skills.length ? ` · skills: ${esc(p.skills.join(', '))}` : ''}</span>`, '',
+  autoBtn(p, v) + (p.atualizar ? botao('Atualizar', { acao: 'pluginAtualizar', id: p.id }) : '') + (p.local || p.pasta || !p.instalado ? '' : botao(p.ligado ? 'Desligar' : 'Ligar', { variante: 'contorno', acao: 'pluginAlternar', id: p.id })), p.id)).join('');
+
+const marketplace = (m = {}) => card({ titulo: 'Marketplace da Ferreira Costa', corpo: (m.conectado
+  ? linha('Status', `<span class="cfg-st cfg-ok">● conectado e ativo</span> <span class="cfg-dim">${esc(MKT_FC.nome)}</span>`, '', botao(m.checando ? 'Verificando…' : '↻ Recarregar', { variante: 'contorno', acao: 'mktRecarregar' }))
+    + dica('Recarregar busca o catálogo e confere se há versão nova dos plugins instalados. Plugin com <span class="cfg-bol"></span> tem atualização.')
+  : linha('Status', m.conectado === false ? '<span class="cfg-st cfg-mal">⚠ não conectado</span>' : '<span class="cfg-st cfg-esp">verificando…</span>', '',
+    m.conectado === false ? botao('Conectar ao marketplace', { acao: 'mktConectar' }) : ''))
+  + (m.erro ? `<div class="cfg-mal">${esc(m.erro)}</div>` : '') });
+
 const plugins = (v) => [
-  card({ titulo: 'Plugins e skills que a extensão usa', corpo: (v.plugins || []).map((p) => linha(esc(p.id.split('@')[0]),
-    `${esc(p.uso)}<br><span class="cfg-dim">${p.local ? 'da extensão' : p.instalado ? `${esc(p.versao)} · ${p.ligado ? 'ligado' : 'desligado'}` : '<b>não instalado</b>'}${p.skills.length ? ` · skills: ${esc(p.skills.join(', '))}` : ''}</span>`, '',
-    p.local || !p.instalado ? '' : botao(p.ligado ? 'Desligar' : 'Ligar', { variante: 'contorno', acao: 'pluginAlternar', id: p.id }), p.id)).join('')
+  marketplace(v.mkt),
+  porModulo(v),
+  card({ titulo: 'Essenciais da extensão', corpo: lista((v.plugins || []).filter((p) => p.base), v) }),
+  card({ titulo: 'Outros plugins e skills que a extensão usa', corpo: lista((v.plugins || []).filter((p) => !p.base), v)
     + dica('Vale para as próximas conversas; as já abertas só pegam ao reabrir.') }),
   card({ titulo: 'Extensão', corpo: dica('Encerra os refinamentos que o Claude está rodando em segundo plano. Nada é apagado; dá para retomar depois.')
     + botao('Encerrar processos da extensão', { variante: 'contorno', acao: 'matarExtensao' }) })
@@ -141,6 +165,41 @@ const CSS = `
 // Controle da tela: estado (aberta, aba, resultado dos testes) e os cliques. Um por painel.
 const criar = (ctx, { render, aoAbrir, voltar }) => {
   let cfgAberta = false, cfgEstado = {}, cfgAba = 'geral', aposPull = false;
+  // Marketplace FC: conectado? e, com o catálogo recarregado, o commit da origem de cada plugin instalado difere do instalado (git ls-remote, sem pedir senha)?
+  let mkt = { conectado: null, checando: false, nova: {}, erro: '' };
+  const envGit = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' };
+  const claude = (...a) => exec(maestro.claudeBin(), a, { timeout: 60000, env: envGit });
+  const json = (t) => { try { return JSON.parse(t); } catch { return null; } };
+  async function mktChecar(recarregar) {
+    mkt = { ...mkt, checando: true, erro: '' }; render();
+    const conectado = !!json((await claude('plugin', 'marketplace', 'list', '--json')).out)?.some((m) => m.name === MKT_FC.nome);
+    const nova = {}; let erro = '';
+    if (conectado) {
+      if (recarregar) { const u = await claude('plugin', 'marketplace', 'update', MKT_FC.nome); if (!u.ok) erro = u.err; }
+      const disp = json((await claude('plugin', 'list', '--available', '--json')).out)?.available || [];
+      const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {}); const inst = reg.plugins || reg;
+      await Promise.all(disp.filter((a) => a.marketplaceName === MKT_FC.nome && a.source?.url && inst[a.pluginId]).map(async (a) => {
+        const sha = inst[a.pluginId][0]?.gitCommitSha;
+        const r = await exec('git', ['ls-remote', a.source.url, a.source.ref || 'HEAD'], { timeout: 15000, env: envGit });
+        const novo = r.ok && r.out.split(/\s/)[0];
+        if (sha && novo && novo !== sha) nova[a.pluginId] = true;
+      }));
+    }
+    if (cfg().get('pluginsAuto') !== false) erro = (await mktAuto(conectado, nova)) || erro;
+    mkt = { conectado: conectado || mkt.conectado, checando: false, nova, erro }; render();
+  }
+  // Plugins "auto" (fcx-qa-test-planning): instala se faltar (conectando o marketplace antes, se preciso) e atualiza se a origem tem commit novo.
+  async function mktAuto(conectado, nova) {
+    for (const u of USADOS.filter((x) => x.auto)) {
+      const faltando = !listarPlugins().find((x) => x.id === u.id)?.instalado;
+      if (!faltando && !nova[u.id]) continue;
+      if (!conectado) { const a = await claude('plugin', 'marketplace', 'add', MKT_FC.url); if (!a.ok) return `Marketplace: ${a.err}`; conectado = true; }
+      const r = await claude('plugin', faltando ? 'install' : 'update', u.id);
+      if (!r.ok) return `${u.id}: ${r.err}`;
+      delete nova[u.id]; mkt.conectado = true;
+    }
+    return '';
+  }
   const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
     etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
@@ -244,6 +303,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     cfgAba({ id }) {
       cfgAba = ['cofre', 'comandos', 'plugins'].includes(id) ? id : 'geral';
       require('../modulos/cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
+      if (cfgAba === 'plugins' && !mkt.checando) mktChecar(false);
       if (cfgAba === 'comandos') { require('../modulos/comandos').api?.atualizar(); require('../modulos/emulador').api?.atualizar(); }
       render();
     },
@@ -251,6 +311,19 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       const t = vscode.window.createTerminal({ name: 'Atualizar Crafting Table', cwd: REPO });
       t.show();
       t.sendText(`${aposPull ? 'git pull --ff-only && ' : ''}./instalar.sh; echo; echo "Feche TODAS as janelas do VS Code e abra de novo. (Enter fecha este terminal)"; read; exit`);
+    },
+    async mktConectar() {
+      const r = await claude('plugin', 'marketplace', 'add', MKT_FC.url);
+      if (!r.ok) vscode.window.showErrorMessage(`Não consegui conectar ao marketplace: ${r.err}`);
+      mktChecar(true);
+    },
+    async pluginAuto() { await salvarCfg('pluginsAuto', cfg().get('pluginsAuto') === false); render(); if (cfg().get('pluginsAuto') !== false) mktChecar(false); },
+    mktRecarregar() { if (!mkt.checando) mktChecar(true); },
+    async pluginAtualizar({ id }) {
+      const r = await claude('plugin', 'update', id);
+      if (!r.ok) vscode.window.showErrorMessage(`Não consegui atualizar ${id}: ${r.err}`);
+      else vscode.window.showInformationMessage(`${id} atualizado. Reabra as conversas para usar a versão nova.`);
+      mktChecar(false);
     },
     async pluginAlternar({ id }) {
       const p = listarPlugins().find((x) => x.id === id);
@@ -403,7 +476,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins() : [], valores: valoresCfg(), estado: cfgEstado,
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado,
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };

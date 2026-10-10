@@ -30,6 +30,7 @@ const CSS = `
   .cfg-msg { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; white-space: pre-line; } .cfg-msg.mal { color: var(--warn); }
   .cfg-l { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--border); }
   .cfg-l > span { flex: none; width: 110px; color: var(--text-dim); } .cfg-l > div { flex: 1; min-width: 0; word-break: break-word; }
+  .cfg-bol { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--warn, #e5a50a); vertical-align: middle; }
   .cfg-dim { color: var(--text-dim); font-size: 11px; } .cfg-mal { font-size: 11px; }
   .cfg-dica { font-size: 11px; color: var(--text-dim); margin: 4px 0 6px; }
   .cfg-acoes-linha { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

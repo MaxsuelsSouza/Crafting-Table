@@ -1,10 +1,10 @@
 {
-  "name": "claude-abas",
+  "name": "crafting-table",
   "displayName": "Crafting Table",
   "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets do Jira, documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
   "icon": "icons/crafting-table.png",
   "publisher": "local",
-  "version": "0.0.12",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -190,6 +190,11 @@
             "Pronto p/ Dev"
           ],
           "description": "Status que não são coluna do board mas entram no filtro de etapas."
+        },
+        "craftingTable.pluginsAuto": {
+          "type": "boolean",
+          "default": true,
+          "description": "Instala e atualiza sozinho, pelo marketplace da Ferreira Costa, os plugins marcados como automáticos (fcx-qa-test-planning)."
         },
         "craftingTable.specsRemoto": {
           "type": "string",
