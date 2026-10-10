@@ -21,7 +21,8 @@ const ehNova = (n, lidas) => Date.parse(n.em) > lidas;
 
 const CSS = `  .ct-rod { flex: none; height: 30px; display: flex; align-items: center; padding: 0 8px; border-top: 1px solid var(--border);
     background: var(--bg); font-family: var(--fc-font); font-size: 11.5px; color: var(--text-dim); }
-  .ct-rod details { position: relative; }
+  .ct-rod details { position: relative; display: flex; margin-top: 0; }
+  .ct-rod summary, .ct-amb { line-height: 16px; height: 22px; box-sizing: border-box; }
   .ct-rod details[open] .ct-badge { display: none; }
   .ct-notif { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 11.5px; line-height: 1.45; }
   .ct-notif:last-child { border-bottom: 0; }
