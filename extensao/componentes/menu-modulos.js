@@ -5,7 +5,8 @@
 // (painel.js). Redesenhe com a tela (módulo trocado).
 //   modo: id do módulo ligado · extra: HTML à direita (a contagem de tickets)
 
-const MODULOS = [['refinamento', 'Refinamento', 'Tickets em refinamento (spec SDD)'], ['impl', 'Implementações', 'Tickets em implementação'], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
+const impl = require('../implementacoes/implementacoes');
+const MODULOS = [['refinamento', 'Refinamento', 'Tickets em refinamento (spec SDD)'], [impl.ID, impl.ROTULO, impl.DICA], ['qa', 'QA', 'Tickets para testar (pela label de QA)']];
 const nome = (modo) => MODULOS.find(([id]) => id === modo)?.[1] || modo;
 
 const menu = (modo, extra = '') => `<div class="topo">${MODULOS.map(([id, nome, dica]) =>

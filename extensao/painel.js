@@ -17,6 +17,7 @@ const abaDocs = require('./componentes/aba-docs'); // aba Docs (documentos, anex
 const pill = require('./componentes/pill'); // pills de status (cabeçalho do ticket, cards e vinculados)
 const listaTickets = require('./componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
 const vinculados = require('./componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
+const implementacoes = require('./implementacoes/implementacoes'); // módulo Implementações (rótulo, vinculados, textos)
 const menuModulos = require('./componentes/menu-modulos'); // Refinamento · Implementações · QA
 const configuracao = require('./configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const { cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = configuracao;
@@ -956,7 +957,7 @@ const ultimaConversa = (t) => require('./claude').ultimaConversa(t, sessao.focoL
 // Caixa de vinculados de cada módulo (componentes/vinculados.js): título, seletor do topo e quais status do Jira entram.
 const VINCULADOS = {
   refinamento: { titulo: 'Vinculados a você', seletor: 'etapa' },
-  impl: { titulo: 'Vinculados a você', status: ['Buffer', 'Não iniciado', 'Em andamento|In progress'] },
+  [implementacoes.ID]: implementacoes.VINCULADOS,
   qa: { titulo: 'Com a label', seletor: 'label', status: ['Pronto para QA|Pronto p/ QA', 'Teste integrado'] }
 };
 
@@ -1276,7 +1277,7 @@ Subtarefas a revisar: ${i.cards.join(', ')}.` : ''}` }, 'Abrir')
   const pedido = (t) => (naRaiz() ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${pasta(t.chave)} (documentos, notas em ${NOTAS}, `
     + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : 'Implementação'}\n${t.link}\n`
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : implementacoes.ETAPA}\n${t.link}\n`
       + `Pasta desta etapa: ${pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
       + `Anexos do Jira em ${pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
@@ -1905,7 +1906,7 @@ Um snapshot é guardado: dá para desfazer depois.`
         tickets.vincular(sid, t.chave, t.pedidoLista);
         const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
         tickets.gravar(resto);
-        titularConversa(sid, `${t.chave}${{ impl: ' · Implementação', qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
+        titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
         mudou = true;
       } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
     }

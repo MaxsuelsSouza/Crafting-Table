@@ -14,12 +14,13 @@ const VINCULOS = path.join(RAIZ, '.conversas');
 const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
-const SUBPASTAS = ['impl', 'qa'];
+const IMPL = require('./implementacoes/implementacoes').ID;
+const SUBPASTAS = [IMPL, 'qa'];
 const pasta = (chave, lista) => path.join(RAIZ, chave, SUBPASTAS.includes(lista) ? lista : '');
 // Módulo Refinamento (antes "tickets"): dados gravados com o nome antigo continuam valendo.
 const REFINAMENTO = 'refinamento';
 const modulo = (l) => (l === 'tickets' ? REFINAMENTO : l);
-const listasDe = (t) => (t.listas || [t.lista || (t.implementacao ? 'impl' : REFINAMENTO)]).map(modulo);
+const listasDe = (t) => (t.listas || [t.lista || (t.implementacao ? IMPL : REFINAMENTO)]).map(modulo);
 const lerJson = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 
 const ler = (chave) => lerJson(path.join(pasta(chave), '.ticket.json'), null);
