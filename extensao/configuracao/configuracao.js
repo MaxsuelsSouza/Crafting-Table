@@ -56,7 +56,7 @@ function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p,
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 // Settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
 const cfg = () => vscode.workspace.getConfiguration('craftingTable');
-const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar()[0]?.chave || 'WMS').split('-')[0];
+const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar().find((t) => t.projeto)?.projeto || (tickets.listar()[0]?.chave || 'WMS').split('-')[0]);
 const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
 // O que falta em Configurações > Geral > Jira para os vinculados buscarem no Jira: site, projeto, conta (e-mail + token) e o board principal.
 const jiraPendencias = async (secrets) => [

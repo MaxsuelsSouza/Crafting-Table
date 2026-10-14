@@ -13,28 +13,43 @@ const RAIZ = path.join(os.homedir(), '.claude', 'tickets');
 const VINCULOS = path.join(RAIZ, '.conversas');
 const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 
+// Só para dados antigos e para a migração (sem provedor): o formato de chave do Jira. O resto usa lerLink/chaveDaBranch do provedor.
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
 const IMPL = require('../implementacoes/implementacoes').ID;
 const SUBPASTAS = [IMPL, 'qa', require('../incidentes/incidentes').ID];
-const pasta = (chave, lista) => path.join(RAIZ, chave, SUBPASTAS.includes(lista) ? lista : '');
+// Nome da pasta do ticket: a chave saneada para nome de arquivo seguro (qualquer provedor). Chave do Jira (WMS-123) não muda.
+const nomeSeguro = (chave) => String(chave ?? '').normalize('NFC').replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[._]+/, '').slice(0, 100) || 'ticket';
+const pasta = (chave, lista) => path.join(RAIZ, nomeSeguro(chave), SUBPASTAS.includes(lista) ? lista : '');
 // Módulo Refinamento (antes "tickets"): dados gravados com o nome antigo continuam valendo.
 const REFINAMENTO = 'refinamento';
 const modulo = (l) => (l === 'tickets' ? REFINAMENTO : l);
 const listasDe = (t) => (t.listas || [t.lista || (t.implementacao ? IMPL : REFINAMENTO)]).map(modulo);
 const lerJson = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 
-const ler = (chave) => lerJson(path.join(pasta(chave), '.ticket.json'), null);
+// Ticket = { id (id interno no provedor; no Jira, = chave), chave (o que se mostra), provedor, projeto?, link, site, ... }.
+// ler() devolve `idProvedor` (o `id` gravado; a tela usa `id` para a chave) e `provedor` ('jira' nos tickets antigos).
+function ler(chave) {
+  const t = lerJson(path.join(pasta(chave), '.ticket.json'), null);
+  return t && { ...t, idProvedor: t.id ?? t.chave, provedor: t.provedor || 'jira' };
+}
 function gravar(t) {
+  const { idProvedor, ...resto } = t;
+  const grava = { ...resto, id: idProvedor ?? t.chave };
   fs.mkdirSync(pasta(t.chave), { recursive: true });
-  fs.writeFileSync(path.join(pasta(t.chave), '.ticket.json'), JSON.stringify(t, null, 2));
+  fs.writeFileSync(path.join(pasta(t.chave), '.ticket.json'), JSON.stringify(grava, null, 2));
   return t;
 }
+const existe = (chave) => !!chave && fs.existsSync(path.join(pasta(chave), '.ticket.json'));
+// Ticket → alvo das operações do provedor ({ key: id no provedor, site }).
+const alvo = (t) => ({ key: t.idProvedor ?? t.chave, site: t.site });
 
-// link do Jira (…/browse/WMS-123) → ticket novo; se já existe, devolve o existente.
-function criar(link, extras = {}) {
-  const chave = chaveDo(link);
+// link → ticket novo; se já existe, devolve o existente. `ident` = { id, chave, site, projeto?, provedor } vem de provedor.lerLink
+// (o provedor entende o link); sem ele (migração, sem vscode) vale o formato antigo do Jira.
+function criar(link, extras = {}, ident = null) {
+  const chave = ident?.chave || chaveDo(link);
   if (!chave) throw new Error('Link sem chave do ticket (ex.: .../browse/WMS-123)');
-  return ler(chave) || gravar({ chave, link, site: new URL(link).origin, titulo: '', status: '', conversas: [],
+  const { id = chave, site = new URL(link).origin, projeto, provedor = 'jira' } = ident || {};
+  return ler(chave) || gravar({ idProvedor: id, chave, provedor, ...(projeto ? { projeto } : {}), link, site, titulo: '', status: '', conversas: [],
     refinamento: { estado: 'desligado' }, criado: Date.now(), ...extras });
 }
 
@@ -51,14 +66,18 @@ function vincular(sid, chave, lista) {
   const t = ler(chave);
   if (!t) throw new Error(`Ticket ${chave} não existe`);
   fs.mkdirSync(VINCULOS, { recursive: true });
-  fs.writeFileSync(path.join(VINCULOS, sid), SUBPASTAS.includes(lista) ? `${chave}/${lista}` : chave);
+  const nome = nomeSeguro(chave); // o vínculo guarda o nome da pasta (os hooks resolvem por ele); ler/pasta aceitam esse nome
+  fs.writeFileSync(path.join(VINCULOS, sid), SUBPASTAS.includes(lista) ? `${nome}/${lista}` : nome);
   if (!t.conversas.includes(sid)) gravar({ ...t, conversas: [...t.conversas, sid] });
 }
 
 // Pasta de uma aba do ticket (<RAIZ>/<CHAVE>[/impl|qa|incidentes]) → { chave, lista }; null se não for pasta de ticket.
 function abaDaPasta(dir) {
-  const [chave, sub, ...fora] = path.relative(RAIZ, dir).split(path.sep);
-  if (!chave || chave.startsWith('.') || chave.startsWith('_') || chave === '..' || fora.length || !ler(chave)) return null;
+  const [nome, sub, ...fora] = path.relative(RAIZ, dir).split(path.sep);
+  if (!nome || nome.startsWith('.') || nome.startsWith('_') || nome === '..' || fora.length) return null;
+  const t = ler(nome);
+  if (!t) return null;
+  const chave = t.chave;
   return { chave, lista: SUBPASTAS.includes(sub) ? sub : REFINAMENTO };
 }
 // Sessão do Claude em segundo plano de uma pasta de ticket → conversa da aba (aba Conversas). Sem efeito fora de pasta de ticket.
@@ -73,9 +92,9 @@ function vincularPorPasta(sid, dir) {
 function arquivar(chave) {
   const t = ler(chave);
   if (!t) return;
-  for (const sid of t.conversas) if (ticketDa(sid) === chave) fs.rmSync(path.join(VINCULOS, sid), { force: true });
+  for (const sid of t.conversas) if (ticketDa(sid) === nomeSeguro(chave)) fs.rmSync(path.join(VINCULOS, sid), { force: true });
   fs.mkdirSync(ARQUIVADOS, { recursive: true });
-  fs.renameSync(pasta(chave), path.join(ARQUIVADOS, `${chave}-${Date.now()}`));
+  fs.renameSync(pasta(chave), path.join(ARQUIVADOS, `${nomeSeguro(chave)}-${Date.now()}`));
 }
 
-module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, abaDaPasta, vincularPorPasta, arquivar };
+module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, nomeSeguro, existe, alvo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, abaDaPasta, vincularPorPasta, arquivar };

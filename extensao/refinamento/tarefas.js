@@ -18,7 +18,7 @@ function telaTarefas(t, l, impactos = []) {
     para você aprovar (vira subtarefa no ${esc(jira.nome)} em ${esc(t.chave)}), reprovar ou pedir alteração.</div></div>`;
   const chip = (c) => `${c.camada ? `<span class="tcam cam-${esc(c.camada)}">${esc(c.camada)}</span>` : ''}
     ${c.estimativa ? `<span class="test" title="Estimativa original">⏱ ${esc(c.estimativa)}</span>` : ''}
-    ${c.jira ? `<span class="tjira">${esc(c.jira)}</span>` : ''}
+    ${c.ticket ? `<span class="tjira">${esc(c.ticket)}</span>` : ''}
     ${c.vinculado ? `<span class="tav" title="Vinculada a você">${esc(iniciais())}</span>` : ''}`;
   const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''} ${atencao.has(c.id) ? 'tatencao' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
     <div class="ttit">${atencao.has(c.id) ? `<span class="taten" title="Uma mudança pedida em comentário do ${esc(jira.nome)} pode atingir este card (aguarda sua decisão na aba Spec)">⚠</span>` : ''}${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
@@ -40,7 +40,7 @@ function telaTarefas(t, l, impactos = []) {
         ${linha('Requisitos', esc((c.rf || []).join(', ')))}
         ${linha('Depende de', esc((c.depende || []).join(', ')))}
         ${linha('Camada', esc(c.camada || ''))}
-        ${linha(esc(jira.nome), c.jira ? `<a href="${esc(jira.linkDo(t.site, c.jira))}">${esc(c.jira)}</a>` : '')}
+        ${linha(esc(jira.nome), c.ticket ? `<a href="${esc(jira.linkDo(t.site, c.ticket))}">${esc(c.ticket)}</a>` : '')}
         ${!aberta ? linha('Estimativa original', esc(c.estimativa || '—')) + linha('Responsável', c.vinculado ? 'você' : '—') : ''}
         ${c.motivo ? linha('Motivo', esc(c.motivo)) : ''}
       </div>
@@ -201,10 +201,10 @@ const acoes = (s) => ({
     if (!ok) return;
     let r;
     try {
-      r = await jira.criarSubtarefa(s.secrets, { key: t.chave, site: t.site }, { resumo: c.titulo, descricao: descricaoJira(t, c), estimativa: c.estimativa, atribuirAMim: c.vinculado });
+      r = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: descricaoJira(t, c), estimativa: c.estimativa, atribuirAMim: c.vinculado });
     } catch (e) { return vscode.window.showErrorMessage(`Subtarefa não criada: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
-    Object.assign(x, { status: 'aprovada', jira: r.key });
+    Object.assign(x, { status: 'aprovada', ticket: r.key });
     (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: `Aprovada: subtarefa ${r.key} criada no ${jira.nome}` });
     s.gravar(t.chave, TAREFAS, l);
     s.notificar(t.chave, 'jira', `subtarefa ${r.key} criada`);
@@ -217,7 +217,7 @@ const acoes = (s) => ({
     if (!plano) return vscode.window.showErrorMessage(`Plano de testes não encontrado: ${c.arquivo || '(sem arquivo)'}`);
     let existente = null;
     try {
-      const j = s.cacheJira[t.chave] || await jira.buscar(s.secrets, { key: t.chave, site: t.site });
+      const j = s.cacheJira[t.chave] || await jira.buscar(s.secrets, jira.alvo(t));
       existente = (j.subtarefas || []).find((s) => QA_EXISTENTE.test(s.resumo || ''));
     } catch (e) { return vscode.window.showErrorMessage(`Não consegui ler as subtarefas de ${t.chave}: ${e.message}`); }
     const ok = await vscode.window.showWarningMessage(existente
@@ -229,10 +229,10 @@ const acoes = (s) => ({
     let key, aviso;
     try {
       if (existente) { await jira.atualizarDescricao(s.secrets, { site: t.site }, existente.key, plano); key = existente.key; }
-      else ({ key, aviso } = await jira.criarSubtarefa(s.secrets, { key: t.chave, site: t.site }, { resumo: c.titulo, descricao: plano, estimativa: c.estimativa, atribuirAMim: c.vinculado }));
+      else ({ key, aviso } = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: plano, estimativa: c.estimativa, atribuirAMim: c.vinculado }));
     } catch (e) { return vscode.window.showErrorMessage(`Plano de testes não enviado: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === c.id);
-    Object.assign(x, { status: 'aprovada', jira: key });
+    Object.assign(x, { status: 'aprovada', ticket: key });
     (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: existente ? `Aprovada: descrição de ${key} atualizada` : `Aprovada: subtarefa ${key} criada no ${jira.nome}` });
     s.gravar(t.chave, TAREFAS, l);
     s.notificar(t.chave, 'jira', `subtarefa ${key} [QA] ${existente ? 'atualizada' : 'criada'}`);
@@ -245,36 +245,36 @@ const acoes = (s) => ({
   async revisaoAplicar({ id }) {
     const t = s.ticketAberto();
     const c = t && tarefasDe(s.pasta(t.chave)).find((x) => x.id === id);
-    if (!c?.revisao || !c.jira) return;
+    if (!c?.revisao || !c.ticket) return;
     const novo = { ...c, ...c.revisao.campos };
     const descricao = c.tipo === 'qa' ? lerTexto(c.arquivo || '') : descricaoJira(t, novo);
     const origem = impactosDe(s.pasta(t.chave)).find((i) => i.link === c.revisao.comentario);
-    const ok = await vscode.window.showWarningMessage(`Aplicar a alteração em ${c.jira}?`, { modal: true,
-      detail: `A descrição de ${c.jira} será substituída${c.revisao.campos.titulo ? ' (e o título)' : ''} e um comentário vai registrar o motivo.\n\nMotivo: ${c.revisao.motivo}${origem ? `\nMudança pedida por: ${origem.autor}` : ''}` }, `Aplicar no ${jira.nome}`);
+    const ok = await vscode.window.showWarningMessage(`Aplicar a alteração em ${c.ticket}?`, { modal: true,
+      detail: `A descrição de ${c.ticket} será substituída${c.revisao.campos.titulo ? ' (e o título)' : ''} e um comentário vai registrar o motivo.\n\nMotivo: ${c.revisao.motivo}${origem ? `\nMudança pedida por: ${origem.autor}` : ''}` }, `Aplicar no ${jira.nome}`);
     if (!ok) return;
     let r = {}, eu = { nome: os.userInfo().username };
     try {
-      r = await jira.atualizarDescricao(s.secrets, { site: t.site }, c.jira, descricao, { titulo: c.revisao.campos.titulo, estimativa: c.revisao.campos.estimativa });
+      r = await jira.atualizarDescricao(s.secrets, { site: t.site }, c.ticket, descricao, { titulo: c.revisao.campos.titulo, estimativa: c.revisao.campos.estimativa });
       try { eu = await jira.eu(s.secrets, t.site); } catch {}
-      await jira.comentar(s.secrets, { key: c.jira, site: t.site }, ['🔄 **Descrição atualizada pela Crafting Table**', '',
+      await jira.comentar(s.secrets, { key: c.ticket, site: t.site }, ['🔄 **Descrição atualizada pela Crafting Table**', '',
         `**Motivo:** ${c.revisao.motivo}`,
         origem ? `**Mudança pedida por:** ${origem.autor} — [comentário em ${t.chave}](${origem.link})` : c.revisao.comentario ? `**Origem:** [comentário](${c.revisao.comentario})` : null,
         `**Alteração feita por:** ${eu.nome}`].filter((x) => x !== null).join('\n'));
-    } catch (e) { return vscode.window.showErrorMessage(`Alteração não aplicada em ${c.jira}: ${e.message}`); }
+    } catch (e) { return vscode.window.showErrorMessage(`Alteração não aplicada em ${c.ticket}: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
     Object.assign(x, x.revisao.campos);
-    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração aplicada em ${c.jira} (${x.revisao.motivo.slice(0, 120)})` });
+    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração aplicada em ${c.ticket} (${x.revisao.motivo.slice(0, 120)})` });
     delete x.revisao;
     s.gravar(t.chave, TAREFAS, l);
-    s.notificar(t.chave, 'jira', `subtarefa ${c.jira} atualizada${origem ? ` por mudança de ${origem.autor}` : ''}`);
-    vscode.window.showInformationMessage(`${c.jira} atualizada e comentada.${r.aviso ? ` Atenção: ${r.aviso}.` : ''}`);
+    s.notificar(t.chave, 'jira', `subtarefa ${c.ticket} atualizada${origem ? ` por mudança de ${origem.autor}` : ''}`);
+    vscode.window.showInformationMessage(`${c.ticket} atualizada e comentada.${r.aviso ? ` Atenção: ${r.aviso}.` : ''}`);
     s.render();
   },
   async revisaoDescartar({ id }) {
     const t = s.ticketAberto();
     const l = t ? tarefasDe(s.pasta(t.chave)) : [], x = l.find((y) => y.id === id);
     if (!x?.revisao) return;
-    const ok = await vscode.window.showWarningMessage(`Descartar a alteração proposta para ${x.jira || id}?`, { modal: true, detail: `A subtarefa no ${jira.nome} fica como está.` }, 'Descartar');
+    const ok = await vscode.window.showWarningMessage(`Descartar a alteração proposta para ${x.ticket || id}?`, { modal: true, detail: `A subtarefa no ${jira.nome} fica como está.` }, 'Descartar');
     if (!ok) return;
     (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração descartada (${x.revisao.motivo.slice(0, 120)})` });
     delete x.revisao;

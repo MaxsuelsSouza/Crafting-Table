@@ -67,4 +67,8 @@ const folhaTicket = (t) => `
     </details>
   </div>`;
 
-exports.jira = { ...operacoes, get nome() { return provedorAtivo().nome; }, get capacidades() { return provedorAtivo().capacidades; }, folhaTicket, corStatus, estiloDetalhe };
+// Ticket gravado (infra/tickets.js) → alvo das operações; link colado → identidade { id, chave, projeto, site, provedor } para tickets.criar.
+const alvo = (t) => require('./tickets').alvo(t);
+const identidade = (link) => ({ ...provedorAtivo().lerLink(link), provedor: provedorAtivo().id });
+
+exports.jira = { ...operacoes, alvo, identidade, get nome() { return provedorAtivo().nome; }, get capacidades() { return provedorAtivo().capacidades; }, folhaTicket, corStatus, estiloDetalhe };

@@ -21,9 +21,9 @@ function conversaAtual() {
   try { return fs.readFileSync(marca(), 'utf8').trim() || null; } catch { return null; }
 }
 
-// id = id da conversa ou chave de um ticket (o painel abre o ticket direto, sem conversa: vale a aba em que ele foi aberto).
+// id = id da conversa ou chave de um ticket (é ticket quando existe a pasta com .ticket.json; o painel abre o ticket direto, sem conversa: vale a aba em que ele foi aberto).
 const pasta = (id) => {
-  if (/^[A-Z][A-Z0-9]+-\d+$/.test(id)) return tickets.pasta(id, id === foco ? focoLista : undefined);
+  if (tickets.existe(id)) return tickets.pasta(id, id === foco ? focoLista : undefined);
   const t = ticketDa(id);
   return t ? tickets.pasta(t, tickets.listaDa(id)) : path.join(RAIZ, id);
 };

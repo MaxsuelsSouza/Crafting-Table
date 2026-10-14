@@ -139,7 +139,7 @@ exports.provider = (ctx) => {
     const t = tickets.ler(chave);
     if (!t) return;
     try {
-      const j = await jira.buscar(ctx.secrets, { key: chave, site: t.site });
+      const j = await jira.buscar(ctx.secrets, jira.alvo(t));
       cacheJira[chave] = j;
       tickets.gravar({ ...tickets.ler(chave), titulo: j.resumo, status: j.status, tipo: j.tipo });
     } catch (e) { cacheJira[chave] = { erro: e.message }; }
@@ -162,7 +162,7 @@ exports.provider = (ctx) => {
     ...conf.acoes,
     ...modulosAcoes,
     abrir(/** @type {{ id: string, key?: string }} */ { id, key }) {
-      if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(`${t.site}/browse/${key}`)); } // subtarefa
+      if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
       aberto = id;
       aba = 'docs';
       sessao.focar(id === SEM_TICKET ? null : id, lista.modo());
@@ -176,7 +176,7 @@ exports.provider = (ctx) => {
       const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
       if (!link) return;
       let t;
-      try { jira.lerLink(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      try { const ident = jira.identidade(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
       this.abrir({ id: t.chave });
     },
     async excluir({ id }) {

@@ -9,8 +9,11 @@ function lerLink(link) {
   const url = new URL(link.trim());
   const key = (url.searchParams.get('selectedIssue') || url.pathname.match(/browse\/([A-Z][A-Z0-9]+-\d+)/i)?.[1] || '').toUpperCase();
   if (!key) throw new Error('Link sem chave do ticket (ex.: .../browse/WMS-123)');
-  return { key, site: url.origin };
+  return { id: key, chave: key, projeto: key.split('-')[0], site: url.origin };
 }
+
+// Chave do Jira dentro de um texto (nome de branch: feature/WMS-13429-x → WMS-13429); null se não houver.
+const chaveDaBranch = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
 
 async function credenciais(secrets) {
   let email = await secrets.get('jira.email');
@@ -373,7 +376,7 @@ async function criarSubtarefa(secrets, { key, site }, { resumo, descricao, estim
 const jira = {
   id: 'jira', nome: 'Jira',
   capacidades: { subtarefas: true, anexos: true, comentarios: true, mencoes: true, labels: true, board: true, estimativa: true },
-  lerLink, linkDo, credenciais, conectado, sairConta, buscar, filhos, comentar, comentarios, anexar, baixarAnexo, pessoas, eu, meus, labels,
+  lerLink, chaveDaBranch, linkDo, credenciais, conectado, sairConta, buscar, filhos, comentar, comentarios, anexar, baixarAnexo, pessoas, eu, meus, labels,
   etapas, boardPorNome, boards, projetoInfo, statusDoProjeto, criarSubtarefa, atualizarDescricao
 };
 module.exports = { ...jira, _teste: { mdParaAdf, adfTexto, adfMd } };

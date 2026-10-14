@@ -20,7 +20,7 @@ function ticketAtual() {
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!cwd) return Promise.resolve('sem-ticket');
   return new Promise((resolve) => execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }, (err, out) =>
-    resolve((!err && String(out).match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase()) || 'sem-ticket')));
+    resolve((!err && require('../infra/ticket').jira.chaveDaBranch(String(out))) || 'sem-ticket')));
 }
 
 // Saídas da skill testes-funcionais para o ticket da conversa (o hook crafting-testes.py grava .ticket).

@@ -142,7 +142,7 @@ const vigiarComentarios = async () => {
   try {
     for (const t0 of tickets.listar().filter((x) => x.spec?.dir)) {
       let cs, eu;
-      try { [cs, eu] = await Promise.all([jira.comentarios(s.secrets, { key: t0.chave, site: t0.site }), jira.eu(s.secrets, t0.site)]); } catch { continue; }
+      try { [cs, eu] = await Promise.all([jira.comentarios(s.secrets, jira.alvo(t0)), jira.eu(s.secrets, t0.site)]); } catch { continue; }
       const t = tickets.ler(t0.chave);
       const v = t.vigiaComentarios;
       if (!v) { tickets.gravar({ ...t, vigiaComentarios: { desde: new Date().toISOString(), vistos: cs.map((c) => c.id) } }); continue; }
