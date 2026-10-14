@@ -1,0 +1,18 @@
+#!/usr/bin/env node
+// implementacao-gravar: o Claude da esteira de Implementação (claude -p) grava os artefatos da etapa por aqui (~/.claude é bloqueada para Write/Edit).
+// A pasta da aba vem em IMPLEMENTACAO_DIR (a extensão passa). Uso:
+//   implementacao-gravar entendimento.md <<'FIM' … FIM      (texto pela entrada padrão)
+// Só aceita os nomes do contrato da esteira (esteira.js); qualquer outro caminho é recusado. O código dos repositórios o Claude edita direto (Edit/Write).
+const fs = require('fs');
+const path = require('path');
+const dir = process.env.IMPLEMENTACAO_DIR;
+const [nome] = process.argv.slice(2);
+const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };
+const PERMITIDO = /^(entendimento\.md|varredura\.md|plano-mudanca\.md|implementacao\.log\.md|implementacao\.md|\.pausa\.json)$/;
+if (!dir) sair('implementacao-gravar: IMPLEMENTACAO_DIR não definida (rode pela esteira da Crafting Table)');
+if (!nome || !PERMITIDO.test(nome)) sair(`implementacao-gravar: nome não permitido: ${nome || '(vazio)'}`);
+try {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, nome), fs.readFileSync(0));
+  sair(`gravado: ${nome}`, 0);
+} catch (e) { sair(`implementacao-gravar: ${e.message}`); }

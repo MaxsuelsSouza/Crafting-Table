@@ -48,6 +48,10 @@ const VAGAS = {
     contrato: 'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, registra e segue. '
       + 'O Claude registra pelo qa-state da extensão (massa add, evidencia CTnn, cenario CTnn concluir --status passou|falhou|bloqueado). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
   },
+  'impl.mapa': {
+    padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db, mapa-git e mapa-conferir (--plugin-dir)',
+    contrato: 'Bins <raiz>/bin/mapa-git (git só leitura), mapa-db (SELECT só leitura, recusa produção) e mapa-conferir <mapa.md> --repo --db-log (confere as evidências) para a Varredura do código e o Plano de mudança da esteira de Implementação.'
+  },
   'incidentes.mapa': {
     padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db e mapa-git (--plugin-dir)',
     contrato: 'Bins <raiz>/bin/mapa-db (SELECT só leitura na base configurada, log em MAPA_DB_LOG, recusa produção) e <raiz>/bin/mapa-git (git só leitura) para triagem, artefatos, dados e logs e diagnóstico do incidente.'
@@ -73,7 +77,14 @@ const MODULOS = [
     { nome: 'Plano de testes', vaga: 'refinamento.metodoQa' },
     { nome: 'Comentários novos (triagem, impacto, aplicar)', vaga: 'refinamento.sdd' },
     { nome: 'Regras de escrita', vaga: 'refinamento.foco', todas: true }] },
-  { id: 'impl', nome: 'Implementação', etapas: [] },
+  { id: 'impl', nome: 'Implementação', etapas: [
+    { nome: 'Dossiê', vaga: null, obs: 'a extensão lê o disco do ticket, sem IA' },
+    { nome: 'Entendimento', vaga: null },
+    { nome: 'Varredura do código', vaga: 'impl.mapa' },
+    { nome: 'Plano de mudança', vaga: 'impl.mapa' },
+    { nome: 'Implementação', vaga: null },
+    { nome: 'Verificação', vaga: null, obs: 'comandos de build e teste de Configurações > Comandos' },
+    { nome: 'Resumo', vaga: null }] },
   { id: 'qa', nome: 'QA', etapas: [
     { nome: 'Planejamento', vaga: null, obs: 'método embutido na extensão' },
     { nome: 'Cenários', vaga: null },

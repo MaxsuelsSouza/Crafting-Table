@@ -218,7 +218,7 @@
         "craftingTable.repositorios": {
           "type": "array",
           "default": [],
-          "description": "Repositórios de código que o Claude pode ler no refinamento: [{ caminho, camada (backend|mobile|web|outro), refRelease? }]. Vazio: novo-wms-backend e wms-mobile ao lado da pasta de specs.",
+          "description": "Repositórios de código que o Claude pode ler no refinamento: [{ caminho, camada (backend|mobile|web|outro), refRelease?, branchPrincipal? }]. Vazio: novo-wms-backend e wms-mobile ao lado da pasta de specs.",
           "items": {
             "type": "object",
             "properties": {
@@ -236,6 +236,10 @@
               },
               "refRelease": {
                 "type": "string"
+              },
+              "branchPrincipal": {
+                "type": "string",
+                "description": "Branch principal do repositório: a esteira de Implementação cria a branch de trabalho (impl/<CHAVE>-<slug>) a partir dela."
               }
             }
           }

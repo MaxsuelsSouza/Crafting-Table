@@ -51,6 +51,8 @@ function corpoAba(t, aba, d) {
   if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
   if (aba === 'mergulho') return require('../incidentes/mergulho').corpo(t, d, pastaAba(t.id));
   if (aba === 'evidenciasInc') return require('../incidentes/evidencias').corpo(t, d, pastaAba(t.id));
+  if (aba === 'esteira') return require('../implementacoes/esteira').corpo(t, d, pastaAba(t.id));
+  if (aba === 'dossie') return require('../implementacoes/esteira').corpoDossie(t, d, pastaAba(t.id));
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
   if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
@@ -160,7 +162,7 @@ exports.provider = (ctx) => {
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,

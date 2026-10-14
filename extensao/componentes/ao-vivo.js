@@ -147,7 +147,7 @@ const CSS = `
 const acoes = (s) => ({
   vivoExpandir({ id }) {
     const t = s.ticketAberto();
-    if (!t || !['qa', 'spec', 'mergulho'].includes(id)) return;
+    if (!t || !['qa', 'spec', 'mergulho', 'esteira'].includes(id)) return;
     alternarExpandido(id === 'spec' ? s.pasta(t.chave) : s.pastaAba(t.id));
     s.render();
   }

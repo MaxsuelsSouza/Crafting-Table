@@ -96,7 +96,8 @@ const geral = (v) => {
   const e = v.estado || {}, val = v.valores, aviso = v.avisoInstalacao;
   const repos = val.repositorios.length ? val.repositorios : v.reposAuto;
   const repo = (r, i) => `<div class="cfg-repo"><div><b>${esc(path.basename(r.caminho))}</b> <span class="cfg-cam">${esc(r.camada)}</span>
-      ${r.refRelease ? `<span class="cfg-dim">release: ${esc(r.refRelease)}</span>` : ''}<br><span class="cfg-dim">${esc(r.caminho.replace(os.homedir(), '~'))}</span>
+      ${r.refRelease ? `<span class="cfg-dim">release: ${esc(r.refRelease)}</span>` : ''}
+      ${r.branchPrincipal ? `<span class="cfg-dim">principal: ${esc(r.branchPrincipal)}</span>` : '<span class="cfg-mal">sem branch principal</span>'}<br><span class="cfg-dim">${esc(r.caminho.replace(os.homedir(), '~'))}</span>
       ${(e.repos?.itens || [])[i] ? `<br><span class="${e.repos.itens[i].ok ? 'cfg-dim' : 'cfg-mal'}">${esc(e.repos.itens[i].texto)}</span>` : ''}</div>
       ${val.repositorios.length ? `<span class="cfg-acoes">${botao('Editar', { variante: 'contorno', acao: 'cfgRepoEditar', id: String(i) })}
       ${botao('Remover', { variante: 'contorno', acao: 'cfgRepoRemover', id: String(i) })}</span>` : ''}</div>`;
@@ -108,7 +109,7 @@ const geral = (v) => {
       + dica('Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.')),
     ferramenta(v),
     cardTeste('specs', 'Repositório de specs', e.specs, linha('Pasta local', esc(val.specsDir), 'specsDir') + linha('Remoto (GitLab)', esc(val.specsRemoto), 'specsRemoto')),
-    cardTeste('repos', 'Repositórios de código', e.repos, dica('O Claude só lê os repositórios desta lista durante o refinamento. A camada diz onde ele olha cada requisito.')
+    cardTeste('repos', 'Repositórios de código', e.repos, dica('O Claude lê os repositórios desta lista no refinamento e nos incidentes; a esteira de Implementação também os altera, numa branch de trabalho criada a partir da branch principal de cada um. A camada diz onde ele olha cada requisito.')
       + (repos.length ? repos.map(repo).join('') : '<div class="cfg-dim">Nenhum repositório.</div>')
       + (!val.repositorios.length && repos.length ? dica('Detectados automaticamente ao lado da pasta de specs. Adicionar outro salva a lista.') : '')
       + botao('＋ Adicionar repositório', { variante: 'contorno', acao: 'cfgRepoAdicionar', classe: 'cfg-add' })),
@@ -672,7 +673,9 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       if (!c) return null;
       const ref = await vscode.window.showInputBox({ title: 'Ref de release (opcional)', value: r.refRelease || '', prompt: 'Ex.: origin/master-md — onde o código em produção está. Vazio: a branch atual.', ignoreFocusOut: true });
       if (ref === undefined) return null;
-      return { caminho: r.caminho, camada: c, ...(ref.trim() ? { refRelease: ref.trim() } : {}) };
+      const principal = await vscode.window.showInputBox({ title: 'Branch principal', value: r.branchPrincipal || '', prompt: 'Ex.: master-md, main, develop — a esteira de Implementação cria a branch de trabalho a partir dela.', ignoreFocusOut: true });
+      if (principal === undefined) return null;
+      return { caminho: r.caminho, camada: c, ...(ref.trim() ? { refRelease: ref.trim() } : {}), ...(principal.trim() ? { branchPrincipal: principal.trim() } : {}) };
     },
     async cfgRepoEditar({ id }) {
       const l = [...(cfg().get('repositorios') || [])], i = Number(id);

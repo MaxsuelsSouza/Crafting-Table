@@ -33,7 +33,7 @@ const EVID = 'claudeAbas.evidencias';
 const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
 const ABAS = {
   refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
-  impl: [DOCS, TICKET, DECISOES],
+  impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, TICKET, DECISOES],
   incidentes: [DOCS, { id: 'mergulho', nome: 'Mergulho' }, { id: 'evidenciasInc', nome: 'Evidências' }, TICKET, DECISOES],
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
   semTicket: [DOCS, DECISOES]
@@ -79,7 +79,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span>${t.titulo ? ` · ${esc(t.titulo)}` : ''}`}</span>
-      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : ''}
+      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket || jira.ehDocumento(t) ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no ${esc(jira.nome)}">${IC.jira}</button>`}
     </div>
@@ -176,6 +176,8 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
   });
   // Mergulho (incidentes): a observação do PO grava ao sair do campo.
   document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs]')) enviar({ acao: 'mergulhoObs', texto: e.target.value }); });
+  // Esteira (implementações): a explicação do dev grava ao sair do campo.
+  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs-impl]')) enviar({ acao: 'esteiraObs', texto: e.target.value }); });
 
   // Decisões abertas continuam abertas depois do redesenho.
   const abertas = new Set((vscode.getState() || {}).decisoes || []);

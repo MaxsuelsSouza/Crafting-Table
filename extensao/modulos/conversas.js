@@ -283,6 +283,13 @@ const reconciliar = (s) => {
   if (mudou) s.render();
 };
 
+// Implementações: dossiê e artefatos da esteira que já existem na pasta da aba (contexto do ticket, entendimento, varredura, plano), para a conversa começar de onde a esteira parou.
+const esteiraArquivos = (s, t) => {
+  if (sessao.focoLista() !== require('../implementacoes/implementacoes').ID) return '';
+  const dir = s.pastaAba(t.chave), achados = ['dossie.md', '.contexto-ticket.md', '.briefing.md', 'entendimento.md', 'varredura.md', 'plano-mudanca.md', 'implementacao.log.md', 'verificacao.json']
+    .filter((n) => fs.existsSync(path.join(dir, n)));
+  return achados.length ? `Esteira de implementação (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
+};
 const pedido = (s, t) => {
   const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
   return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
@@ -291,6 +298,7 @@ const pedido = (s, t) => {
     : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
+      + esteiraArquivos(s, t)
       + `Anexos do ticket em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
 };
 // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
