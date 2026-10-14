@@ -57,18 +57,16 @@ const arquivosDe = (dir, ex) => { try { const d = path.join(dir, ex.evidencias);
 const estadoParaPrompt = (dir) => ler(dir).passos.map((p) => `${p.id} [${p.status}] ${p.titulo}${p.texto ? ` — ${p.texto}` : ''}${p.acao ? `\n    ação: ${p.acao}` : ''}`).join('\n');
 
 const CSS = `${cardCenario.CSS}
-  .fx-barra { height: 4px; margin: 0 12px 8px; border-radius: 2px; background: var(--surface-2); overflow: hidden; } .fx-barra > i { display: block; height: 100%; background: var(--ok); }
-  .fx .cens { display: flex; flex-direction: column; gap: 6px; padding: 0; }
-  .fx .cdet code { display: block; white-space: pre-wrap; font-size: 11px; margin: 4px 0; color: var(--text); }
-  .fx-vazio { font-size: 12px; color: var(--text-dim); }`;
+  .cens { margin: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .cen .cdet code { display: block; white-space: pre-wrap; font-size: 11px; margin: 4px 0; color: var(--text); }`;
 // Card do fluxo (abaixo do Ao vivo, na aba Mergulho). Vazio antes de o Claude planejar (etapa 5); uri: arquivo local → URI da webview.
 const html = (dir, uri) => {
   const f = ler(dir);
   if (!f.passos.length) return '';
-  const feitos = f.passos.filter((p) => p.status === 'passou').length, pct = Math.round((feitos / f.passos.length) * 100);
+  const feitos = f.passos.filter((p) => p.status === 'passou').length;
   const ctx = { dir, uri: uri || (() => ''), arquivos: (x) => arquivosDe(dir, x), acoes: { abrir: 'fluxoAbrir', pasta: 'fluxoPasta', copiar: 'fluxoCopiar', refazer: 'fluxoRefazer' } };
   return `<style>${CSS}</style><div class="caixa-t">Fluxo da reprodução<span>${feitos}/${f.passos.length} passos</span></div>
-  <div class="folha fx"><div class="fx-barra"><i style="width:${pct}%"></i></div><div class="cens">${f.passos.map((p) => cardCenario.card({ ...p, resumo: [p.texto, p.acao && `Ação: ${p.acao}`].filter(Boolean).join('\n') }, ctx)).join('')}</div></div>`;
+  <div class="cens">${f.passos.map((p) => cardCenario.card({ ...p, resumo: [p.texto, p.acao && `Ação: ${p.acao}`].filter(Boolean).join('\n') }, ctx)).join('')}</div>`;
 };
 const script = () => cardCenario.script('fluxoAbertos');
 

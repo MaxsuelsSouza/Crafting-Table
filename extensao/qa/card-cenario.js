@@ -50,8 +50,8 @@ const script = (chave = 'cenAbertos') => `{
 }`;
 
 const CSS = `
-  .cen { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: 12px; }
-  .cen summary { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; cursor: pointer; list-style: none; }
+  .cen { margin: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: 12px; }
+  .cen summary { display: flex; gap: 8px; align-items: baseline; padding: 7px 10px; cursor: pointer; list-style: none; margin: 0; font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text); } /* zera o summary global da página do ticket (infra/ticket.js) */
   .cen summary::-webkit-details-marker { display: none; }
   .cen .cid { font-weight: 700; color: var(--accent); flex: none; }
   .cen .ctit { flex: 1; min-width: 0; }
