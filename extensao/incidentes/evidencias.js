@@ -34,6 +34,21 @@ const CSS = `<style>
   .evi-sql { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
   .evi-sql pre { margin: 0; max-height: 320px; overflow: auto; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border);
     font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; white-space: pre; }
+  .sql-k { color: #569cd6; font-weight: 600; }
+  .sql-l { color: #c586c0; font-weight: 600; }
+  .sql-f { color: #dcdcaa; }
+  .sql-t { color: #4ec9b0; }
+  .sql-s { color: #ce9178; }
+  .sql-n { color: #b5cea8; }
+  .sql-c { color: #6a9955; font-style: italic; }
+  .evi-bt { display: flex; gap: 4px; align-items: center; }
+  .evi-tc, .evi-x { width: 24px; height: 24px; border-radius: var(--r-md); }
+  .evi-tc:hover, .evi-x:hover { background: var(--surface-2); }
+  .evi-x { display: none; }
+  .evi-card.evi-max { position: fixed; inset: 12px; z-index: 300; display: flex; flex-direction: column; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 55%); }
+  .evi-card.evi-max .evi-tc { display: none; }
+  .evi-card.evi-max .evi-x { display: block; }
+  .evi-card.evi-max pre { flex: 1; max-height: none; font-size: 13px; }
   .evi-gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
   .evi-gal figure { margin: 0; min-width: 0; }
   .evi-gal img { width: 100%; height: 90px; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--border); cursor: pointer; display: block; }
@@ -44,10 +59,24 @@ const CSS = `<style>
   .evi-md p, .evi-md ul { margin: 0 0 6px; }
 </style>`;
 
+// Realce de SQL (regex simples, sem dependência): comentário, string, número, cláusula, lógico, função, tabela/coluna qualificada.
+const KW = 'select|from|where|insert|into|values|update|set|delete|join|left|right|inner|outer|full|cross|on|as|group|by|order|having|distinct|union|all|case|when|then|else|end|limit|fetch|first|rows|only|with|desc|asc|create|alter|drop|table|commit|rollback|over|partition';
+const LOG = 'and|or|not|in|is|null|like|between|exists|any|some';
+const palavra = (w) => new RegExp(`^(${KW})$`, 'i').test(w) ? 'k' : new RegExp(`^(${LOG})$`, 'i').test(w) ? 'l' : '';
+const realceSql = (t) => esc(t).replace(new RegExp(`(--[^\\n]*|/\\*[\\s\\S]*?\\*/)|('(?:[^']|'')*'|&#39;(?:[^&]|&(?!#39;))*&#39;)|(?<!&#)\\b(\\d+(?:\\.\\d+)?)\\b|\\b([a-z_]\\w*(?:\\.[a-z_]\\w*)+)|\\b([a-z_]\\w*)\\b(\\s*\\()?`, 'gi'),
+  (m, c, st, n, q, w, par) => {
+    if (c) return `<span class="sql-c">${m}</span>`;
+    if (st) return `<span class="sql-s">${m}</span>`;
+    if (n) return `<span class="sql-n">${m}</span>`;
+    if (q) return `<span class="sql-t">${m}</span>`;
+    const cls = palavra(w) || (par ? 'f' : '');
+    return cls ? `<span class="sql-${cls}">${w}</span>${par || ''}` : m;
+  });
+
 function sqlCard(dir, id) {
   const [titulo, arq] = SQL[id], txt = lerTexto(path.join(dir, arq));
-  return `<div class="evi-card"><div class="evi-cab"><h3>${titulo}</h3>${txt ? botao(icone('copiar'), { variante: 'icone', acao: 'copiarSqlInc', id, titulo: 'Copiar' }) : ''}</div>
-    ${txt ? `<pre>${esc(txt)}</pre>` : '<div class="evi-vazio">Ainda não gerada.</div>'}</div>`;
+  return `<div class="evi-card"><div class="evi-cab"><h3>${titulo}</h3>${txt ? `<span class="evi-bt">${botao(icone('copiar'), { variante: 'icone', acao: 'copiarSqlInc', id, titulo: 'Copiar' })}<button class="evi-tc" data-sqlmax title="Tela cheia">⛶</button><button class="evi-x" data-sqlmax title="Fechar">✕</button></span>` : ''}</div>
+    ${txt ? `<pre>${realceSql(txt)}</pre>` : '<div class="evi-vazio">Ainda não gerada.</div>'}</div>`;
 }
 
 function galeria(dir, uri) {
@@ -71,6 +100,10 @@ function corpo(t, d, dir) {
   </div>`;
 }
 
+// Script da webview: tela cheia dos cards de SQL (classe no próprio card; Esc fecha).
+const script = () => `document.addEventListener('click', (e) => { const b = e.target.closest('[data-sqlmax]'); if (b) b.closest('.evi-card').classList.toggle('evi-max'); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelector('.evi-max')?.classList.remove('evi-max'); });`;
+
 const pasta = (s) => { const t = s.ticketAberto(); return t ? s.pastaAba(t.id) : null; };
 
 const acoes = (s) => ({
@@ -89,4 +122,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { corpo, acoes, _teste: { dentro } };
+module.exports = { corpo, acoes, script, _teste: { dentro } };

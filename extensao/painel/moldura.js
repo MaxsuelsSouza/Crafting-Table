@@ -195,6 +195,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
   // A página é redesenhada a cada linha nova do Ao vivo: a caixa e o corpo voltam para onde estavam.
   ${aoVivo.script('vivo')}
   ${require('../incidentes/fluxo').script()}
+  ${require('../incidentes/evidencias').script()}
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;
