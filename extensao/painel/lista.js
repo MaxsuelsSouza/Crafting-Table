@@ -1,7 +1,7 @@
 // @ts-check
 const vscode = require('vscode');
 const jira = require('../infra/ticket').jira;
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const tickets = require('../infra/tickets');
 const { IC } = require('../componentes/icones');
 const listaTickets = require('../componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
@@ -42,10 +42,10 @@ const telaPrevia = (estilo, key, dados) => `${estilo}
   <header class="ct-cab"><div class="ct-linha">
     <button class="ct-ico" data-acao="previaFechar" title="Voltar para a lista">${IC.voltar}</button>
     <span class="ct-titulo"><span class="ct-chave">${esc(key)}</span>${dados?.resumo ? ` · ${esc(dados.resumo)}` : ''}</span>
-    <button class="ct-ico" data-acao="previaJira" data-id="${esc(key)}" title="Ver no Jira">${IC.jira}</button></div>
+    <button class="ct-ico" data-acao="previaJira" data-id="${esc(key)}" title="Ver no ${esc(jira.nome)}">${IC.jira}</button></div>
     <div class="previa-acoes"><button class="primario" data-acao="meuPuxar" data-id="${esc(key)}">↑ Puxar para a lista</button>
       <button data-acao="meuRemover" data-id="${esc(key)}">✕ Remover dos vinculados</button></div></header>
-  <main class="rolagem">${dados?.erro ? `<p class="erro">${esc(dados.erro)}</p>` : dados ? jira.folhaTicket(dados) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>'}</main>`;
+  <main class="rolagem">${dados?.erro ? `<p class="erro">${esc(dados.erro)}</p>` : dados ? jira.folhaTicket(dados) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`}</main>`;
 
 // Corpo da tela inicial (prévia de vinculado ou lista); `estilo` é o CSS do painel, `emRefino(t)` marca os cards em refinamento.
 const corpo = (s, estilo, emRefino) => {
@@ -63,7 +63,7 @@ const carregarMeus = async (s, forcar) => {
   if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
   const pendencias = await jiraPendencias(s.secrets); // sem Jira configurado, a caixa não busca nada
   if (pendencias.length) { meusPor[k] = { pendencias, em: Date.now() }; return s.render(); }
-  if (!forcar && !(await s.secrets.get('jira.token'))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return s.render(); }
+  if (!forcar && !(await jira.conectado(s.secrets))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return s.render(); }
   meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };
   s.render();
   const filtro = fixo ? '' : s.globalState.get('meusFiltro') || '';
@@ -75,7 +75,7 @@ const carregarMeus = async (s, forcar) => {
     const coluna = (etapasJira || []).find((c) => c.nome === filtro);
     if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
     const boardId = k === incidentes.ID ? (await jira.boardPorNome(s.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream')).id : undefined; // Incidentes: só o board das configurações
-    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), coluna?.ids, k === 'qa' ? labelQA(s) : '', k === incidentes.ID ? incidentes.TIPOS : '', boardId, projeto);
+    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: k === incidentes.ID ? incidentes.TIPOS : '', boardId, projeto });
     itens = vinculados.filtrar(itens, VINCULADOS[k].status);
     meusPor[k] = { itens, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: s.globalState.get('meusOcultos') || [], em: Date.now() };
   } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
@@ -99,12 +99,12 @@ const acoes = (s) => ({
     if (previa === id) s.render();
   },
   previaFechar() { previa = null; s.render(); },
-  previaJira({ id }) { vscode.env.openExternal(vscode.Uri.parse(`${siteJira()}/browse/${id}`)); },
+  previaJira({ id }) { vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(siteJira(), id))); },
   async listaModo({ id }) { modoLista = id; await s.globalState.update('listaModo', id); s.render(); },
   meuPuxar({ id }) {
     const t0 = tickets.ler(id);
     if (!t0) {
-      try { tickets.criar(`${siteJira()}/browse/${id}`, { listas: [modoLista] }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      try { tickets.criar(jira.linkDo(siteJira(), id), { listas: [modoLista] }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
     } else porNaLista(t0); // já está em outra aba: entra nesta também, cada aba com a sua pasta
     if (cachePrevia[id] && !cachePrevia[id].erro) s.cacheJira[id] = cachePrevia[id];
     previa = null;

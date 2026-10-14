@@ -4,7 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const maestro = require('../painel/maestro');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
+const { nomeProvedor } = require('../provedores');
 const { quando } = require('../componentes/formato');
 const { dirSpec, IMPACTOS, impactosDe, ticketDe } = require('./locais');
 
@@ -133,7 +134,7 @@ Um snapshot é guardado: dá para desfazer depois.`
     const l = impactosDe(s.pasta(t.chave)), i = l.find((x) => x.id === id && ['aplicado', 'erro'].includes(x.status) && x.snapshot);
     if (!i) return;
     if (maestro.rodando(s.pasta(t.chave))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
-    const ok = await vscode.window.showWarningMessage('Desfazer a mudança?', { modal: true, detail: 'A spec e os cards voltam ao estado de antes de aplicar. Subtarefas já atualizadas no Jira não são mexidas.' }, 'Desfazer');
+    const ok = await vscode.window.showWarningMessage('Desfazer a mudança?', { modal: true, detail: `A spec e os cards voltam ao estado de antes de aplicar. Subtarefas já atualizadas no ${nomeProvedor()} não são mexidas.` }, 'Desfazer');
     if (!ok) return;
     if (!restaurar(s.pasta(t.chave), dirSpec(ticketDe(t.chave) || t), i.id)) return vscode.window.showErrorMessage('Snapshot não encontrado: nada foi desfeito.');
     i.status = 'desfeito';

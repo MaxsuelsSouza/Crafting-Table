@@ -166,6 +166,12 @@
           "default": "",
           "description": "Esforço (effort) do Claude no modo refinamento. Vazio: o do ~/.claude/settings.json."
         },
+        "craftingTable.provedor": {
+          "type": "string",
+          "enum": ["jira"],
+          "default": "jira",
+          "description": "Ferramenta de gestão de trabalho onde ficam os tickets (provedores/). Hoje: Jira."
+        },
         "craftingTable.jiraSite": {
           "type": "string",
           "default": "",

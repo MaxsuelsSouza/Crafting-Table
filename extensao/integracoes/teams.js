@@ -6,6 +6,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { trazerParaFrente } = require('../modulos/emulador');
 const tickets = require('../infra/tickets');
+const { provedorAtivo } = require('../provedores');
 
 // O Teams não abre dentro do VS Code (a Microsoft bloqueia iframe). Este botão usa a janela
 // que já existe na máquina: ~/.local/share/applications/teams.desktop (Chromium --app, perfil chromium-teams).
@@ -48,7 +49,7 @@ function card({ titulo, texto, fatos = [], links = [], cor = 'Default' }) {
 
 // Linhas novas de um ticket → mensagens (cards). `impactos`/`tarefas` dão os dados ricos do impacto.
 function mensagens(t, linhas, impactos = [], tarefas = []) {
-  const abrir = ['Abrir no Jira', `${t.site}/browse/${t.chave}`];
+  const abrir = [`Abrir no ${provedorAtivo().nome}`, provedorAtivo().linkDo(t.site, t.chave)];
   const out = [], grupos = [];
   for (const l of linhas) {
     if (l.tipo === 'mudanca') { // mudança pedida em comentário do Jira, esperando decisão no painel

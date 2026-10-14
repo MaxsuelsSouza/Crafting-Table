@@ -32,37 +32,10 @@ const candidatas = (subs) => subs.filter((s) => ehQA(s.resumo)).sort((a, b) => n
 // Tem plano: cenários (CT01, CT-01) ou Gherkin. A descrição padrão de subtarefa recém-criada não conta.
 const temPlano = (texto) => /\bCT-?\d+|\bdado que\b/i.test(texto || '');
 
-// ADF (descrição do Jira) → markdown, o bastante para o plano: títulos, parágrafos, listas, tabelas, negrito/itálico/código.
-function adfMd(n, lista) {
-  if (!n) return '';
-  const filhos = (sep = '') => (n.content || []).map((c) => adfMd(c, n.type === 'orderedList' || n.type === 'bulletList' ? n.type : lista)).join(sep);
-  switch (n.type) {
-    case 'text': return (n.marks || []).reduce((t, m) => (m.type === 'strong' ? `**${t}**` : m.type === 'em' ? `*${t}*` : m.type === 'code' ? `\`${t}\``
-      : m.type === 'link' ? `[${t}](${m.attrs?.href})` : t), n.text || '');
-    case 'hardBreak': return '  \n';
-    case 'mention': case 'emoji': return n.attrs?.text || '';
-    case 'heading': return `${'#'.repeat(n.attrs?.level || 2)} ${filhos()}\n\n`;
-    case 'paragraph': return `${filhos()}\n\n`;
-    case 'bulletList': case 'orderedList': return `${filhos()}\n`;
-    case 'listItem': return `${lista === 'orderedList' ? '1.' : '-'} ${filhos().trim().replace(/\n+/g, '\n  ')}\n`;
-    case 'codeBlock': return `\`\`\`\n${filhos()}\n\`\`\`\n\n`;
-    case 'blockquote': return filhos().trim().split('\n').map((l) => `> ${l}`).join('\n') + '\n\n';
-    case 'rule': return '---\n\n';
-    case 'table': {
-      const linhas = (n.content || []).map((r) => (r.content || []).map((c) => adfMd({ type: 'doc', content: c.content }).trim().replace(/\n+/g, ' ').replace(/\|/g, '\\|')));
-      if (!linhas.length) return '';
-      const larg = Math.max(...linhas.map((l) => l.length));
-      return [linhas[0], Array(larg).fill('---'), ...linhas.slice(1)].map((l) => `| ${l.join(' | ')} |`).join('\n') + '\n\n';
-    }
-    default: return filhos();
-  }
-}
-
-// Subtarefas (filhos) do ticket com descrição: uma chamada só. api = (rota) => Promise<json> (ticket.js: api já autenticada).
-async function procurar(api, chave) {
-  const r = await api(`search/jql?jql=${encodeURIComponent(`parent = ${chave} ORDER BY created ASC`)}&fields=summary,description,updated,status&maxResults=100`);
-  const subs = (r.issues || []).map((i) => ({ key: i.key, resumo: i.fields.summary || '', updated: i.fields.updated, status: i.fields.status?.name,
-    md: adfMd(i.fields.description).replace(/\n{3,}/g, '\n\n').trim() }));
+// Subtarefas (filhos) do ticket com a descrição em Markdown: uma chamada só. filhos = (chave) => Promise<[{ key, resumo, updated, status, md }]>
+// (o filhos do provedor, já autenticado).
+async function procurar(filhos, chave) {
+  const subs = await filhos(chave);
   const qa = candidatas(subs);
   return { plano: qa.find((s) => temPlano(s.md)) || null, qa };
 }
@@ -452,13 +425,13 @@ const estado = (dir) => lerJson(path.join(dir, ESTADO), {});
 const mudar = (dir, e) => gravarJson(path.join(dir, ESTADO), { ...estado(dir), ...e, em: new Date().toISOString() });
 
 // ▶ do QA: acha o plano no Jira e versiona em Docs. Plano novo (ou mudado) espera a aprovação do humano; já aprovado, lista os cenários.
-async function verificarPlano(dir, chave, api) {
+async function verificarPlano(dir, chave, filhos) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · 1. Planejamento');
   vivo('acao', `Lendo as subtarefas do ${chave} no Jira`);
   mudar(dir, { fase: 'procurando', erro: null, chave });
   let r;
-  try { r = await procurar(api, chave); } catch (e) {
+  try { r = await procurar(filhos, chave); } catch (e) {
     vivo('erro', `Não consegui ler o ticket no Jira: ${e.message}`);
     return mudar(dir, { fase: 'erro', erro: e.message });
   }
@@ -595,4 +568,4 @@ function mapaHtml(dir, r, amb, uri) {
 
 module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
   concluirCenario, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
-  _teste: { papeisDe, ehQA, candidatas, temPlano, adfMd, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };
+  _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

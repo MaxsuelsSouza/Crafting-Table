@@ -1,5 +1,6 @@
 // @ts-check
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
+const { nomeProvedor } = require('../provedores');
 const pill = require('./pill');
 
 // Componente "Vinculados": a caixa presa embaixo da lista de tickets (componentes/lista-tickets.js) com os tickets do Jira
@@ -37,7 +38,7 @@ const item = (i) => `<div class="meu" data-acao="meuVer" data-id="${esc(i.key)}"
       <button data-acao="meuRemover" data-id="${esc(i.key)}" title="Tirar desta caixa">✕ Remover</button></div></div>`;
 
 const seletor = (v, o) => {
-  if (o.seletor === 'label') return `<select class="meus-etapa" id="filtroLabel" title="Labels do Jira que contêm QA">${['', ...(v.labels || []), ...(v.label && !(v.labels || []).includes(v.label) ? [v.label] : [])].map((l) =>
+  if (o.seletor === 'label') return `<select class="meus-etapa" id="filtroLabel" title="Labels do ${esc(nomeProvedor())} que contêm QA">${['', ...(v.labels || []), ...(v.label && !(v.labels || []).includes(v.label) ? [v.label] : [])].map((l) =>
     `<option value="${esc(l)}" ${(v.label || '') === l ? 'selected' : ''}>${esc(l || 'Escolha a label')}</option>`).join('')}</select>`;
   if (o.seletor !== 'etapa') return '';
   const opcoes = [['', 'Abertos'], ...(v.etapas || []).map((e) => [e, e])];
@@ -53,16 +54,16 @@ function caixa(v, lista, o) {
   const itens = (v.itens || []).filter((i) => !naLista.has(i.key) && !ocultos.has(i.key));
   const escondidos = (v.itens || []).filter((i) => ocultos.has(i.key)).length;
   const porLabel = o.seletor === 'label';
-  const corpo = v.pendencias ? `<div class="meus-vazio">Configure o Jira para ver os tickets: falta ${esc(v.pendencias.join(', '))}. <button class="link" data-acao="config">Abrir configurações</button></div>`
-    : v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
+  const corpo = v.pendencias ? `<div class="meus-vazio">Configure o ${esc(nomeProvedor())} para ver os tickets: falta ${esc(v.pendencias.join(', '))}. <button class="link" data-acao="config">Abrir configurações</button></div>`
+    : v.semCredencial ? `<div class="meus-vazio">Conecte ao ${esc(nomeProvedor())} para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>`
     : v.erro ? `<div class="meus-vazio erro">${esc(v.erro)}</div>`
-    : !v.itens ? '<div class="meus-vazio">Carregando do Jira…</div>'
+    : !v.itens ? `<div class="meus-vazio">Carregando do ${esc(nomeProvedor())}…</div>`
     : porLabel && !v.label ? '<div class="meus-vazio">Escolha a label de QA no seletor acima.</div>'
     : !itens.length ? `<div class="meus-vazio">Nada novo ${porLabel ? `com a label ${esc(v.label)}` : 'vinculado a você'}${esc(emStatus(o.status))}.</div>`
     : itens.map(item).join('');
   return `<div class="meus"><div class="meus-t">${esc(o.titulo)}<span>${seletor(v, o)}
     ${v.itens ? itens.length : ''}
-    <button class="ct-ico" data-acao="meusAtualizar" title="Atualizar do Jira">${v.carregando ? '…' : ATUALIZAR}</button></span></div>
+    <button class="ct-ico" data-acao="meusAtualizar" title="Atualizar do ${esc(nomeProvedor())}">${v.carregando ? '…' : ATUALIZAR}</button></span></div>
     ${v.aviso ? `<div class="meus-vazio erro">${esc(v.aviso)}</div>` : ''}<div class="meus-lista">${corpo}</div>
     ${escondidos ? `<button class="meus-ocultos" data-acao="meusMostrar">${escondidos} removido${escondidos > 1 ? 's' : ''} · mostrar de novo</button>` : ''}</div>`;
 }

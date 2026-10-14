@@ -1,6 +1,6 @@
 // @ts-check
 const path = require('path');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const sessao = require('../infra/sessao');
 const { lerTexto } = require('../refinamento/locais');
 const { IC } = require('./icones');

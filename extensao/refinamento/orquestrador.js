@@ -137,7 +137,7 @@ const filaImpactos = (t) => {
 // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
 let vigiando = false;
 const vigiarComentarios = async () => {
-  if (vigiando || !(await s.secrets.get('jira.token'))) return;
+  if (vigiando || !(await jira.conectado(s.secrets))) return;
   vigiando = true;
   try {
     for (const t0 of tickets.listar().filter((x) => x.spec?.dir)) {

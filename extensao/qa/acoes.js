@@ -12,10 +12,13 @@ const { NOTIF } = require('../painel/notificacoes');
 const jira = require('../infra/ticket').jira;
 const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (moldura.js)
 
+// Subtarefas do ticket (com a descrição em Markdown) pelo provedor: é onde o QA procura o planejamento.
+const filhosDe = (s, t) => (chave) => jira.filhos(s.secrets, { key: chave, site: t.site });
+
 const depsQa = (s, t) => {
   const dir = s.pastaAba(t.id), emu = require('../modulos/emulador');
   return {
-    chave: t.chave, backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho, api: (rota) => jira.api(s.secrets, t.site, rota),
+    chave: t.chave, backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho, filhos: filhosDe(s, t),
     horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: s.render,
     extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir,
       ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
@@ -56,7 +59,7 @@ const acoes = (s) => ({
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;
     s.pedirSecao(EVID);
-    await qa.verificarPlano(s.pastaAba(t.id), t.chave, (rota) => jira.api(s.secrets, t.site, rota));
+    await qa.verificarPlano(s.pastaAba(t.id), t.chave, filhosDe(s, t));
     s.render();
   },
   // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila, um claude -p por cenário (qa.executar).
@@ -106,11 +109,11 @@ const acoes = (s) => ({
     if (!t) return;
     const dir = s.pastaAba(t.id), v = qa.versaoAtual(dir);
     if (!v) return;
-    const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: 'O Claude aplica na subtarefa do Jira e gera a versão nova para você aprovar', ignoreFocusOut: true });
+    const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: `O Claude aplica na subtarefa do ${jira.nome} e gera a versão nova para você aprovar`, ignoreFocusOut: true });
     if (!pedido?.trim()) return;
     const ok = maestro.rodar(dir, { prompt: qa.promptMudanca(t.link, v.subtarefa, path.join(dir, v.arquivo), pedido.trim()), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`,
       ferramentas: qa.FERRAMENTAS_PLANO, extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir],
-      aoMudar: () => { s.render(); if (!maestro.rodando(dir)) qa.verificarPlano(dir, t.chave, (rota) => jira.api(s.secrets, t.site, rota)).then(s.render); } });
+      aoMudar: () => { s.render(); if (!maestro.rodando(dir)) qa.verificarPlano(dir, t.chave, filhosDe(s, t)).then(s.render); } });
     if (ok) qa.mudar(dir, { fase: 'alterando', pedido: pedido.trim() });
     s.render();
   },
@@ -131,7 +134,7 @@ const acoes = (s) => ({
       await jira.comentar(s.secrets, { key: sub, site: t.site }, md);
       if (arqs.length) await jira.anexar(s.secrets, t.site, sub, arqs.map(([id, f]) => ({ arquivo: f, nome: `${id}-${path.basename(f)}` })));
       aoVivo.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
-    } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no Jira: ${e.message}` }); }
+    } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no ${jira.nome}: ${e.message}` }); }
     s.render();
   },
   qaMassaEstado({ id, op }) { const t = s.ticketAberto(); try { if (t && typeof id === 'string') qa.massaEstado(s.pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } s.render(); },

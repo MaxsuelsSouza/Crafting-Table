@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const emulador = require('./emulador');
 
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.

@@ -1,7 +1,7 @@
 // @ts-check
 const vscode = require('vscode');
 const jira = require('../infra/ticket').jira;
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const { DUVIDAS, duvidasDe, textoDuvida, ticketDe } = require('./locais');
 const { quando } = require('../componentes/formato');
 
@@ -12,7 +12,7 @@ function escolherMencoes(t, secrets) {
   return new Promise((resolve) => {
     const qp = /** @type {vscode.QuickPick<vscode.QuickPickItem & { fim?: boolean, p?: any }>} */ (vscode.window.createQuickPick()), escolhidas = new Map();
     qp.ignoreFocusOut = true; qp.matchOnDescription = true;
-    qp.placeholder = 'Digite parte do nome ou do e-mail para buscar no Jira';
+    qp.placeholder = `Digite parte do nome ou do e-mail para buscar no ${jira.nome}`;
     let seq = 0, timer, fim = false;
     const titulo = () => { const ja = [...escolhidas.values()].map((p) => '@' + p.nome).join(', '); qp.title = ja ? `Mencionando: ${ja}` : `Mencionar alguém no comentário do ${t.chave}?`; };
     const concluir = () => ({ label: escolhidas.size ? '$(check) Concluir menções' : '$(check) Enviar sem menção', alwaysShow: true, fim: true });

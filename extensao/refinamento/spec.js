@@ -3,7 +3,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
+const { nomeProvedor } = require('../provedores');
 const tickets = require('../infra/tickets');
 const { arquivoPasso, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
 const { IC } = require('../componentes/icones');
@@ -72,7 +73,7 @@ function telaConstituicao(r, est, abertos, impactos = []) {
       : '';
     const aten = atencao.has(p.n) && p.status !== 'pendente';
     return `<div class="passo s-${esc(p.status)}${aten ? ' s-atencao' : ''}">
-      <div class="cab"><span class="num">${p.n}</span>${aten ? '<span class="aten" title="Um comentário do Jira pediu uma mudança que pode atingir este passo. Nada foi alterado: decida na caixa vermelha acima.">⚠</span>' : ''}<span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
+      <div class="cab"><span class="num">${p.n}</span>${aten ? `<span class="aten" title="Um comentário do ${esc(nomeProvedor())} pediu uma mudança que pode atingir este passo. Nada foi alterado: decida na caixa vermelha acima.">⚠</span>` : ''}<span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
         <span class="st">${STATUS[p.status] || esc(p.status)}${p.versao ? ` · v${esc(p.versao)}` : ''}</span></div>
       ${p.status === 'pendente' ? '' : `<div class="corpo-passo">
         ${resumo.length ? `<div class="chips">${resumo.map(([k, v]) => chip(k, v, /viola|bloque|abertas/.test(k) && Number(v) > 0)).join('')}</div>` : ''}
@@ -89,7 +90,7 @@ function telaConstituicao(r, est, abertos, impactos = []) {
         </div>
         ${p.status === 'aguardando_revisao' ? `<div class="acoes-passo">
           <button class="aprovar ${vivo && !decide ? '' : 'travado'}" data-acao="specAprovar" data-id="${p.n}" ${decide ? 'disabled' : !vivo || (lido && !portaoFechado) ? '' : 'disabled'}
-            title="${decide ? 'Decida primeiro a mudança pedida em comentário do Jira (caixa vermelha acima)' : !vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
+            title="${decide ? `Decida primeiro a mudança pedida em comentário do ${esc(nomeProvedor())} (caixa vermelha acima)` : !vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
           <button data-acao="specAjuste" data-id="${p.n}">Pedir ajuste</button></div>` : ''}
         ${p.status === 'desatualizado' ? `<div class="acoes-passo"><button data-acao="specContinuar">Reconciliar</button></div>` : ''}
       </div>`}
@@ -133,8 +134,8 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
   } else if (passo?.status === 'aguardando_revisao' && [4, 6].includes(passo.n) && semDecisaoDo(passo.n, tarefas).length) {
     const n = semDecisaoDo(passo.n, tarefas).length;
     [titulo, texto, acoes] = passo.n === 4
-      ? [`Revise as tarefas · ${n} sem decisão`, 'Aprove (vira subtarefa no Jira), reprove ou peça alteração em cada card. Depois aprove o passo 4 aqui.', '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>']
-      : ['Revise o plano de testes', 'O card [QA] está na aba Tarefas: aprove (cria a subtarefa [QA] no Jira com o plano), reprove ou peça alteração. Depois aprove o passo 6 aqui.', '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>'];
+      ? [`Revise as tarefas · ${n} sem decisão`, `Aprove (vira subtarefa no ${esc(nomeProvedor())}), reprove ou peça alteração em cada card. Depois aprove o passo 4 aqui.`, '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>']
+      : ['Revise o plano de testes', `O card [QA] está na aba Tarefas: aprove (cria a subtarefa [QA] no ${esc(nomeProvedor())} com o plano), reprove ou peça alteração. Depois aprove o passo 6 aqui.`, '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>'];
   } else if (passo?.status === 'aguardando_revisao') [titulo, texto] = [`Revise o passo ${passo.n} · ${passo.titulo}`, `Abra <b>${esc(path.basename(arquivoPasso(t, passo.n)))}</b> no cartão do passo, leia e clique em <b>Aprovar</b> ou <b>Pedir ajuste</b>.`];
   else if (!passo) [titulo, texto] = ['Spec concluída', 'Todos os passos aprovados.'];
   else if (modo === 'aguardando_inicio') [titulo, texto, acoes] = ['Spec criada', `Próximo: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="darInicio">Dar início</button>'];
@@ -199,7 +200,7 @@ const acoes = (s) => ({
   async specAprovar({ id }) {
     const r = s.ticketAberto(), n = Number(id), est = estadoSpec(r);
     if (maestro.rodando(pasta(r.id))) return vscode.window.showWarningMessage('O Claude ainda está trabalhando neste ticket: espere a etapa terminar.');
-    if (mudancas.pendentes(impactosDe(pasta(r.id))).length) return vscode.window.showWarningMessage('Há uma mudança pedida em comentário do Jira esperando sua decisão (caixa vermelha acima): decida antes de aprovar.');
+    if (mudancas.pendentes(impactosDe(pasta(r.id))).length) return vscode.window.showWarningMessage(`Há uma mudança pedida em comentário do ${nomeProvedor()} esperando sua decisão (caixa vermelha acima): decida antes de aprovar.`);
     const cards = tarefasDe(pasta(r.id));
     const semDecisao = [4, 6].includes(n) ? semDecisaoDo(n, cards) : [];
     if (semDecisao.length) { s.mudarAba('tarefas'); s.render(); return vscode.window.showWarningMessage(n === 4 ? `Decida as tarefas antes de aprovar o passo 4: ${semDecisao.length} sem decisão (${semDecisao.map((x) => x.id).join(', ')}).` : 'Decida o card [QA] na aba Tarefas antes de aprovar o passo 6.'); }

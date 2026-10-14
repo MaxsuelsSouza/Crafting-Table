@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const { docsDaSpec, ler, ORIGEM } = require('../refinamento/locais');
 const notas = require('../painel/notas').editor;
@@ -26,7 +26,7 @@ const pendentes = (anexos, origens) => {
 const corpo = (d, semTicket) => {
   const docs = d.docs.length ? d.docs.map((x) => `<div class="linha-doc" data-acao="docAbrir" data-id="${esc(x.nome)}" title="${esc(x.origem || x.full)}">
       <span class="sigla">${sigla(x.nome)}</span><span class="nome">${esc(x.nome)}</span>
-      ${d.origens[x.nome]?.origem === 'jira' ? '<span class="selo" title="Baixado dos anexos do Jira">↓ Jira</span>' : ''}
+      ${d.origens[x.nome]?.origem === 'jira' ? `<span class="selo" title="Baixado dos anexos do ${esc(jira.nome)}">↓ ${esc(jira.nome)}</span>` : ''}
       <span class="mini"><button data-acao="docMencionar" data-id="${esc(x.nome)}" title="Mencionar no Claude">@</button></span></div>`).join('')
     : `<div class="vazio-aba">${semTicket && !d.dir ? 'Nenhuma conversa do Claude aberta ainda.' : 'Nenhum documento ainda. O que o Claude criar aparece aqui.'}</div>`;
   // Pendentes ficam apagados, com botão de baixar. Baixado, sobe para Documentos.
@@ -94,14 +94,11 @@ const acoes = (s) => ({
     baixando.add(id);
     s.render();
     try {
-      const auth = await jira.credenciais(s.secrets);
-      if (!auth) throw new Error('credenciais do Jira não informadas');
-      const r = await fetch(a.url, { headers: { Authorization: auth } });
-      if (!r.ok) throw new Error(`Jira respondeu ${r.status}`);
+      const conteudo = await jira.baixarAnexo(s.secrets, a);
       const dir = s.pasta(chave), { name, ext } = path.parse(a.nome);
       let nome = a.nome;
       for (let n = 2; fs.existsSync(path.join(dir, nome)); n++) nome = `${name}-${n}${ext}`;
-      fs.writeFileSync(path.join(dir, nome), Buffer.from(await r.arrayBuffer()));
+      fs.writeFileSync(path.join(dir, nome), conteudo);
       const origens = ler(path.join(dir, ORIGEM), {});
       fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: 'jira', id } }, null, 1));
     } catch (e) {

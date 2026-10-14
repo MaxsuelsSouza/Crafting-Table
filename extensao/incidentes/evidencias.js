@@ -3,7 +3,7 @@
 // Só lê os artefatos que o Mergulho/Reprodução escrevem em `dir` (ver incidentes-mergulho-contrato).
 const fs = require('fs');
 const path = require('path');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const { markdown } = require('../componentes/markdown');
 const { botao, icone } = require('../componentes/botao');
 

@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const tickets = require('../infra/tickets');
 const maestro = require('../painel/maestro');
@@ -61,7 +61,7 @@ const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tick
 // O que falta em Configurações > Geral > Jira para os vinculados buscarem no Jira: site, projeto, conta (e-mail + token) e o board principal.
 const jiraPendencias = async (secrets) => [
   !siteJira() && 'site', !projetoJira() && 'projeto',
-  !((await secrets.get('jira.email')) && (await secrets.get('jira.token'))) && 'conta',
+  !(await jira.conectado(secrets)) && 'conta',
   !(cfg().get('jiraBoard') || '').trim() && 'board principal'].filter(Boolean);
 // Repositórios de código: ao lado do repositório de specs (…/WMS/specs → …/WMS/novo-wms-backend e …/WMS/wms-mobile).
 const reposAuto = (specs) => [['backend', 'novo-wms-backend'], ['mobile', 'wms-mobile']]
@@ -239,7 +239,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         texto: `${v.out} · plugin sdd ${sddState() ? '✅' : '❌ (claude plugin install sdd@crafting-local)'} · QA (fcx-qa-test-planning) ${qa ? '✅' : '⚠ sem ele o passo 6 segue sem o método de QA'}` };
     },
     async jira() {
-      if (!(await ctx.secrets.get('jira.token'))) return { ok: false, curto: 'sem credenciais', texto: 'Clique em Editar na Conta para informar e-mail e API token.' };
+      if (!(await jira.conectado(ctx.secrets))) return { ok: false, curto: 'sem credenciais', texto: 'Clique em Editar na Conta para informar e-mail e API token.' };
       try {
         const [eu, p] = await Promise.all([jira.eu(ctx.secrets, siteJira()), jira.projetoInfo(ctx.secrets, siteJira(), projetoJira())]);
         return { ok: true, conta: eu.nome, texto: `Conectado como ${eu.nome} · projeto ${p.chave} (${p.nome})` };
@@ -356,7 +356,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
           validateInput: (x) => (/^[A-Z][A-Z0-9_]+$/.test(x.trim().toUpperCase()) ? null : 'Chave do projeto, ex.: WMS') });
         if (v) { await salvarCfg('jiraProjeto', v.trim().toUpperCase()); checar(['jira', 'board']); }
       } else if (id === 'jiraConta') {
-        await ctx.secrets.delete('jira.email'); await ctx.secrets.delete('jira.token');
+        await jira.sairConta(ctx.secrets);
         if (await jira.credenciais(ctx.secrets)) checar(['jira', 'board']);
       } else if (id === 'jiraBoard') {
         /** @type {{ id: number, nome: string, tipo: string }[]} */

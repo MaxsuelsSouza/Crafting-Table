@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
 const qa = require('./qa');
-const { ehQA, candidatas, temPlano, adfMd, versionar, procurar } = qa._teste;
+const { ehQA, candidatas, temPlano, versionar, procurar } = qa._teste;
 
 assert.ok(['[QA] Planejamento dos Casos de Testes', 'qa - testes', 'Teste Q.A.', 'Plano de QA'].every(ehQA));
 assert.ok(!['Ajustar quadro', 'Aqa', 'Backend: endpoint'].some(ehQA));
@@ -12,14 +12,8 @@ assert.deepStrictEqual(candidatas(subs).map((s) => s.resumo), ['[QA] Teste de Qu
 assert.ok(temPlano('#### CT01 – Validar') && temPlano('**Dado que** o pedido') && temPlano('CT-02'));
 assert.ok(!temPlano('Sub-tarefa criada automaticamente para planejamento de testes de QA.'));
 
-const adf = { type: 'doc', content: [
-  { type: 'heading', attrs: { level: 4 }, content: [{ type: 'text', text: 'CT01 – Validar' }] },
-  { type: 'paragraph', content: [{ type: 'text', text: 'Dado que', marks: [{ type: 'strong' }] }, { type: 'text', text: ' x' }] },
-  { type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }] }] },
-  { type: 'table', content: [
-    { type: 'tableRow', content: [{ type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Cenário' }] }] }, { type: 'tableHeader', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Status' }] }] }] },
-    { type: 'tableRow', content: [{ type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'CT01' }] }] }, { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'ok' }] }] }] }] }] };
-assert.strictEqual(adfMd(adf).trim(), '#### CT01 – Validar\n\n**Dado que** x\n\n- a\n\n| Cenário | Status |\n| --- | --- |\n| CT01 | ok |');
+// ADF → Markdown da descrição: no adaptador do Jira (testes/teste-provedor.js); aqui as subtarefas já chegam em Markdown.
+const PLANO_MD = '#### CT01 – Validar\n\n**Dado que** x\n\n- a\n\n| Cenário | Status |\n| --- | --- |\n| CT01 | ok |';
 
 // Versões: mesma descrição não gera versão nova; descrição diferente gera v2.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
@@ -62,16 +56,16 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
 
 (async () => {
   // procurar: a subtarefa com cenários vence a de nome exato vazia.
-  const api = async () => ({ issues: [
-    { key: 'WMS-3', fields: { summary: '[QA] Teste de Qualidade', description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Sub-tarefa criada automaticamente' }] }] } } },
-    { key: 'WMS-4', fields: { summary: 'QA planejamento', description: adf } },
-    { key: 'WMS-5', fields: { summary: 'Backend', description: null } }] });
+  const api = async () => [
+    { key: 'WMS-3', resumo: '[QA] Teste de Qualidade', md: 'Sub-tarefa criada automaticamente' },
+    { key: 'WMS-4', resumo: 'QA planejamento', md: PLANO_MD },
+    { key: 'WMS-5', resumo: 'Backend', md: '' }];
   const r = await procurar(api, 'WMS-1');
   assert.deepStrictEqual([r.plano.key, r.qa.map((x) => x.key)], ['WMS-4', ['WMS-3', 'WMS-4']]);
 
   // verificarPlano: sem plano → sem_plano; com plano → plano_ok + v1 + Ao vivo.
   const d2 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
-  assert.strictEqual((await qa.verificarPlano(d2, 'WMS-1', async () => ({ issues: [] })), qa.estado(d2)).fase, 'sem_plano');
+  assert.strictEqual((await qa.verificarPlano(d2, 'WMS-1', async () => []), qa.estado(d2)).fase, 'sem_plano');
   // Plano achado espera aprovação (cenários só aparecem depois); aprovado, o ▶ seguinte já lista sem pedir de novo.
   await qa.verificarPlano(d2, 'WMS-1', api);
   assert.deepStrictEqual([qa.estado(d2).fase, qa.estado(d2).versao, qa.cenarios(d2).cenarios.length], ['plano_encontrado', 1, 0]);
@@ -134,8 +128,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   fs.writeFileSync(path.join(back, 'testes-funcionais', 'preparar-ambiente.py'),
     'import json\nprint("[ OK  ] API respondendo")\nprint(json.dumps({"ref":"v9","backend":"","mobile":"","parou_em":None,"pendentes":0,"itens":[]}))\n');
   const d5 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
-  const apiPlano = async () => ({ issues: [{ key: 'WMS-9', fields: { summary: '[QA] Planejamento dos Casos de Testes', updated: 'x',
-    description: { type: 'doc', content: [{ type: 'heading', attrs: { level: 4 }, content: [{ type: 'text', text: 'CT01 – A' }] }, { type: 'heading', attrs: { level: 4 }, content: [{ type: 'text', text: 'CT02 – B' }] }] } } }] });
+  const apiPlano = async () => [{ key: 'WMS-9', resumo: '[QA] Planejamento dos Casos de Testes', updated: 'x', md: '#### CT01 – A\n\n#### CT02 – B' }];
   const prompts = [];
   let pausarNo = 'CT02';
   maestro.rodar = (dir, o) => {
@@ -151,7 +144,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     return true;
   };
   maestro.rodando = () => false; maestro.parar = () => {};
-  const deps = { chave: 'WMS-1', backend: back, api: apiPlano, horaRefresh: '06:00', confirmar: async () => true };
+  const deps = { chave: 'WMS-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true };
   await qa.executar(d5, deps); // sem plano aprovado não executa
   assert.deepStrictEqual(prompts, []);
   await qa.verificarPlano(d5, 'WMS-1', apiPlano); qa.aprovar(d5);

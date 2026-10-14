@@ -8,7 +8,7 @@ const { descendentes, matar } = require('./comandos').processos;
 const { ESTILO_NOTAS } = require('./comandos').ui;
 const { botao, mini, icone } = require('../componentes/botao');
 const cardComando = require('../componentes/card-comando');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 
 // Lista os AVDs da máquina e liga com janela. O gRPC fica só para o print da aba Evidências,
 // autenticado pelo token do arquivo de descoberta, como no Projeto-dani (wms-hub/services/mobile).

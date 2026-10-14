@@ -1,7 +1,7 @@
 // @ts-check
 // Moldura compartilhada do ticket: cabeçalho (abas, badges), CSS e a página HTML da webview.
 // O painel.js desenha o corpo; o grupo.js usa cabecalho/CSS_MOLDURA das outras seções via provider.moldura.
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const { ESTILO_NOTAS } = require('../modulos/comandos').ui;
 const sessao = require('../infra/sessao');
@@ -80,12 +80,12 @@ function cabecalho(t, { aba, secao, dentro = false }) {
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
       ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
-      ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no Jira">${IC.jira}</button>`}
+      ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no ${esc(jira.nome)}">${IC.jira}</button>`}
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
-      : `${pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do Jira${t.tipo ? ` · ${t.tipo}` : ''}` })}
+      : `${pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
       ${refino && emRefino(t) ? pillRefino(t) : ''}
-      <button class="ct-ico" ${b('atualizar')} title="Atualizar status e anexos do Jira">${IC.atualizar}</button>`}</div>
+      <button class="ct-ico" ${b('atualizar')} title="Atualizar status e anexos do ${esc(jira.nome)}">${IC.atualizar}</button>`}</div>
     ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
     ${menuAbas.menu(itens, { aba, secao, principal: PRINCIPAL, dentro })}
   </header>`;

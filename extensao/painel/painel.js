@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { esc } = require('../infra/ticket')._teste;
+const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const sessao = require('../infra/sessao');
 const tickets = require('../infra/tickets');
@@ -44,7 +44,7 @@ function corpoAba(t, aba, d) {
   if (aba === 'docs') return abaDocs.corpo(d, t.id === SEM_TICKET);
   if (aba === 'spec') return spec.corpoAba(t, d);
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
-    : d.jira ? jira.folhaTicket(d.jira) : '<div class="folha"><div class="vazio-aba">Carregando do Jira…</div></div>';
+    : d.jira ? jira.folhaTicket(d.jira) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`;
   if (aba === 'analise') return analise.corpoAba(d);
   if (aba === 'tarefas') return tarefas.telaTarefas(t, d.tarefas, d.impactos);
   if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
@@ -173,7 +173,7 @@ exports.provider = (ctx) => {
     aba({ id }) { aba = id; render(); if (id === 'ticket' && aberto !== SEM_TICKET && cacheJira[aberto]?.erro) atualizarJira(aberto); },
     lado({ id }) { lado = id; render(); },
     async novo() {
-      const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: 'Link do ticket no Jira', placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
+      const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
       if (!link) return;
       let t;
       try { jira.lerLink(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }

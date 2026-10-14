@@ -2,6 +2,8 @@
 const menuModulos = require('./menu-modulos');
 const cardTicket = require('./card-ticket');
 const vinculados = require('./vinculados');
+const { esc } = require('../infra/texto');
+const { nomeProvedor } = require('../provedores');
 
 // Componente "Lista de tickets": a tela inicial do painel (lista.js), igual nos três módulos (Refinamento, Implementações, QA):
 // menu de módulos, barra com pesquisa, ↑↓ (ordem) e ＋ Ticket (sempre visíveis), os cards dos tickets com o card Sem ticket
@@ -17,10 +19,10 @@ const corpo = (lista, meus, { modo, vinculados: o }) => `<div class="rolagem">
   ${menuModulos.menu(modo, lista.length ? `${lista.length} ticket${lista.length === 1 ? '' : 's'}` : '')}
   <div class="barras"><label class="busca-t">${LUPA}<input id="filtroT" type="search" placeholder="Pesquisar" title="Pesquisa por chave, título ou status (Esc limpa)" spellcheck="false"></label>
     <button class="ordem-t" id="ordemT" title="Mais recentes primeiro (clique para inverter)">↑↓</button>
-    <button class="primario" data-acao="novo" title="Adicionar ticket pelo link do Jira">＋ Ticket</button></div>
+    <button class="primario" data-acao="novo" title="Adicionar ticket pelo link do ${esc(nomeProvedor())}">＋ Ticket</button></div>
   <ul class="cartoes" id="listaT">${lista.map(cardTicket.card).join('')}${cardTicket.semTicket()}</ul>
   <p class="nada-t" id="nadaT" hidden>Nenhum ticket encontrado.</p>
-  ${lista.length ? '' : '<div class="folha"><div class="centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do Jira.</div></div>'}
+  ${lista.length ? '' : `<div class="folha"><div class="centro"><div class="icone">🎫</div>Nenhum ticket ainda.<br>Clique em <b>＋ Ticket</b> e cole o link do ${esc(nomeProvedor())}.</div></div>`}
   </div>
   ${vinculados.caixa(meus, lista, o)}`;
 
