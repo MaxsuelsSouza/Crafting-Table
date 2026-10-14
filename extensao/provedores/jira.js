@@ -19,7 +19,7 @@ const chaveDaBranch = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i
 // O que pedir para conectar: site (vira a variável "site"), e-mail e API token (segredos jira.email e jira.token).
 const camposCredencial = [
   { id: 'site', rotulo: 'Site do Jira', segredo: false, variavel: 'site', exemplo: 'https://<org>.atlassian.net' },
-  { id: 'email', rotulo: 'E-mail da conta Jira', segredo: true },
+  { id: 'email', rotulo: 'E-mail da conta Jira', segredo: true, visivel: true }, // guardado como segredo, mas aparece ao digitar
   { id: 'token', rotulo: 'API token do Jira (id.atlassian.com/manage-profile/security/api-tokens)', segredo: true }
 ];
 
@@ -359,6 +359,10 @@ async function statusDoProjeto(secrets, site, projeto) {
 
 // Descoberta para o mapeamento por IA: só metadados da conta, com limites (projetos, boards com colunas, status, tipos de item, labels).
 // O projeto atual e os projetos da lista entram primeiro; nada de conteúdo de ticket nem de credencial.
+async function projetos(secrets, site) {
+  const r = await api(secrets, site, 'project/search?maxResults=100&orderBy=key');
+  return (r.values || []).map((p) => ({ chave: p.key, nome: p.name }));
+}
 const LIMITES = { projetos: 50, projetosDetalhados: 3, boards: 10, status: 150, labels: 200 };
 async function descobrir(secrets, site, projetoAtual = '') {
   const ps = await api(secrets, site, `project/search?maxResults=${LIMITES.projetos}&orderBy=key`).catch(() => ({ values: [] }));
@@ -402,6 +406,6 @@ const jira = {
   id: 'jira', nome: 'Jira', camposCredencial,
   capacidades: { subtarefas: true, anexos: true, comentarios: true, mencoes: true, labels: true, board: true, estimativa: true },
   lerLink, chaveDaBranch, linkDo, credenciais, conectado, sairConta, buscar, filhos, comentar, comentarios, anexar, baixarAnexo, pessoas, eu, meus, labels,
-  etapas, boardPorNome, boards, projetoInfo, statusDoProjeto, descobrir, criarSubtarefa, atualizarDescricao
+  etapas, boardPorNome, boards, projetos, projetoInfo, statusDoProjeto, descobrir, criarSubtarefa, atualizarDescricao
 };
 module.exports = { ...jira, _teste: { mdParaAdf, adfTexto, adfMd } };

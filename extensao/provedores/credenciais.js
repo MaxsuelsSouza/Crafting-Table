@@ -35,7 +35,7 @@ async function pedir(provedor, secrets, { incluirVariaveis = false, atuais = {} 
   for (const c of provedor.camposCredencial) {
     if (!c.segredo && !incluirVariaveis) continue;
     const v = await vscode.window.showInputBox({ title: `${provedor.nome}: ${c.rotulo}`, prompt: c.rotulo + (c.exemplo ? ` (${c.exemplo})` : ''), value: c.segredo ? '' : atuais[c.id] || '',
-      password: !!c.segredo, ignoreFocusOut: true });
+      password: !!c.segredo && !c.visivel, ignoreFocusOut: true });
     if (!v || !v.trim()) return null;
     valores[c.id] = c.id === 'site' ? v.trim().replace(/\/+$/, '') : v.trim();
   }

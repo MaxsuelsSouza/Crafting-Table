@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const qa = require('./qa');
 const maestro = require('../painel/maestro');
+const { areaIA } = require('../infra/area-ia');
 const aoVivo = require('../componentes/ao-vivo');
 const sessao = require('../infra/sessao');
 const { IC } = require('../componentes/icones');
@@ -26,29 +27,37 @@ const depsPublicar = (s, t) => {
 
 // Roda a IA em segundo plano sobre o plano local: grava o contexto do ticket (via provedor), roda o Claude (só leitura local + o qa-plano.md)
 // e, ao terminar, a extensão publica e procura o plano de novo. Devolve se a IA começou.
+// A IA escreve o plano na área dela (infra/area-ia.js: o Claude Code nega escrita em ~/.claude) e a extensão o copia para dir.
+// prompt(rasc): monta o prompt com a pasta onde a IA grava.
 async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
+  const rasc = areaIA(dir), noRasc = path.join(rasc, qa.PLANO_LOCAL), noDir = path.join(dir, qa.PLANO_LOCAL);
+  const ler = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   try {
     const j = s.cacheJira[t.id] && !s.cacheJira[t.id].erro ? s.cacheJira[t.id] : await jira.buscar(s.secrets, { key: t.chave, site: t.site });
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, qa.CONTEXTO), qa.contextoTicket(j));
+    fs.mkdirSync(rasc, { recursive: true });
+    if (mudanca && fs.existsSync(noDir)) fs.copyFileSync(noDir, noRasc); else fs.rmSync(noRasc, { force: true });
   } catch (e) {
     vivo('erro', `Não consegui ler o ticket no ${jira.nome}: ${e.message}`);
     qa.mudar(dir, { fase: 'erro', erro: e.message });
     return false;
   }
-  const antes = fs.existsSync(path.join(dir, qa.PLANO_LOCAL)) ? fs.statSync(path.join(dir, qa.PLANO_LOCAL)).mtimeMs : 0;
+  const antes = ler(noRasc);
   let tratou = false;
-  return maestro.rodar(dir, { prompt, titulo, ferramentas: qa.FERRAMENTAS_PLANO,
-    extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir, ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
+  return maestro.rodar(dir, { prompt: prompt(rasc), titulo, ferramentas: qa.FERRAMENTAS_PLANO,
+    extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir, rasc, ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
     aoMudar: () => {
       s.render();
       if (maestro.rodando(dir) || tratou) return;
       tratou = true; // publica uma vez só (aoMudar dispara mais de uma vez ao terminar)
       (async () => {
         try {
-          const depois = fs.existsSync(path.join(dir, qa.PLANO_LOCAL)) ? fs.statSync(path.join(dir, qa.PLANO_LOCAL)).mtimeMs : 0;
+          const depois = ler(noRasc);
+          if (depois === null) throw new Error(`O Claude não gravou ${qa.PLANO_LOCAL}`);
           if (mudanca && depois === antes) throw new Error('O Claude não alterou o plano');
+          fs.writeFileSync(noDir, depois);
           vivo('acao', `Publicando o plano no ${jira.nome}`);
           const r = await qa.publicarPlano(dir, depsPublicar(s, t));
           vivo('fim', r.modo === 'criada' ? `Subtarefa ${r.key} criada com o plano` : r.modo === 'atualizada' ? `Descrição de ${r.key} atualizada com o plano` : `Plano publicado como comentário no ${r.key} (o ${jira.nome} não tem subtarefas)`);
@@ -161,7 +170,7 @@ const acoes = (s) => ({
     if (!pedido?.trim()) return;
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, qa.PLANO_LOCAL), qa.mdDaVersao(dir, v)); // a IA edita o arquivo local; a extensão republica
-    const ok = await gerarPlano(s, t, dir, { prompt: qa.promptMudanca(dir, pedido.trim()), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`, mudanca: true });
+    const ok = await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptMudanca(dir, pedido.trim(), rasc), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`, mudanca: true });
     if (ok) qa.mudar(dir, { fase: 'alterando', pedido: pedido.trim() });
     s.render();
   },
@@ -199,7 +208,7 @@ const acoes = (s) => ({
     if (!t || sessao.focoLista() !== 'qa') return;
     const dir = s.pastaAba(t.id);
     fs.rmSync(path.join(dir, qa.PLANO_LOCAL), { force: true });
-    const ok = await gerarPlano(s, t, dir, { prompt: qa.promptCriar(dir), titulo: 'QA · Criando o planejamento' });
+    const ok = await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptCriar(dir, rasc), titulo: 'QA · Criando o planejamento' });
     if (ok) qa.mudar(dir, { fase: 'criando' });
     s.render();
   },

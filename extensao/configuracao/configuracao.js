@@ -98,7 +98,7 @@ const ferramenta = (v) => {
   }
   const b = (v.estado || {}).board, val = v.valores;
   return cardTeste('jira', TITULO_FERRAMENTA, x, linha('Ferramenta', esc((c.ativo || {}).nome || 'Jira')) + linha('Conta', esc(x.conta || '')) + linha('Site', esc(val.jiraSite))
-    + linha('Board principal', esc(val.jiraBoard), 'jiraBoard') + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
+    + linha('Projeto', esc(val.jiraProjeto), 'jiraProjeto') + linha('Board principal', esc(val.jiraBoard), 'jiraBoard') + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
     + (b?.colunas ? linha('Etapas no filtro', esc(b.colunas.join(' → '))) : b && !b.ok && val.jiraBoard ? linha('Etapas no filtro', `<span class="cfg-mal">${esc(b.texto || '')}</span>`) : '')
     + dica('Projeto, etapas de cada módulo e as demais variáveis ficam na aba Variáveis.')
     + acoes(botao('Trocar ferramenta', { variante: 'contorno', acao: 'provedorTrocar' }) + botao('Sair da conta', { variante: 'contorno', acao: 'provedorSair' })
@@ -400,6 +400,12 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       const d = variaveis.definicoes.find((x) => x.chave === id);
       if (!d) return;
       if (!(await jira.conectado(ctx.secrets))) return vscode.window.showWarningMessage('Conecte a ferramenta na aba Geral antes de editar as variáveis.');
+      if ((d.escolha === 'boards' || d.escolha === 'status') && !projetoJira()) {
+        const r = await vscode.window.showInformationMessage(`${d.rotulo} depende do Projeto, que ainda não foi escolhido.`, 'Escolher projeto');
+        if (r !== 'Escolher projeto') return;
+        await acoes.varEditar({ id: 'projeto' });
+        if (!projetoJira()) return;
+      }
       const atual = variaveis.ler(id), site = siteJira(), proj = projetoJira();
       const digitar = async () => {
         const v = await vscode.window.showInputBox({ title: d.rotulo, value: [].concat(atual).join(d.tipo === 'lista' ? ', ' : ''), ignoreFocusOut: true,
@@ -408,7 +414,10 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       };
       let novo;
       try {
-        if (d.escolha === 'boards' && site && proj) {
+        if (d.escolha === 'projetos' && site) {
+          const p = await vscode.window.showQuickPick((await jira.projetos(ctx.secrets, site)).map((x) => ({ label: x.chave, description: x.nome })), { title: d.rotulo, placeHolder: d.descricao });
+          novo = p?.label;
+        } else if (d.escolha === 'boards' && site && proj) {
           const p = await vscode.window.showQuickPick((await jira.boards(ctx.secrets, site, proj)).map((b) => ({ label: b.nome, description: b.tipo })), { title: d.rotulo, placeHolder: d.descricao });
           novo = p?.label;
         } else if (d.escolha === 'labels' && site) {
@@ -457,26 +466,11 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         const v = await vscode.window.showInputBox({ title: 'Site do Jira', value: site, prompt: 'https://<org>.atlassian.net', ignoreFocusOut: true,
           validateInput: (x) => (/^https:\/\/[\w-]+\.atlassian\.net\/?$/.test(x.trim()) ? null : 'Use https://<org>.atlassian.net') });
         if (v) { await variaveis.gravar('site', v.trim().replace(/\/+$/, '')); checar(['jira', 'board']); }
-      } else if (id === 'jiraProjeto') {
-        const v = await vscode.window.showInputBox({ title: 'Projeto do Jira', value: proj, prompt: 'Chave do projeto (ex.: WMS)', ignoreFocusOut: true,
-          validateInput: (x) => (/^[A-Z][A-Z0-9_]+$/.test(x.trim().toUpperCase()) ? null : 'Chave do projeto, ex.: WMS') });
-        if (v) { await variaveis.gravar('projeto', v.trim().toUpperCase()); checar(['jira', 'board']); }
+      } else if (id === 'jiraProjeto' || id === 'jiraBoard' || id === 'etapasExtras') {
+        await acoes.varEditar({ id: { jiraProjeto: 'projeto', jiraBoard: 'boardPrincipal', etapasExtras: 'etapasExtras' }[id] }); // o card da ferramenta edita as variáveis
       } else if (id === 'jiraConta') {
         await jira.sairConta(ctx.secrets);
         if (await jira.credenciais(ctx.secrets)) checar(['jira', 'board']);
-      } else if (id === 'jiraBoard') {
-        /** @type {{ id: number, nome: string, tipo: string }[]} */
-        let lista;
-        try { lista = await jira.boards(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os boards: ${e.message}`); }
-        if (!lista.length) return vscode.window.showWarningMessage(`O projeto ${proj} não tem boards visíveis para você.`);
-        const p = await vscode.window.showQuickPick(lista.map((b) => ({ label: b.nome, description: b.tipo })), { title: `Board principal de ${proj}`, placeHolder: 'As colunas dele viram as etapas do filtro' });
-        if (p) { await variaveis.gravar('boardPrincipal', p.label); checar(['board']); }
-      } else if (id === 'etapasExtras') {
-        let nomes;
-        try { nomes = await jira.statusDoProjeto(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os status: ${e.message}`); }
-        const atuais = new Set([].concat(variaveis.ler('etapasExtras')));
-        const p = await vscode.window.showQuickPick(nomes.map((n) => ({ label: n, picked: atuais.has(n) })), { canPickMany: true, title: 'Etapas extras', placeHolder: 'Status fora das colunas do board que também entram no filtro' });
-        if (p) { await variaveis.gravar('etapasExtras', p.map((x) => x.label)); checar(['board']); }
       } else if (id === 'specsDir') {
         const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Pasta local do repositório de specs', openLabel: 'Usar esta pasta' });
         if (u) { await salvarCfg('specsDir', u[0].fsPath); checar(['specs', 'repos']); }

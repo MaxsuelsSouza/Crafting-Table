@@ -18,7 +18,8 @@ const listaProvedores = (adaptadores = require('../provedores').ADAPTADORES) => 
   .sort((a, b) => Number(b.disponivel) - Number(a.disponivel));
 
 // ── Mapeamento por IA ──
-const pastaMapeamento = () => path.join(os.homedir(), '.claude', 'crafting-table', 'mapeamento');
+// Fora de ~/.claude: o Claude Code nega escrita lá no claude -p (infra/area-ia.js).
+const pastaMapeamento = () => path.join(require('../infra/area-ia').RAIZ, 'mapeamento');
 const norm = (x) => String(x ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const SEGREDO = /token|senha|password|secret|authorization|credencia/i;
 /** Copia o objeto sem nenhuma chave que pareça segredo (defesa: a entrada da IA nunca leva credencial). */
@@ -88,10 +89,22 @@ Regras:
 - Leia e escreva apenas nessa pasta. Não use rede, não rode comandos e não procure credenciais.
 - Responda com uma frase curta ao terminar.`;
 
+/** Última fala ou erro do Ao vivo da pasta (o que a IA disse ao terminar), para explicar uma falha. */
+function ultimaFala(pasta) {
+  try {
+    const linhas = fs.readFileSync(path.join(pasta, '.ao-vivo.jsonl'), 'utf8').trim().split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } });
+    const l = linhas.reverse().find((x) => x && (x.tipo === 'fala' || x.tipo === 'erro'));
+    return l ? String(l.detalhe || l.texto).slice(0, 300) : '';
+  } catch { return ''; }
+}
+
 /** Lê e confere o saida.json; devolve { aceitas, rejeitadas } ou lança erro legível. */
 function lerSaida(pasta, descoberta, definicoes) {
   let texto;
-  try { texto = fs.readFileSync(path.join(pasta, 'saida.json'), 'utf8'); } catch { throw new Error('A IA não gravou o saida.json'); }
+  try { texto = fs.readFileSync(path.join(pasta, 'saida.json'), 'utf8'); } catch {
+    const ultima = ultimaFala(pasta);
+    throw new Error(`A IA não gravou o saida.json${ultima ? `. Última mensagem dela: "${ultima}"` : ''}`);
+  }
   let json;
   try { json = JSON.parse(texto); } catch { throw new Error('O saida.json não é um JSON válido'); }
   return validarSaida(json, descoberta, definicoes);

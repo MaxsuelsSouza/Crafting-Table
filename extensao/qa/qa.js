@@ -494,16 +494,16 @@ const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os coment
   + 'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. '
   + 'Casos que dependem de exploração livre vão ao final como "#### Exploratório 1 – …". Termine com "## Critérios de aceite cobertos" (tabela CA × CT) e "## Riscos e pré-requisitos" '
   + '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos).';
-const REGRAS_PLANO = (dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${nomeProvedor()}). `
+const REGRAS_PLANO = (dir, rasc = dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${nomeProvedor()}). `
   + `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). `
-  + `Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(dir, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
-// Criar: o clique em "Criar planejamento" é o OK do humano.
-const promptCriar = (dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano já aprovou ao clicar em "Criar planejamento": não peça confirmação.\n\n${METODO}\n\n${REGRAS_PLANO(dir)}`
+  + `Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
+// Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/area-ia.js); a extensão copia para dir.
+const promptCriar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano já aprovou ao clicar em "Criar planejamento": não peça confirmação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}`
   + ' Termine dizendo em uma frase quantos casos montou.';
 // Pedir mudança: a IA edita o arquivo local; a extensão republica.
-const promptMudanca = (dir, pedido) => `[segundo plano · Crafting Table] O humano pediu esta mudança no planejamento de QA, que está em ${path.join(dir, PLANO_LOCAL)}: "${pedido}".\n`
+const promptMudanca = (dir, pedido, rasc = dir) => `[segundo plano · Crafting Table] O humano pediu esta mudança no planejamento de QA, que está em ${path.join(rasc, PLANO_LOCAL)}: "${pedido}".\n`
   + 'Aplique o pedido editando esse arquivo (não pergunte nada): mantenha o formato e a numeração dos cenários que não mudaram e continue a numeração nos novos.\n\n'
-  + `${METODO}\n\n${REGRAS_PLANO(dir)} Não crie outro arquivo. Termine dizendo em uma frase o que mudou.`;
+  + `${METODO}\n\n${REGRAS_PLANO(dir, rasc)} Não crie outro arquivo. Termine dizendo em uma frase o que mudou.`;
 // Ferramentas liberadas: só leitura do contexto local e escrita/edição do plano. Nada do provedor.
 const FERRAMENTAS_PLANO = ['Read', 'Glob', 'Grep', 'Write', 'Edit'];
 

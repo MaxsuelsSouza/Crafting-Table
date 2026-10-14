@@ -13,7 +13,7 @@
  * @typedef {{ id: string, nome: string, tamanho?: number, url: string, criado?: string, de?: string | null }} Anexo
  * @typedef {{ key: string, resumo: string, updated?: string, status?: string, md: string }} Filho
  * @typedef {{ nome: string, ids: string[] }} Etapa
- * @typedef {{ id: string, rotulo: string, segredo: boolean, variavel?: string, exemplo?: string }} CampoCredencial  `segredo`: vai para o SecretStorage (chave `<provedor>.<id>`, input com máscara); `variavel`: campo não secreto que vira variável do provedor (ex.: site)
+ * @typedef {{ id: string, rotulo: string, segredo: boolean, visivel?: boolean, variavel?: string, exemplo?: string }} CampoCredencial  `segredo`: vai para o SecretStorage (chave `<provedor>.<id>`, input com máscara, salvo `visivel`); `variavel`: campo não secreto que vira variável do provedor (ex.: site)
  * @typedef {{ site: string, projetos: { chave: string, nome: string }[], boards: { id: number | string, nome: string, tipo?: string, projeto: string, etapas: Etapa[] }[], status: string[], tiposItem: { nome: string, subtarefa?: boolean }[], labels: string[] }} Descoberta  só metadados da conta (nunca credenciais nem conteúdo de tickets)
  * @typedef {{ statusIds?: string[], label?: string, tipos?: string, boardId?: number | string, projeto?: string }} FiltroMeus
  * @typedef {{ subtarefas: boolean, anexos: boolean, comentarios: boolean, mencoes: boolean, labels: boolean, board: boolean, estimativa: boolean }} Capacidades
@@ -42,6 +42,7 @@
  * @property {(secrets: any, site: string, projeto: string, nomeBoard: string, extras?: string[]) => Promise<Etapa[]>} etapas  colunas do board
  * @property {(secrets: any, site: string, projeto: string, nomeBoard: string) => Promise<{ id: number | string, name: string }>} boardPorNome
  * @property {(secrets: any, site: string, projeto: string) => Promise<{ id: number | string, nome: string, tipo?: string }[]>} boards
+ * @property {(secrets: any, site: string) => Promise<{ chave: string, nome: string }[]>} projetos  projetos visíveis para a conta (para escolher a variável Projeto)
  * @property {(secrets: any, site: string, chave: string) => Promise<{ chave: string, nome: string }>} projetoInfo
  * @property {(secrets: any, site: string, projeto: string) => Promise<string[]>} statusDoProjeto
  * @property {(secrets: any, site: string) => Promise<Descoberta>} descobrir  metadados da conta (projetos, boards com etapas, status, tipos de item, labels), com limites; alimenta o mapeamento por IA
@@ -51,7 +52,7 @@
 
 // As operações, na ordem acima: a fachada (infra/ticket.js) delega cada uma ao provedor ativo e o teste confere o adaptador.
 const OPERACOES = ['lerLink', 'chaveDaBranch', 'linkDo', 'credenciais', 'conectado', 'sairConta', 'buscar', 'filhos', 'comentar', 'comentarios', 'anexar', 'baixarAnexo',
-  'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boards', 'projetoInfo', 'statusDoProjeto', 'descobrir', 'criarSubtarefa', 'atualizarDescricao'];
+  'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boards', 'projetos', 'projetoInfo', 'statusDoProjeto', 'descobrir', 'criarSubtarefa', 'atualizarDescricao'];
 
 // O que falta no adaptador para cumprir o contrato (vazio: cumpre).
 const faltando = (p) => [...['id', 'nome', 'capacidades'].filter((k) => !p[k]), ...(Array.isArray(p.camposCredencial) && p.camposCredencial.length ? [] : ['camposCredencial']), ...OPERACOES.filter((k) => typeof p[k] !== 'function')];

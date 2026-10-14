@@ -9,13 +9,13 @@ const vscode = require('vscode');
 // globalState.labelQA (que continuam lá; nada é apagado). Valores que só existiam no código não são sugeridos.
 //   ler(chave) · todas() · gravar(chave, valor, origem) · definicoes · vincular(globalState)
 
-/** @typedef {{ chave: string, rotulo: string, descricao: string, usadaEm: string, tipo: 'texto' | 'lista', escolha?: 'boards' | 'status' | 'labels' }} Definicao */
+/** @typedef {{ chave: string, rotulo: string, descricao: string, usadaEm: string, tipo: 'texto' | 'lista', escolha?: 'projetos' | 'boards' | 'status' | 'labels' }} Definicao */
 
 /** @type {Definicao[]} */
 const definicoes = [
   { chave: 'site', rotulo: 'Site', tipo: 'texto', usadaEm: 'todas as chamadas à ferramenta e os links dos tickets',
     descricao: 'Endereço da ferramenta da organização (no Jira: https://<org>.atlassian.net). Preenchido ao conectar a conta.' },
-  { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto', usadaEm: 'lista de tickets vinculados, boards e etapas',
+  { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto', escolha: 'projetos', usadaEm: 'lista de tickets vinculados, boards e etapas',
     descricao: 'Chave do projeto onde ficam os tickets deste time (ex.: WMS).' },
   { chave: 'boardPrincipal', rotulo: 'Board principal', tipo: 'texto', escolha: 'boards', usadaEm: 'filtro por etapa dos vinculados e lista de Incidentes',
     descricao: 'Nome do board do time; as colunas dele viram as etapas do filtro dos vinculados.' },
