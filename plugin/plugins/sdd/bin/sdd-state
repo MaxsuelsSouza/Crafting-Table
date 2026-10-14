@@ -348,7 +348,8 @@ const comandos = {
     let c = l.find((x) => x.id === id);
     if (sub === 'add' && c && !['pendente', 'em_alteracao'].includes(c.status)) falhar(`${id} já foi ${c.status}: não muda mais`);
     if (sub === 'editar' && !c) falhar(`card ${id} não existe`);
-    if (!c) { c = { id, status: 'pendente', jira: null, vinculado: false, historico: [], em: agora() }; l.push(c); }
+    if (!c) { c = { id, status: 'pendente', ticket: null, vinculado: false, historico: [], em: agora() }; l.push(c); }
+    if ('jira' in c) { c.ticket ??= c.jira; delete c.jira; } // card antigo: o campo era `jira`, agora é `ticket` (chave da subtarefa no provedor)
     if (c.status === 'aprovada' || c.status === 'reprovada') falhar(`${id} já foi ${c.status}: não muda mais`);
     const lista = (v) => String(v).split(',').map((x) => x.trim()).filter(Boolean);
     for (const k of ['titulo', 'descricao', 'pronto', 'camada', 'estimativa', 'resumo']) if (opt[k] !== undefined && opt[k] !== true) c[k] = String(opt[k]);

@@ -26,7 +26,7 @@ const pendentes = (anexos, origens) => {
 const corpo = (d, semTicket) => {
   const docs = d.docs.length ? d.docs.map((x) => `<div class="linha-doc" data-acao="docAbrir" data-id="${esc(x.nome)}" title="${esc(x.origem || x.full)}">
       <span class="sigla">${sigla(x.nome)}</span><span class="nome">${esc(x.nome)}</span>
-      ${d.origens[x.nome]?.origem === 'jira' ? `<span class="selo" title="Baixado dos anexos do ${esc(jira.nome)}">↓ ${esc(jira.nome)}</span>` : ''}
+      ${d.origens[x.nome]?.origem ? `<span class="selo" title="Baixado dos anexos do ${esc(jira.nome)}">↓ ${esc(jira.nome)}</span>` : ''}
       <span class="mini"><button data-acao="docMencionar" data-id="${esc(x.nome)}" title="Mencionar no Claude">@</button></span></div>`).join('')
     : `<div class="vazio-aba">${semTicket && !d.dir ? 'Nenhuma conversa do Claude aberta ainda.' : 'Nenhum documento ainda. O que o Claude criar aparece aqui.'}</div>`;
   // Pendentes ficam apagados, com botão de baixar. Baixado, sobe para Documentos.
@@ -100,7 +100,7 @@ const acoes = (s) => ({
       for (let n = 2; fs.existsSync(path.join(dir, nome)); n++) nome = `${name}-${n}${ext}`;
       fs.writeFileSync(path.join(dir, nome), conteudo);
       const origens = ler(path.join(dir, ORIGEM), {});
-      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: 'jira', id } }, null, 1));
+      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: require('../provedores').provedorAtivo().id, id } }, null, 1));
     } catch (e) {
       vscode.window.showErrorMessage(`Não consegui baixar ${a.nome}: ${e.message}`);
     } finally {

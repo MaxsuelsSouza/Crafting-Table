@@ -48,7 +48,7 @@ function docsDaSpec(r) {
 const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 const lerTexto = (arq) => { try { return fs.readFileSync(arq, 'utf8'); } catch { return null; } };
 const NOTAS = '.notas.html';
-const ORIGEM = '.origem.json'; // { "arquivo.pdf": { origem: 'jira', id: '123' } }: documentos que vieram de fora
+const ORIGEM = '.origem.json'; // { "arquivo.pdf": { origem: <id do provedor, 'jira' nos antigos>, id: '123' } }: documentos que vieram de fora
 const TAREFAS = '.tarefas.json'; // cards das tarefas do passo 4 (sdd-state card); aprovar/reprovar é daqui
 const decisoesDe = (dir) => {
   const l = dir ? ler(path.join(dir, '.decisoes.json'), []) : [];
@@ -57,7 +57,9 @@ const decisoesDe = (dir) => {
 const DUVIDAS = '.duvidas.json'; // gravado pelo `sdd-state duvida add` (opção "Tirar dúvida" nas perguntas do Claude)
 const duvidasDe = (dir) => { const l = dir ? ler(path.join(dir, DUVIDAS), []) : []; return Array.isArray(l) ? l : []; };
 const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.contexto ? `\nContexto: ${x.contexto}` : ''}`;
-const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l : []; };
+// Card antigo guardava a chave da subtarefa em `jira`; hoje é `ticket` (lê os dois, a próxima gravação já vai como `ticket`).
+const cardAtual = ({ jira, ...c }) => (jira === undefined ? c : { ...c, ticket: c.ticket ?? jira });
+const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l.map(cardAtual) : []; };
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 

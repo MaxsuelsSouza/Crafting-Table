@@ -3,10 +3,12 @@
 // ferramenta por estas operações: cada adaptador (provedores/<id>.js) traduz para a API dela. Texto entra e sai em
 // Markdown (o formato da ferramenta, como o ADF do Jira, fica dentro do adaptador); a descrição e os comentários de
 // buscar() vêm em HTML pronto para a aba Ticket.
-// alvo = { key, site }: o ticket (chave) e o endereço da ferramenta (site da organização).
+// alvo = { key, site }: o ticket (key = id interno no provedor; no Jira é a própria chave) e o endereço da ferramenta (site da organização).
+// A identidade do ticket tem duas partes: `id` (o que a API do provedor usa) e `chave` (o que a tela mostra; vira o nome da pasta).
 
 /**
  * @typedef {{ key: string, site: string }} Alvo
+ * @typedef {{ id: string, chave: string, projeto?: string, site: string }} TicketLido  `id` interno, `chave` de exibição, `projeto` (se a ferramenta tiver)
  * @typedef {{ id: string, nome: string }} Pessoa
  * @typedef {{ id: string, nome: string, tamanho?: number, url: string, criado?: string, de?: string | null }} Anexo
  * @typedef {{ key: string, resumo: string, updated?: string, status?: string, md: string }} Filho
@@ -18,7 +20,8 @@
  * @property {string} id
  * @property {string} nome  nome que aparece na tela ("Jira")
  * @property {Capacidades} capacidades  o que a ferramenta tem; a tela esconde o que faltar
- * @property {(link: string) => Alvo} lerLink  link colado → ticket (erro se não for um link de ticket)
+ * @property {(link: string) => TicketLido} lerLink  link colado → identidade do ticket (erro se não for um link de ticket)
+ * @property {(texto: string) => string | null} chaveDaBranch  chave do ticket dentro do nome de uma branch (ou outro texto)
  * @property {(site: string, key: string) => string} linkDo  ticket → link para abrir no navegador
  * @property {(secrets: any) => Promise<string | null>} credenciais  cabeçalho de autenticação (pede ao usuário se faltar)
  * @property {(secrets: any) => Promise<boolean>} conectado  há credenciais guardadas (sem pedir nada)
@@ -43,7 +46,7 @@
  */
 
 // As operações, na ordem acima: a fachada (infra/ticket.js) delega cada uma ao provedor ativo e o teste confere o adaptador.
-const OPERACOES = ['lerLink', 'linkDo', 'credenciais', 'conectado', 'sairConta', 'buscar', 'filhos', 'comentar', 'comentarios', 'anexar', 'baixarAnexo',
+const OPERACOES = ['lerLink', 'chaveDaBranch', 'linkDo', 'credenciais', 'conectado', 'sairConta', 'buscar', 'filhos', 'comentar', 'comentarios', 'anexar', 'baixarAnexo',
   'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boards', 'projetoInfo', 'statusDoProjeto', 'criarSubtarefa', 'atualizarDescricao'];
 
 // O que falta no adaptador para cumprir o contrato (vazio: cumpre).

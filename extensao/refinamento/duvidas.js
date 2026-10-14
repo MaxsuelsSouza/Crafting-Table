@@ -25,7 +25,7 @@ function escolherMencoes(t, secrets) {
       qp.busy = true;
       timer = setTimeout(async () => {
         let itens;
-        try { const achadas = await jira.pessoas(secrets, { key: t.chave, site: t.site }, v.trim()); itens = achadas.length ? achadas.map(pessoa) : [{ label: `Ninguém encontrado para "${v}"`, alwaysShow: true }]; }
+        try { const achadas = await jira.pessoas(secrets, jira.alvo(t), v.trim()); itens = achadas.length ? achadas.map(pessoa) : [{ label: `Ninguém encontrado para "${v}"`, alwaysShow: true }]; }
         catch (e) { itens = [{ label: `$(error) ${e.message}`, alwaysShow: true }]; }
         if (n !== seq) return;
         qp.busy = false; qp.items = itens;
@@ -66,7 +66,7 @@ const acoes = (s) => ({
     if (!mencoes) return;
     const ok = await vscode.window.showWarningMessage(`Comentar no ${t.chave}?`, { modal: true, detail: (mencoes.length ? `Menciona: ${mencoes.map((m) => '@' + m.nome).join(', ')}` : 'Sem menção a ninguém.') + '\n\n' + textoDuvida(x) }, 'Enviar');
     if (!ok) return;
-    try { await jira.comentar(s.secrets, { key: t.chave, site: t.site }, textoDuvida(x), mencoes); }
+    try { await jira.comentar(s.secrets, jira.alvo(t), textoDuvida(x), mencoes); }
     catch (e) { return vscode.window.showErrorMessage(e.message); }
     x.enviadaEm = new Date().toISOString();
     s.gravar(t.chave, DUVIDAS, l);

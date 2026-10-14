@@ -104,7 +104,7 @@ const acoes = (s) => ({
   meuPuxar({ id }) {
     const t0 = tickets.ler(id);
     if (!t0) {
-      try { tickets.criar(jira.linkDo(siteJira(), id), { listas: [modoLista] }); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      try { const link = jira.linkDo(siteJira(), id); tickets.criar(link, { listas: [modoLista] }, jira.identidade(link)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
     } else porNaLista(t0); // já está em outra aba: entra nesta também, cada aba com a sua pasta
     if (cachePrevia[id] && !cachePrevia[id].erro) s.cacheJira[id] = cachePrevia[id];
     previa = null;

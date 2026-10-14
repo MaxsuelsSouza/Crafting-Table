@@ -49,7 +49,7 @@ function card({ titulo, texto, fatos = [], links = [], cor = 'Default' }) {
 
 // Linhas novas de um ticket → mensagens (cards). `impactos`/`tarefas` dão os dados ricos do impacto.
 function mensagens(t, linhas, impactos = [], tarefas = []) {
-  const abrir = [`Abrir no ${provedorAtivo().nome}`, provedorAtivo().linkDo(t.site, t.chave)];
+  const abrir = [`Abrir no ${provedorAtivo().nome}`, provedorAtivo().linkDo(t.site, t.idProvedor ?? t.chave)];
   const out = [], grupos = [];
   for (const l of linhas) {
     if (l.tipo === 'mudanca') { // mudança pedida em comentário do Jira, esperando decisão no painel
@@ -59,7 +59,7 @@ function mensagens(t, linhas, impactos = [], tarefas = []) {
       if (!NIVEIS.includes(nivel)) continue;
       const autor = /^Comentário de (.+?): impacto/.exec(l.texto)?.[1];
       const i = impactos.slice().reverse().find((x) => x.nivel?.toUpperCase() === nivel && (!autor || x.autor === autor));
-      const cards = (i?.cards || []).map((id) => tarefas.find((c) => c.id === id)?.jira || id);
+      const cards = (i?.cards || []).map((id) => (({ ticket, jira } = {}) => ticket ?? jira)(tarefas.find((c) => c.id === id)) || id);
       out.push({ em: ms(l.em), msg: card({ titulo: `${t.chave} · Mudança pedida · ${nivel}`, texto: `${i ? `Comentário de ${i.autor}: ${i.resumo}` : l.texto}\nNada foi alterado: decida no painel.`,
         cor: COR[nivel], links: [abrir, ...(i?.link ? [['Ver comentário', i.link]] : [])],
         fatos: [...(i && i.passo != null ? [['Spec', `passo ${i.passo} afetado`]] : []), ...(cards.length ? [['Revisar', cards.join(', ')]] : []), ...(quem ? [['Refinamento de', quem]] : [])] }) });

@@ -17,8 +17,8 @@ assert.strictEqual(require('../provedores').provedorAtivo().id, 'jira'); // sem 
 console.log('ok contrato');
 
 // Link e chave.
-assert.deepStrictEqual(jira.lerLink('https://ferreiracosta.atlassian.net/browse/WMS-123'), { key: 'WMS-123', site: 'https://ferreiracosta.atlassian.net' });
-assert.strictEqual(jira.lerLink('https://x.atlassian.net/jira/software/projects/WMS/boards/1?selectedIssue=wms-9').key, 'WMS-9');
+assert.deepStrictEqual(jira.lerLink('https://ferreiracosta.atlassian.net/browse/WMS-123'), { id: 'WMS-123', chave: 'WMS-123', projeto: 'WMS', site: 'https://ferreiracosta.atlassian.net' });
+assert.strictEqual(jira.lerLink('https://x.atlassian.net/jira/software/projects/WMS/boards/1?selectedIssue=wms-9').id, 'WMS-9');
 assert.throws(() => jira.lerLink('https://x.atlassian.net/jira'));
 assert.strictEqual(jira.linkDo('https://x.atlassian.net', 'WMS-1'), 'https://x.atlassian.net/browse/WMS-1');
 console.log('ok link');

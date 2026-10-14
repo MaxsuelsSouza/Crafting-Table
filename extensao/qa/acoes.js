@@ -13,7 +13,7 @@ const jira = require('../infra/ticket').jira;
 const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (moldura.js)
 
 // Subtarefas do ticket (com a descrição em Markdown) pelo provedor: é onde o QA procura o planejamento.
-const filhosDe = (s, t) => (chave) => jira.filhos(s.secrets, { key: chave, site: t.site });
+const filhosDe = (s, t) => (chave) => jira.filhos(s.secrets, { key: chave === t.chave ? jira.alvo(t).key : chave, site: t.site });
 
 // Publicação do plano local no provedor (qa.publicarPlano): subtarefa [QA] nova ou atualizada; sem subtarefas, comentário no ticket.
 const depsPublicar = (s, t) => {
