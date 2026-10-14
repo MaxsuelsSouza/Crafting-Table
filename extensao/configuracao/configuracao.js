@@ -96,8 +96,11 @@ const ferramenta = (v) => {
     return card({ titulo: TITULO_FERRAMENTA, acao: c.trocando ? botao('Cancelar', { variante: 'contorno', acao: 'provedorTrocar' }) : '',
       corpo: dica(c.trocando ? 'Escolha a ferramenta. Ao conectar, a conta atual é substituída.' : 'Nenhuma ferramenta conectada. Escolha a ferramenta onde ficam os tickets do time.') + lista() });
   }
-  return cardTeste('jira', TITULO_FERRAMENTA, x, linha('Ferramenta', esc((c.ativo || {}).nome || 'Jira')) + linha('Conta', esc(x.conta || '')) + linha('Site', esc(v.valores.jiraSite))
-    + dica('Projeto, board, etapas e as demais variáveis ficam na aba Variáveis.')
+  const b = (v.estado || {}).board, val = v.valores;
+  return cardTeste('jira', TITULO_FERRAMENTA, x, linha('Ferramenta', esc((c.ativo || {}).nome || 'Jira')) + linha('Conta', esc(x.conta || '')) + linha('Site', esc(val.jiraSite))
+    + linha('Board principal', esc(val.jiraBoard), 'jiraBoard') + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
+    + (b?.colunas ? linha('Etapas no filtro', esc(b.colunas.join(' → '))) : b && !b.ok && val.jiraBoard ? linha('Etapas no filtro', `<span class="cfg-mal">${esc(b.texto || '')}</span>`) : '')
+    + dica('Projeto, etapas de cada módulo e as demais variáveis ficam na aba Variáveis.')
     + acoes(botao('Trocar ferramenta', { variante: 'contorno', acao: 'provedorTrocar' }) + botao('Sair da conta', { variante: 'contorno', acao: 'provedorSair' })
       + botao('Mapear com IA', { variante: 'principal', acao: 'provedorMapear', titulo: 'A IA lê só os metadados da conta (nunca o token) e sugere as variáveis' })));
 };
@@ -117,9 +120,6 @@ const geral = (v) => {
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + dica('Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.')),
     ferramenta(v),
-    cardTeste('board', 'Board e etapas', e.board, linha('Board principal', esc(val.jiraBoard), 'jiraBoard')
-      + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
-      + (e.board?.colunas ? linha('Etapas no filtro', esc(e.board.colunas.join(' → '))) : '')),
     cardTeste('specs', 'Repositório de specs', e.specs, linha('Pasta local', esc(val.specsDir), 'specsDir') + linha('Remoto (GitLab)', esc(val.specsRemoto), 'specsRemoto')),
     cardTeste('repos', 'Repositórios de código', e.repos, dica('O Claude só lê os repositórios desta lista durante o refinamento. A camada diz onde ele olha cada requisito.')
       + (repos.length ? repos.map(repo).join('') : '<div class="cfg-dim">Nenhum repositório.</div>')
@@ -143,10 +143,18 @@ const geral = (v) => {
 // Aba Variáveis: o que muda de empresa para empresa. v.variaveis = variaveis.todas(); o selo diz quem preencheu (manual, IA ou migrada dos settings antigos).
 const seloVar = (x) => (!x.definida ? '<span class="cfg-st cfg-mal">⚠ falta configurar</span>'
   : x.migrada ? '<span class="cfg-st cfg-esp">migrada dos settings antigos</span>' : `<span class="cfg-st cfg-esp">${x.origem === 'ia' ? 'IA' : 'manual'}</span>`);
-const variaveisTela = (v) => (v.variaveis || []).map((x) => card({ titulo: esc(x.rotulo), selo: seloVar(x),
-  acao: botao('Editar', { variante: 'contorno', acao: 'varEditar', id: x.chave }),
+const variaveisTela = (v) => {
+  const conectado = !!(v.estado || {}).jira?.conectado;
+  const intro = card({ titulo: 'O que são as variáveis', corpo: dica('Cada empresa organiza a ferramenta de um jeito: nomes de board, de etapas, de labels. As variáveis dizem à extensão'
+    + ' <b>quais nomes da sua conta</b> usar para montar a lista de tickets de cada módulo (QA, Implementações, Incidentes) e o filtro por etapa.'
+    + ' Os valores são escolhidos da sua conta, por isso pedem a ferramenta conectada. Para preencher tudo de uma vez, use <b>Mapear com IA</b> na aba Geral.')
+    + (conectado ? '' : `<div class="cfg-mal">Conecte a ferramenta na aba Geral para editar.</div>`) });
+  return intro + (v.variaveis || []).map((x) => card({ titulo: esc(x.rotulo), selo: seloVar(x),
+  acao: conectado ? botao('Editar', { variante: 'contorno', acao: 'varEditar', id: x.chave }) : '',
   corpo: `<div class="cfg-var">${[].concat(x.valor).join(', ') ? esc([].concat(x.valor).join(', ')) : '<i>—</i>'}</div>` + dica(esc(x.descricao))
-    + (x.atualizado ? `<div class="cfg-dim">atualizado em ${esc(x.atualizado.slice(0, 10))}</div>` : '') })).join('\n');
+    + (x.usadaEm ? `<div class="cfg-dim">Usada em: ${esc(x.usadaEm)}</div>` : '')
+    + (x.atualizado && x.definida ? `<div class="cfg-dim">atualizado em ${esc(x.atualizado.slice(0, 10))}</div>` : '') })).join('\n');
+};
 
 const MKT_FC = { nome: 'fcxlabs', url: 'https://gitlab.fcxlabs.com/ai-tools/marketplace-claude/-/raw/main/marketplace.json' };
 const MODULOS = [['refinamento', 'Refinamento'], ['implementacao', 'Implementação'], ['qa', 'QA']];
@@ -386,11 +394,12 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     },
     config() { cfgAba = 'geral'; cfgAberta = true; aoAbrir(); checar(); },
     configFechar() { cfgAberta = false; render(); },
-    cfgTestar({ id }) { if (CHECAR[id]) checar([id]); },
+    cfgTestar({ id }) { if (CHECAR[id]) checar(id === 'jira' ? ['jira', 'board'] : [id]); }, // o card da ferramenta mostra o board também
     // Edita uma variável do provedor: escolhe numa lista do provedor (boards, status, labels) quando dá, senão digita.
     async varEditar({ id }) {
       const d = variaveis.definicoes.find((x) => x.chave === id);
       if (!d) return;
+      if (!(await jira.conectado(ctx.secrets))) return vscode.window.showWarningMessage('Conecte a ferramenta na aba Geral antes de editar as variáveis.');
       const atual = variaveis.ler(id), site = siteJira(), proj = projetoJira();
       const digitar = async () => {
         const v = await vscode.window.showInputBox({ title: d.rotulo, value: [].concat(atual).join(d.tipo === 'lista' ? ', ' : ''), ignoreFocusOut: true,
@@ -434,9 +443,11 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       else if (antes) render();
     },
     async provedorSair() {
-      const ok = await vscode.window.showWarningMessage(`Sair da conta do ${jira.nome}?`, { modal: true, detail: 'Apaga e-mail e token guardados. As variáveis continuam.' }, 'Sair');
+      const ok = await vscode.window.showWarningMessage(`Sair da conta do ${jira.nome}?`, { modal: true,
+        detail: 'Apaga o e-mail e o token guardados e TODAS as variáveis (site, projeto, board, etapas, label de QA…). Ao conectar de novo, preencha-as outra vez ou use "Mapear com IA".' }, 'Sair e limpar');
       if (!ok) return;
       await jira.sairConta(ctx.secrets);
+      await variaveis.limpar();
       checar(['jira', 'board']);
     },
     async provedorMapear() { await conexao.mapear(ctx, { aoTerminar: () => { checar(['jira', 'board']); render(); } }); },

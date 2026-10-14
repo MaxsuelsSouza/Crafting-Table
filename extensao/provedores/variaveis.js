@@ -9,20 +9,26 @@ const vscode = require('vscode');
 // globalState.labelQA (que continuam lá; nada é apagado). Valores que só existiam no código não são sugeridos.
 //   ler(chave) · todas() · gravar(chave, valor, origem) · definicoes · vincular(globalState)
 
-/** @typedef {{ chave: string, rotulo: string, descricao: string, tipo: 'texto' | 'lista', escolha?: 'boards' | 'status' | 'labels' }} Definicao */
+/** @typedef {{ chave: string, rotulo: string, descricao: string, usadaEm: string, tipo: 'texto' | 'lista', escolha?: 'boards' | 'status' | 'labels' }} Definicao */
 
 /** @type {Definicao[]} */
 const definicoes = [
-  { chave: 'site', rotulo: 'Site', tipo: 'texto', descricao: 'Endereço da ferramenta da organização (no Jira: https://<org>.atlassian.net).' },
-  { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto', descricao: 'Chave do projeto onde ficam os tickets deste time (ex.: WMS).' },
-  { chave: 'ticket', rotulo: 'Ticket', tipo: 'lista', descricao: 'O que é um ticket nesta ferramenta: os tipos de item que representam trabalho (ex.: História, Bug, Tarefa).' },
-  { chave: 'boardPrincipal', rotulo: 'Board principal', tipo: 'texto', escolha: 'boards', descricao: 'Nome do board do time; as colunas dele viram as etapas do filtro dos vinculados.' },
-  { chave: 'etapas', rotulo: 'Etapas do board', tipo: 'lista', escolha: 'status', descricao: 'Etapas (colunas) do board principal, na ordem do fluxo. Vazio: lidas do próprio board.' },
-  { chave: 'etapasExtras', rotulo: 'Etapas extras', tipo: 'lista', escolha: 'status', descricao: 'Status que não são coluna do board mas também valem como etapa no filtro.' },
-  { chave: 'tipoIncidente', rotulo: 'Tipo de incidente', tipo: 'texto', descricao: 'Nome exato do tipo de item que é um incidente na ferramenta (um nome inexistente dá erro na busca).' },
-  { chave: 'etapasQA', rotulo: 'Etapas de QA', tipo: 'lista', escolha: 'status', descricao: 'Status em que um ticket está pronto para o QA testar. Um nome alternativo do mesmo status se escreve com "|" (ex.: Pronto para QA|Pronto p/ QA).' },
-  { chave: 'labelQA', rotulo: 'Label de QA', tipo: 'texto', escolha: 'labels', descricao: 'Label que marca os tickets de responsabilidade do QA.' },
-  { chave: 'etapasImplementacao', rotulo: 'Etapas de implementação', tipo: 'lista', escolha: 'status', descricao: 'Status em que um ticket está disponível para implementar (ex.: Buffer, Não iniciado, Em andamento|In progress).' }
+  { chave: 'site', rotulo: 'Site', tipo: 'texto', usadaEm: 'todas as chamadas à ferramenta e os links dos tickets',
+    descricao: 'Endereço da ferramenta da organização (no Jira: https://<org>.atlassian.net). Preenchido ao conectar a conta.' },
+  { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto', usadaEm: 'lista de tickets vinculados, boards e etapas',
+    descricao: 'Chave do projeto onde ficam os tickets deste time (ex.: WMS).' },
+  { chave: 'boardPrincipal', rotulo: 'Board principal', tipo: 'texto', escolha: 'boards', usadaEm: 'filtro por etapa dos vinculados e lista de Incidentes',
+    descricao: 'Nome do board do time; as colunas dele viram as etapas do filtro dos vinculados.' },
+  { chave: 'etapasExtras', rotulo: 'Etapas extras', tipo: 'lista', escolha: 'status', usadaEm: 'filtro por etapa dos vinculados',
+    descricao: 'Status que não são coluna do board mas também valem como etapa no filtro.' },
+  { chave: 'tipoIncidente', rotulo: 'Tipo de incidente', tipo: 'texto', usadaEm: 'lista de tickets do módulo Incidentes',
+    descricao: 'Nome exato do tipo de item que é um incidente na ferramenta (um nome inexistente dá erro na busca).' },
+  { chave: 'etapasQA', rotulo: 'Etapas de QA', tipo: 'lista', escolha: 'status', usadaEm: 'lista de tickets do módulo QA',
+    descricao: 'Status em que um ticket está pronto para o QA testar. Um nome alternativo do mesmo status se escreve com "|" (ex.: Pronto para QA|Pronto p/ QA).' },
+  { chave: 'labelQA', rotulo: 'Label de QA', tipo: 'texto', escolha: 'labels', usadaEm: 'lista de tickets do módulo QA',
+    descricao: 'Label que marca os tickets de responsabilidade do QA.' },
+  { chave: 'etapasImplementacao', rotulo: 'Etapas de implementação', tipo: 'lista', escolha: 'status', usadaEm: 'lista de tickets do módulo Implementações',
+    descricao: 'Status em que um ticket está disponível para implementar (ex.: Buffer, Não iniciado, Em andamento|In progress).' }
 ];
 
 const def = (chave) => definicoes.find((d) => d.chave === chave);
@@ -57,7 +63,7 @@ function doUsuario(chave) {
 /** Valor da variável (string, ou string[] nas de tipo lista); vazio se falta configurar. */
 function ler(chave) {
   const g = guardadas()[chave];
-  if (g && !vazio(g.valor)) return normalizar(chave, g.valor);
+  if (g && (!vazio(g.valor) || g.limpa)) return normalizar(chave, g.valor); // limpa: apagada ao sair da conta, não volta da migração
   const m = migrado(chave);
   return !vazio(m) ? m : normalizar(chave, doUsuario(chave) || '');
 }
@@ -79,7 +85,13 @@ async function gravar(chave, valor, origem = 'manual') {
   todasG[chave] = { valor: normalizar(chave, valor), descricao: d.descricao, origem: origem === 'ia' ? 'ia' : 'manual', atualizado: new Date().toISOString() };
   await cfg().update('variaveis', todasG, vscode.ConfigurationTarget?.Global ?? 1);
 }
+/** Sair da conta: apaga todas as variáveis, sem voltar a cair nos settings antigos nem nos tickets da lista. */
+async function limpar() {
+  const agora = new Date().toISOString();
+  const vazias = Object.fromEntries(definicoes.map((d) => [d.chave, { valor: d.tipo === 'lista' ? [] : '', descricao: d.descricao, origem: 'manual', atualizado: agora, limpa: true }]));
+  await cfg().update('variaveis', vazias, vscode.ConfigurationTarget?.Global ?? 1);
+}
 /** Dá acesso ao globalState (migração do labelQA). */
 const vincular = (gs) => { globalState = gs; };
 
-module.exports = { ler, todas, gravar, definicoes, vincular, _teste: { usar: (c) => { testeCfg = c; } } };
+module.exports = { ler, todas, gravar, limpar, definicoes, vincular, _teste: { usar: (c) => { testeCfg = c; } } };

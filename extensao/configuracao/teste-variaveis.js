@@ -21,8 +21,8 @@ assert.strictEqual(variaveis.ler('site'), '');
 assert.strictEqual(variaveis.ler('boardPrincipal'), '');
 assert.deepStrictEqual(variaveis.ler('etapasQA'), []);
 assert.deepStrictEqual(variaveis.definicoes.map((d) => d.chave),
-  ['site', 'projeto', 'ticket', 'boardPrincipal', 'etapas', 'etapasExtras', 'tipoIncidente', 'etapasQA', 'labelQA', 'etapasImplementacao']);
-assert.ok(variaveis.definicoes.every((d) => d.rotulo && d.descricao));
+  ['site', 'projeto', 'boardPrincipal', 'etapasExtras', 'tipoIncidente', 'etapasQA', 'labelQA', 'etapasImplementacao']);
+assert.ok(variaveis.definicoes.every((d) => d.rotulo && d.descricao && d.usadaEm));
 
 // Migração: settings antigos e globalState.labelQA viram valor (sem apagar nada).
 const c = fazer({ jiraSite: 'https://x.atlassian.net/', jiraProjeto: 'ABC', jiraBoard: 'Meu', etapasExtras: ['Pronto p/ Dev'] });
@@ -64,8 +64,22 @@ assert.strictEqual(c.dados.jiraSite, 'https://x.atlassian.net/'); // settings an
   assert.deepStrictEqual(await configuracao.pendencias(secrets, 'incidentes'), []);
 
   // Aba Variáveis: rótulo, valor, descrição, selo de origem e Editar por data-acao.
-  const html = configuracao.tela({ aba: 'variaveis', valores: /** @type {any} */ ({}), estado: {}, reposAuto: [], voltar: '', versao: '1', variaveis: variaveis.todas() });
+  const tela = (estado) => configuracao.tela({ aba: 'variaveis', valores: /** @type {any} */ ({}), estado, reposAuto: [], voltar: '', versao: '1', variaveis: variaveis.todas() });
+  const html = tela({ jira: { conectado: true } });
   assert.ok(html.includes('data-acao="cfgAba" data-id="variaveis"') && html.includes('data-acao="varEditar" data-id="etapasQA"'));
-  assert.ok(html.includes('falta configurar') && html.includes('manual') && html.includes('Tipo de incidente'));
+  assert.ok(html.includes('falta configurar') && html.includes('manual') && html.includes('Tipo de incidente') && html.includes('Usada em:') && html.includes('O que são as variáveis'));
+  // Sem conta: nada é editável (os valores vêm da conta) e a tela diz para conectar.
+  const semConta = tela({});
+  assert.ok(!semConta.includes('data-acao="varEditar"') && semConta.includes('Conecte a ferramenta'));
+
+  // Sair da conta: limpa tudo e não volta a cair nos settings antigos nem no labelQA do globalState.
+  fazer({ jiraSite: 'https://x.atlassian.net', jiraProjeto: 'ABC', jiraBoard: 'Meu' });
+  variaveis.vincular({ get: (k) => (k === 'labelQA' ? 'qa-time' : undefined) });
+  await variaveis.gravar('tipoIncidente', 'Incidente', 'ia');
+  assert.strictEqual(variaveis.ler('site'), 'https://x.atlassian.net');
+  await variaveis.limpar();
+  assert.ok(variaveis.todas().every((x) => !x.definida && !x.migrada), JSON.stringify(variaveis.todas()));
+  await variaveis.gravar('projeto', 'XYZ');
+  assert.strictEqual(variaveis.ler('projeto'), 'XYZ');
   console.log('ok variaveis');
 })();
