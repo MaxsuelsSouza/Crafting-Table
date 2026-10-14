@@ -41,6 +41,22 @@ const bancoEnv = (t) => {
   return { MAPA_DB_CONEXAO: conexao, MAPA_DB_AMBIENTE: ambiente, MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '',
     MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(pasta(t.chave), '.mapa-db.jsonl') };
 };
+// Ticket por documento: o documento é o ticket. Grava o contexto (descrição, subtarefas, comentários, caminho do original) na pasta do
+// ticket, de forma síncrona, e devolve o bloco do prompt. Ticket do Jira: ''.
+const CONTEXTO = '.contexto-ticket.md';
+const blocoDocumento = (t) => {
+  if (!jira.ehDocumento(t)) return '';
+  const d = pasta(t.chave), ctx = require('../infra/contexto');
+  const doc = tickets.ler(t.chave)?.documento || t.documento || {};
+  let arq = path.join(d, CONTEXTO);
+  try {
+    const regravar = () => { try { ctx.gravarContexto(d, CONTEXTO, require('../provedores/documento').buscarSync({ key: t.chave }), tickets.ler(t.chave) || t); } catch { /* pasta sumiu */ } };
+    regravar();
+    ctx.prepararDocumento(tickets.ler(t.chave) || t).then(regravar, () => {}); // extração (docx/pdf) assíncrona: o contexto é regravado com o texto
+  } catch { /* sem contexto: o prompt ainda aponta o original */ }
+  return `\nTicket por documento (sem ferramenta de gestão). Contexto do ticket: ${arq}. Documento original: ${doc.arquivo ? path.join(d, doc.arquivo) : '(sem arquivo)'} `
+    + '(imagem e PDF: leia com Read; se houver páginas em .documento-paginas/, leia as imagens). Trate este contexto como o ticket: o passo 1 usa como insumo; não use ferramenta de tickets.';
+};
 const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois) => {
   const repos = reposDe(t);
   const bd = bancoEnv(t);
@@ -51,7 +67,7 @@ const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois) 
     extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
       ...vagas.pluginDirs('refinamento.foco'), ...vagas.pluginDirs('refinamento.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), areaIA(pasta(t.chave)), ...repos.map((r) => r.caminho)],
     prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-      + ondeSalvar(t)
+      + ondeSalvar(t) + blocoDocumento(t)
       + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
       + ` · plugin mapa: ${MAPA()} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
       + vagas.aviso('refinamento.sdd') + vagas.aviso('refinamento.mapa')
@@ -150,8 +166,16 @@ const vigiarComentarios = async () => {
       let cs, eu;
       try { [cs, eu] = await Promise.all([jira.comentarios(s.secrets, jira.alvo(t0)), jira.eu(s.secrets, t0.site)]); } catch { continue; }
       const t = tickets.ler(t0.chave);
-      const v = t.vigiaComentarios;
-      if (!v) { tickets.gravar({ ...t, vigiaComentarios: { desde: new Date().toISOString(), vistos: cs.map((c) => c.id) } }); continue; }
+      let v = t.vigiaComentarios;
+      if (!v) {
+        // Ticket-documento: o que já estava no contexto entregue à IA (.contexto-ticket.md) é visto; o colado depois é novo.
+        const doc = jira.ehDocumento(t);
+        let base = Date.now();
+        if (doc) { try { base = fs.statSync(path.join(pasta(t.chave), CONTEXTO)).mtimeMs; } catch { /* sem contexto */ } }
+        v = { desde: new Date(base).toISOString(), vistos: cs.filter((c) => Date.parse(c.data) <= base).map((c) => c.id) };
+        tickets.gravar({ ...t, vigiaComentarios: v });
+        if (!doc) continue;
+      }
       const novos = cs.filter((c) => !v.vistos.includes(c.id) && c.autorId !== eu.id && Date.parse(c.data) >= Date.parse(v.desde) - 60000);
       if (!novos.length) continue;
       const l = impactosDe(pasta(t.chave)), ab = abertasDe(t), temAberta = ab.duvidas.length || ab.perguntas.length;

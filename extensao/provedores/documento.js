@@ -104,7 +104,8 @@ async function anexar(_s, _site, key, arquivos) {
 }
 const baixarAnexo = async (_s, anexo) => fs.readFileSync(anexo.url);
 
-async function buscar(_s, { key }) {
+// Síncrono (tudo é arquivo local): o orquestrador grava o contexto da IA sem await.
+function buscarSync({ key }) {
   const chave = chaveDe(key), t = tk().ler(chave) || {}, d = dir(chave);
   let md = '';
   try { md = fs.readFileSync(path.join(d, '.documento-texto.md'), 'utf8'); } catch { /* sem texto */ }
@@ -119,6 +120,7 @@ async function buscar(_s, { key }) {
     comentarios: [...lerComentarios(chave)].reverse().map((c) => ({ autor: c.autor, data: c.data, corpo: markdown(c.texto) }))
   };
 }
+const buscar = async (_s, /** @type {{ key: string }} */ alvo) => buscarSync(alvo);
 
 const vazio = async () => [];
 /** @type {import('./contrato').Provedor & { local: true }} */
@@ -132,4 +134,4 @@ const documento = {
   descobrir: async () => ({ site: SITE, projetos: [], boards: [], status: [], tiposItem: [], labels: [] }),
   criarSubtarefa, atualizarDescricao
 };
-module.exports = { ...documento, SITE, proximaChave, ehDocumento, criarPorDocumento, ACEITAS, adicionarComentario };
+module.exports = { ...documento, SITE, proximaChave, ehDocumento, criarPorDocumento, ACEITAS, adicionarComentario, buscarSync };

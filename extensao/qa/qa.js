@@ -255,6 +255,8 @@ function prepararPelaSkill(dir, chave, backend) {
       if (sinal) { vivo('aviso', 'Preparo do ambiente interrompido'); return ok(null); }
       const amb = { ...(json || { parou_em: 'script', itens: [] }), erro: json ? null : (erro.trim().slice(-300) || `saiu com código ${code}`),
         data: hoje(), em: new Date().toISOString(), build, fonte: 'skill', preparando: false, sha: { backend: shaDe(json?.backend), mobile: shaDe(json?.mobile) } };
+      // Limite: ticket por documento (DOC-001) não tem branch nem refs; a skill procura por chave e para em 'refs'. Sem script que aceite isso, vale os Comandos.
+      if (amb.parou_em && ehLocal(dir) && (amb.parou_em === 'refs' || /chave|branch|\bref/i.test(amb.erro || ''))) amb.erro = 'o ticket por documento não tem branch: use os Comandos do ambiente em Configurações ou ajuste a skill';
       gravarJson(path.join(dir, AMBIENTE), amb);
       if (amb.parou_em) { vivo('erro', `Ambiente parou na etapa ${amb.parou_em}${amb.erro ? `: ${amb.erro}` : ''}. Log e análise no Ambiente do rodapé`); return ok(null); }
       vivo('fim', `Ambiente pronto · ref ${amb.ref || '?'} · backend ${amb.sha.backend || '?'} · mobile ${amb.sha.mobile || '?'}${amb.pendentes ? ` · ${amb.pendentes} pendência(s)` : ''}`);
@@ -487,11 +489,11 @@ const mudar = (dir, e) => gravarJson(path.join(dir, ESTADO), { ...estado(dir), .
 async function verificarPlano(dir, chave, filhos) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · 1. Planejamento');
-  vivo('acao', `Lendo as subtarefas do ${chave} no ${nomeProvedor()}`);
+  vivo('acao', `Lendo as subtarefas do ${chave} no ${onde(dir)}`);
   mudar(dir, { fase: 'procurando', erro: null, chave });
   let r;
   try { r = await procurar(filhos, chave); } catch (e) {
-    vivo('erro', `Não consegui ler o ticket no ${nomeProvedor()}: ${e.message}`);
+    vivo('erro', `Não consegui ler o ticket no ${onde(dir)}: ${e.message}`);
     return mudar(dir, { fase: 'erro', erro: e.message });
   }
   vivo('acao', r.qa.length ? `Subtarefas com QA no nome: ${r.qa.map((x) => `${x.key} (${x.resumo})`).join(', ')}` : 'Nenhuma subtarefa com QA no nome');
@@ -539,12 +541,21 @@ const PLANO_LOCAL = 'qa-plano.md', CONTEXTO = '.ticket-contexto.md';
 const TITULO_SUBTAREFA = '[QA] Planejamento dos Casos de Testes'; // convenção que procurar() reconhece
 // Nome do provedor para os rótulos (fora do VS Code, nos testes, cai no Jira).
 const nomeProvedor = () => { try { return require('../infra/ticket').jira.nome || 'Jira'; } catch { return 'Jira'; } };
+// Ticket por documento (provedor local, sem rede): a pasta do QA é <ticket>/qa. Rótulos e prompt mudam; o fluxo é o mesmo, pelo adaptador local.
+const ehLocal = (dir) => { try { return require('../infra/tickets').ler(path.basename(path.dirname(dir)))?.provedor === 'documento'; } catch { return false; } };
+const onde = (dir) => (ehLocal(dir) ? 'documento' : nomeProvedor()); // "no <onde>"
+// Só para documento: o original e o texto extraído (infra/contexto.js; só cita o que já existe na pasta do ticket).
+function blocoDocumento(dir) {
+  if (!ehLocal(dir)) return '';
+  const raiz = path.dirname(dir), ex = (f) => fs.existsSync(path.join(raiz, f));
+  const t = require('../infra/tickets').ler(path.basename(raiz)), orig = t?.documento?.arquivo;
+  const itens = [orig && `o documento original ${path.join(raiz, orig)}`, ex('.documento-extraido.md') && `o texto extraído dele ${path.join(raiz, '.documento-extraido.md')}`,
+    ex('.documento-paginas') && `as páginas renderizadas (imagens) em ${path.join(raiz, '.documento-paginas')}`].filter(Boolean);
+  return itens.length ? ` Este ticket é um DOCUMENTO sem Jira: a fonte da verdade é ${itens.join(', ')}. Leia-os (imagens com Read) antes de montar os casos.` : '';
+}
 
-const html2txt = (h) => String(h || '').replace(/<(br|\/p|\/li|\/tr|\/h\d)[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
-// Ticket normalizado do provedor (buscar) → arquivo de contexto que a IA lê.
-const contextoTicket = (j) => `# ${j.key} · ${j.resumo}\nStatus: ${j.status} · Tipo: ${j.tipo}\n\n## Descrição\n\n${html2txt(j.descricao)}\n\n## Subtarefas\n\n`
-  + ((j.subtarefas || []).map((x) => `- ${x.key} · ${x.resumo} (${x.status})`).join('\n') || '(sem subtarefas)') + '\n\n## Comentários (mais recente primeiro)\n\n'
-  + ((j.comentarios || []).map((c) => `### ${c.autor} · ${c.data}\n${html2txt(c.corpo)}`).join('\n\n') || '(sem comentários)') + '\n';
+// Ticket normalizado do provedor (buscar) + ticket local → arquivo de contexto que a IA lê (infra/contexto.js, igual para todo módulo).
+const contextoTicket = (j, t) => require('../infra/contexto').contextoDoTicket(j, t);
 
 // Método do planejamento (o do jira-qa-planner, sem a parte que publica): casos de teste no formato que cenariosDo() entende.
 const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os comentários e monte os casos de teste que os cobrem. '
@@ -553,9 +564,9 @@ const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os coment
   + 'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. '
   + 'Casos que dependem de exploração livre vão ao final como "#### Exploratório 1 – …". Termine com "## Critérios de aceite cobertos" (tabela CA × CT) e "## Riscos e pré-requisitos" '
   + '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos).';
-const REGRAS_PLANO = (dir, rasc = dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${nomeProvedor()}). `
+const REGRAS_PLANO = (dir, rasc = dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${onde(dir)}). `
   + `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). `
-  + `Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
+  + `${blocoDocumento(dir)}Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
 // Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/area-ia.js); a extensão copia para dir.
 const promptCriar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano já aprovou ao clicar em "Criar planejamento": não peça confirmação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}`
   + ' Termine dizendo em uma frase quantos casos montou.';
@@ -628,8 +639,8 @@ function html(dir, uri = () => '') {
   const lido = ult && e.lido === ult.v;
   const card = e.fase === 'sem_plano' || (e.fase === 'criando' && !rodando)
     ? `<div class="qa-card bloq"><b>Sem planejamento de QA</b><p>O QA só começa com o planejamento.${e.subtarefas?.length ? ` A subtarefa ${esc(e.subtarefas.join(', '))} não tem cenários.` : ''}
-       O Claude escreve o plano e a Crafting Table publica no ${nomeProvedor()}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
-    : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar, a Crafting Table publica no ${nomeProvedor()} e procura de novo.</p></div>`
+       O Claude escreve o plano e a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
+    : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar, a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`} e procura de novo.</p></div>`
     : e.fase === 'alterando' && rodando ? `<div class="qa-card"><b><span class="vivo-bola"></span>Aplicando sua mudança no planejamento</b><p>“${esc(e.pedido || '')}”. Ao terminar, a versão nova aparece aqui para aprovar.</p></div>`
     : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.</p>
        ${abrir}${e.fase === 'alterando' ? '' : `<div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-painel="qaPlanoAprovar" ${lido ? '' : 'disabled'}
@@ -646,7 +657,7 @@ function html(dir, uri = () => '') {
 }
 // Publicar só com todos os cenários não arquivados em 'passou' (e ao menos um).
 function podePublicar(lista) { const a = lista.filter((c) => !c.arquivado && c.status !== 'dispensado'); return a.length > 0 && a.every((c) => c.status === 'passou'); }
-const BOTAO_PUBLICAR = (ok) => `<button class="sec" data-painel="qaPublicar" ${ok ? '' : 'disabled '}title="${ok ? 'Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)' : 'Só é possível publicar quando todos os cenários estiverem com resultado OK (passou)'}">Publicar no ${nomeProvedor()}</button>`;
+const BOTAO_PUBLICAR = (ok, local = false) => `<button class="sec" data-painel="qaPublicar" ${ok ? '' : 'disabled '}title="${ok ? `Comentário com o resultado e as evidências na subtarefa de QA${local ? ' do documento' : ''} (pede confirmação)` : 'Só é possível publicar quando todos os cenários estiverem com resultado OK (passou)'}">${local ? 'Salvar resultado no documento' : `Publicar no ${nomeProvedor()}`}</button>`;
 // Caixa de etapas do QA: os nomes vêm de agentes/etapas.js (módulo "qa", os mesmos da aba Plugins); o estado sai do que o módulo já sabe.
 function etapasQa(dir, e, rodando) {
   const nomes = vagas.MODULOS.find((m) => m.id === 'qa').etapas.map((x) => x.nome);
@@ -668,9 +679,9 @@ function execucaoHtml(dir, e, rodando) {
   if (rodando) return `<div class="qa-card"><b><span class="vivo-bola"></span>QA em andamento</b><p>⏸ no topo pausa: o cenário em andamento é descartado e volta na retomada.</p></div>`;
   if (pend) return `<div class="qa-card"><b>${pend} cenário(s) na fila${e.execucao === 'pausado' ? ' · pausado' : ''}</b><p>Sobe API, Metro, emulador e app, confere a massa e executa um cenário por vez.${outro}</p>
     <button data-painel="qaIniciar">${e.execucao === 'pausado' ? 'Retomar' : feitos ? 'Continuar' : 'Dar início'}</button>
-    ${feitos ? BOTAO_PUBLICAR(podePublicar(r)) : ''}</div>`;
+    ${feitos ? BOTAO_PUBLICAR(podePublicar(r), ehLocal(dir)) : ''}</div>`;
   return `<div class="qa-card"><b>Execução concluída</b><p>Nenhum cenário na fila. ↻ Refazer num cenário o coloca de volta.</p>
-    ${feitos ? BOTAO_PUBLICAR(podePublicar(r)) : ''}</div>`;
+    ${feitos ? BOTAO_PUBLICAR(podePublicar(r), ehLocal(dir)) : ''}</div>`;
 }
 // Aba Massa (painel). Validade: estado 'valida' e medida depois do último refresh do banco.
 function massaHtml(dir, hora = '06:00') {
@@ -699,5 +710,5 @@ function mapaHtml(dir, r, amb, uri) {
 }
 
 module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
-  podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
+  ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

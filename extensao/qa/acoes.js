@@ -12,6 +12,8 @@ const { IC } = require('../componentes/icones');
 const { cfg } = require('../configuracao/configuracao');
 const { NOTIF } = require('../painel/notificacoes');
 const jira = require('../infra/ticket').jira;
+const docLocal = (t) => jira.ehDocumento(t); // ticket por documento: tudo pelo adaptador local, sem rede e sem conta
+const provNome = (t) => (docLocal(t) ? 'documento' : jira.nome);
 const EVID = 'claudeAbas.evidencias'; // mesma id da seção Evidências (moldura.js)
 
 // Subtarefas do ticket (com a descrição em Markdown) pelo provedor: é onde o QA procura o planejamento.
@@ -20,7 +22,7 @@ const filhosDe = (s, t) => (chave) => jira.filhos(s.secrets, { key: chave === t.
 // Publicação do plano local no provedor (qa.publicarPlano): subtarefa [QA] nova ou atualizada; sem subtarefas, comentário no ticket.
 const depsPublicar = (s, t) => {
   const alvo = { key: t.chave, site: t.site };
-  return { chave: t.chave, filhos: filhosDe(s, t), subtarefas: jira.capacidades.subtarefas !== false,
+  return { chave: t.chave, filhos: filhosDe(s, t), subtarefas: docLocal(t) || jira.capacidades.subtarefas !== false,
     criarSubtarefa: (o) => jira.criarSubtarefa(s.secrets, alvo, o),
     atualizarDescricao: (key, md) => jira.atualizarDescricao(s.secrets, alvo, key, md),
     comentar: (md) => jira.comentar(s.secrets, alvo, md) };
@@ -37,18 +39,18 @@ async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
   try {
     const j = s.cacheJira[t.id] && !s.cacheJira[t.id].erro ? s.cacheJira[t.id] : await jira.buscar(s.secrets, { key: t.chave, site: t.site });
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, qa.CONTEXTO), qa.contextoTicket(j));
+    fs.writeFileSync(path.join(dir, qa.CONTEXTO), qa.contextoTicket(j, t));
     fs.mkdirSync(rasc, { recursive: true });
     if (mudanca && fs.existsSync(noDir)) fs.copyFileSync(noDir, noRasc); else fs.rmSync(noRasc, { force: true });
   } catch (e) {
-    vivo('erro', `Não consegui ler o ticket no ${jira.nome}: ${e.message}`);
+    vivo('erro', `Não consegui ler o ticket no ${provNome(t)}: ${e.message}`);
     qa.mudar(dir, { fase: 'erro', erro: e.message });
     return false;
   }
   const antes = ler(noRasc);
   let tratou = false;
   return maestro.rodar(dir, { prompt: prompt(rasc), titulo, ferramentas: qa.FERRAMENTAS_PLANO,
-    extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir, rasc, ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
+    extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir, rasc, ...(docLocal(t) ? [path.dirname(dir)] : []), ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
     aoMudar: () => {
       s.render();
       if (maestro.rodando(dir) || tratou) return;
@@ -59,9 +61,9 @@ async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
           if (depois === null) throw new Error(`O Claude não gravou ${qa.PLANO_LOCAL}`);
           if (mudanca && depois === antes) throw new Error('O Claude não alterou o plano');
           fs.writeFileSync(noDir, depois);
-          vivo('acao', `Publicando o plano no ${jira.nome}`);
+          vivo('acao', docLocal(t) ? 'Salvando o plano no documento' : `Publicando o plano no ${jira.nome}`);
           const r = await qa.publicarPlano(dir, depsPublicar(s, t));
-          vivo('fim', r.modo === 'criada' ? `Subtarefa ${r.key} criada com o plano` : r.modo === 'atualizada' ? `Descrição de ${r.key} atualizada com o plano` : `Plano publicado como comentário no ${r.key} (o ${jira.nome} não tem subtarefas)`);
+          vivo('fim', r.modo === 'criada' ? `Subtarefa ${r.key} criada com o plano` : r.modo === 'atualizada' ? `Descrição de ${r.key} atualizada com o plano` : `Plano publicado como comentário no ${r.key} (o ${provNome(t)} não tem subtarefas)`);
         } catch (e) {
           vivo('erro', `Plano não publicado: ${e.message}`);
           qa.mudar(dir, { fase: 'erro', erro: e.message });
@@ -189,7 +191,7 @@ const acoes = (s) => ({
     if (!t) return;
     const dir = s.pastaAba(t.id), v = qa.versaoAtual(dir);
     if (!v) return;
-    const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: `O Claude edita o plano, a Crafting Table republica no ${jira.nome} e gera a versão nova para você aprovar`, ignoreFocusOut: true });
+    const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: `O Claude edita o plano, a Crafting Table ${docLocal(t) ? 'salva no documento' : `republica no ${jira.nome}`} e gera a versão nova para você aprovar`, ignoreFocusOut: true });
     if (!pedido?.trim()) return;
     qa.registrarDecisao(dir, 'Usuário pediu ajuste no planejamento', { ticket: t.chave, pedido: pedido.trim() });
     fs.mkdirSync(dir, { recursive: true });
@@ -202,22 +204,30 @@ const acoes = (s) => ({
   async qaPublicar() {
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;
-    const dir = s.pastaAba(t.id), sub = qa.estado(dir).subtarefa, r = qa.cenarios(dir);
+    const dir = s.pastaAba(t.id), r = qa.cenarios(dir), local = docLocal(t);
+    let sub = qa.estado(dir).subtarefa;
     const feitos = r.cenarios.filter((c) => !c.arquivado && qa.RESULTADOS.includes(c.status));
-    if (!sub || !feitos.length) return;
+    if (!feitos.length) return;
+    if (!sub && !local) return void vscode.window.showWarningMessage('Sem subtarefa de QA para publicar: procure ou crie o planejamento primeiro (▶).');
     if (!qa.podePublicar(r.cenarios)) return vscode.window.showWarningMessage('Só é possível publicar quando todos os cenários estiverem com resultado OK (passou).');
     const arqs = feitos.flatMap((c) => qa.arquivosDe(dir, c.execucoes.at(-1)).map((f) => [c.id, f]));
-    const ok = await vscode.window.showWarningMessage(`Publicar no ${sub}: comentário com ${feitos.length} cenário(s) e ${arqs.length} evidência(s) anexada(s)?`, { modal: true }, 'Publicar');
-    if (ok !== 'Publicar') return;
-    qa.registrarDecisao(dir, `Usuário publicou o resultado no ${sub}`, { ticket: t.chave });
+    const ok = await vscode.window.showWarningMessage(local
+      ? `Salvar no documento ${t.chave}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s) (arquivos locais, nada sai da máquina)?`
+      : `Publicar no ${sub}: comentário com ${feitos.length} cenário(s) e ${arqs.length} evidência(s) anexada(s)?`, { modal: true }, local ? 'Salvar' : 'Publicar');
+    if (!ok) return;
     const ROT = { passou: '✅ Passou', falhou: '❌ Falhou', bloqueado: '⛔ Bloqueado' };
     const md = [`**Resultado do QA · plano v${r.planoVersao}** (Crafting Table)`, '', '| Cenário | Resultado | Observação |', '| --- | --- | --- |',
       ...feitos.map((c) => `| ${c.id} · ${c.titulo.replace(/\|/g, '/')} | ${ROT[c.status]} | ${(c.execucoes.at(-1)?.nota || '').replace(/\|/g, '/')} |`)].join('\n');
     try {
+      // Documento sem subtarefa de QA (plano só em qa-plano.md): cria a subtarefa local do resultado.
+      if (!sub) sub = (await depsPublicar(s, t).criarSubtarefa({ resumo: '[QA] Resultado dos Testes', descricao: md })).key;
+      qa.registrarDecisao(dir, local ? `Usuário salvou o resultado no documento (${sub})` : `Usuário publicou o resultado no ${sub}`, { ticket: t.chave });
       await jira.comentar(s.secrets, { key: sub, site: t.site }, md);
       if (arqs.length) await jira.anexar(s.secrets, t.site, sub, arqs.map(([id, f]) => ({ arquivo: f, nome: `${id}-${path.basename(f)}` })));
-      aoVivo.anotar(dir, { tipo: 'fim', texto: `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
-    } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar no ${jira.nome}: ${e.message}` }); }
+      aoVivo.anotar(dir, { tipo: 'fim', texto: local
+        ? `Resultado salvo no documento: comentário em ${sub} (.comentarios.json) e ${arqs.length} evidência(s) em .publicado/${sub}/`
+        : `Publicado no ${sub}: resultado de ${feitos.length} cenário(s) e ${arqs.length} evidência(s)` });
+    } catch (e) { aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui ${local ? 'salvar no documento' : `publicar no ${jira.nome}`}: ${e.message}` }); }
     s.render();
   },
   qaMassaEstado({ id, op }) { const t = s.ticketAberto(); try { if (t && typeof id === 'string') qa.massaEstado(s.pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } s.render(); },

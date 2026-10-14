@@ -19,7 +19,9 @@ const data = (iso) => { const d = new Date(iso); return isNaN(+d) ? '' : d.toLoc
 // Lê da pasta do ticket o que a folha mostra.
 function dadosDe(t) {
   const d = require('../infra/tickets').pasta(t.chave);
-  return { dir: d, texto: lerTexto(path.join(d, '.documento-texto.md')), comentarios: lerJson(path.join(d, '.comentarios.json'), []), subtarefas: lerJson(path.join(d, '.subtarefas.json'), []) };
+  let anexos = [];
+  try { anexos = fs.readdirSync(path.join(d, '.anexos')).sort().flatMap((n) => { const st = fs.statSync(path.join(d, '.anexos', n)); return st.isFile() ? [{ nome: n, tamanho: st.size }] : []; }); } catch { /* sem anexos */ }
+  return { dir: d, anexos, texto: lerTexto(path.join(d, '.documento-texto.md')), comentarios: lerJson(path.join(d, '.comentarios.json'), []), subtarefas: lerJson(path.join(d, '.subtarefas.json'), []) };
 }
 
 function visualizacao(t, dir, uri) {
@@ -35,6 +37,8 @@ function folhaDocumento(t, dados, uri) {
   const d = { ...dadosDe(t), ...(dados || {}) };
   const doc = t.documento || {};
   const subs = d.subtarefas.map((s) => `<div class="doc-sub"><code>${esc(s.key)}</code><span>${esc(s.resumo)}</span><span class="dim">${esc(s.status || '')}</span></div>`).join('');
+  const kb = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  const anex = (d.anexos || []).map((a) => `<div class="doc-sub"><span>${esc(a.nome)}</span><span class="dim">${kb(a.tamanho)}</span>${botao('Abrir', { acao: 'docAbrirAnexo', id: a.nome, variante: 'fantasma' })}</div>`).join('');
   const coms = [...d.comentarios].reverse().map((c) => `<div class="doc-com"><div class="dim"><b>${esc(c.autor || '')}</b> · ${esc(data(c.data))}</div><div class="md">${markdown(c.texto || '')}</div></div>`).join('');
   return `<div class="folha doc-folha">
     <div class="doc-topo"><div class="doc-tit"><b>${esc(t.titulo || doc.nome || t.chave)}</b>
@@ -50,6 +54,8 @@ function folhaDocumento(t, dados, uri) {
     ${coms || '<div class="vazio-aba">Nenhum comentário.</div>'}
     <textarea class="doc-area doc-novo" data-texto placeholder="Adicionar comentário…"></textarea>
     <div class="acoes-aba">${botao('Adicionar comentário', { acao: 'docComentar', variante: 'principal' })}</div></div>
+  <div class="folha doc-folha"><h3>Anexos</h3>${anex || '<div class="vazio-aba">Sem anexos extras (prints, vídeos do incidente).</div>'}
+    <div class="acoes-aba">${botao('Adicionar anexo', { acao: 'docAnexar', variante: 'contorno' })}</div></div>
   <div class="folha doc-folha"><h3>Subtarefas</h3>${subs || '<div class="vazio-aba">Sem subtarefas. Elas nascem do fluxo de cards no Refinamento.</div>'}</div>`;
 }
 

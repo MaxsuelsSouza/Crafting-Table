@@ -12,7 +12,7 @@ function escolherMencoes(t, secrets) {
   return new Promise((resolve) => {
     const qp = /** @type {vscode.QuickPick<vscode.QuickPickItem & { fim?: boolean, p?: any }>} */ (vscode.window.createQuickPick()), escolhidas = new Map();
     qp.ignoreFocusOut = true; qp.matchOnDescription = true;
-    qp.placeholder = `Digite parte do nome ou do e-mail para buscar no ${jira.nome}`;
+    qp.placeholder = `Digite parte do nome ou do e-mail para buscar no ${jira.ehDocumento(t) ? 'documento' : jira.nome}`;
     let seq = 0, timer, fim = false;
     const titulo = () => { const ja = [...escolhidas.values()].map((p) => '@' + p.nome).join(', '); qp.title = ja ? `Mencionando: ${ja}` : `Mencionar alguém no comentário do ${t.chave}?`; };
     const concluir = () => ({ label: escolhidas.size ? '$(check) Concluir menções' : '$(check) Enviar sem menção', alwaysShow: true, fim: true });
@@ -62,15 +62,16 @@ const acoes = (s) => ({
     const l = t ? duvidasDe(s.pasta(t.chave)) : [];
     const x = l.find((y) => y.id === id);
     if (!x || x.enviadaEm) return;
-    const mencoes = await escolherMencoes(t, s.secrets);
+    const local = jira.ehDocumento(t); // ticket-documento: o comentário fica no documento, sem menção nem rede
+    const mencoes = local ? [] : await escolherMencoes(t, s.secrets);
     if (!mencoes) return;
-    const ok = await vscode.window.showWarningMessage(`Comentar no ${t.chave}?`, { modal: true, detail: (mencoes.length ? `Menciona: ${mencoes.map((m) => '@' + m.nome).join(', ')}` : 'Sem menção a ninguém.') + '\n\n' + textoDuvida(x) }, 'Enviar');
+    const ok = await vscode.window.showWarningMessage(local ? `Registrar a dúvida como comentário no documento ${t.chave}?` : `Comentar no ${t.chave}?`, { modal: true, detail: (local ? 'Fica só no documento (nada sai da máquina). Quem responder adiciona um comentário na aba Ticket.' : mencoes.length ? `Menciona: ${mencoes.map((m) => '@' + m.nome).join(', ')}` : 'Sem menção a ninguém.') + '\n\n' + textoDuvida(x) }, 'Enviar');
     if (!ok) return;
     try { await jira.comentar(s.secrets, jira.alvo(t), textoDuvida(x), mencoes); }
     catch (e) { return vscode.window.showErrorMessage(e.message); }
     x.enviadaEm = new Date().toISOString();
     s.gravar(t.chave, DUVIDAS, l);
-    vscode.window.showInformationMessage(`${x.id} enviada para os comentários do ${t.chave}.`);
+    vscode.window.showInformationMessage(local ? `${x.id} registrada nos comentários do documento ${t.chave}.` : `${x.id} enviada para os comentários do ${t.chave}.`);
     s.atualizarJira(t.chave);
   },
   async duvidaResponder({ id }) {

@@ -184,6 +184,7 @@ exports.provider = (ctx) => {
         const r = await vscode.window.showOpenDialog({ canSelectMany: false, title: 'Anexar documento ao ticket', filters: { Documentos: doc.ACEITAS } });
         if (!r?.length) return;
         try { t = lista.porNaLista(doc.criarPorDocumento(r[0].fsPath, { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+        require('../infra/contexto').prepararDocumento(t).then(() => render(), () => {}); // extrai o texto sem bloquear a abertura
       } else {
         const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
         if (!link) return;

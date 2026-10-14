@@ -10,18 +10,21 @@ const mudancas = require('./mudancas');
 
 // ── Tarefas: cards do passo 4 (como no Jira). Pendentes → você aprova (vira subtarefa no Jira), reprova ou pede
 // alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
+// Onde a subtarefa mora: no documento (ticket-documento, tudo local) ou na ferramenta de gestão.
+const ondeNome = (t) => (jira.ehDocumento(t) ? 'documento' : jira.nome);
+const linkSub = (t, k) => { try { return jira.linkDo(t.site, k) || ''; } catch { return ''; } };
 const STATUS_T = { pendente: 'Pendente', em_alteracao: 'Claude alterando', aprovada: 'Aprovada', reprovada: 'Reprovada' };
 const COLUNAS_T = [['Pendentes', ['pendente', 'em_alteracao']], ['Aprovadas', ['aprovada']], ['Reprovadas', ['reprovada']]];
 function telaTarefas(t, l, impactos = []) {
   const atencao = mudancas.cardsAfetados(impactos);
   if (!l.length) return `<div class="folha"><div class="vazio-aba">Nenhuma tarefa ainda.<br>No passo 4 da spec o Claude cria as tarefas e elas aparecem aqui como cards,
-    para você aprovar (vira subtarefa no ${esc(jira.nome)} em ${esc(t.chave)}), reprovar ou pedir alteração.</div></div>`;
+    para você aprovar (vira subtarefa no ${esc(ondeNome(t))} em ${esc(t.chave)}), reprovar ou pedir alteração.</div></div>`;
   const chip = (c) => `${c.camada ? `<span class="tcam cam-${esc(c.camada)}">${esc(c.camada)}</span>` : ''}
     ${c.estimativa ? `<span class="test" title="Estimativa original">⏱ ${esc(c.estimativa)}</span>` : ''}
     ${c.ticket ? `<span class="tjira">${esc(c.ticket)}</span>` : ''}
     ${c.vinculado ? `<span class="tav" title="Vinculada a você">${esc(iniciais())}</span>` : ''}`;
   const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''} ${atencao.has(c.id) ? 'tatencao' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
-    <div class="ttit">${atencao.has(c.id) ? `<span class="taten" title="Uma mudança pedida em comentário do ${esc(jira.nome)} pode atingir este card (aguarda sua decisão na aba Spec)">⚠</span>` : ''}${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
+    <div class="ttit">${atencao.has(c.id) ? `<span class="taten" title="Uma mudança pedida em comentário do ${esc(ondeNome(t))} pode atingir este card (aguarda sua decisão na aba Spec)">⚠</span>` : ''}${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
     ${c.tipo === 'qa' && c.resumo ? `<div class="tres">${esc(c.resumo)}</div>` : ''}
     ${c.status === 'em_alteracao' ? '<div class="tproc"><span class="vivo-bola"></span>Claude alterando…</div>' : ''}
     <div class="tpe"><span class="tid">${esc(c.id)}</span>${chip(c)}</div></div>`;
@@ -40,22 +43,22 @@ function telaTarefas(t, l, impactos = []) {
         ${linha('Requisitos', esc((c.rf || []).join(', ')))}
         ${linha('Depende de', esc((c.depende || []).join(', ')))}
         ${linha('Camada', esc(c.camada || ''))}
-        ${linha(esc(jira.nome), c.ticket ? `<a href="${esc(jira.linkDo(t.site, c.ticket))}">${esc(c.ticket)}</a>` : '')}
+        ${linha(esc(ondeNome(t)), c.ticket ? (linkSub(t, c.ticket) ? `<a href="${esc(linkSub(t, c.ticket))}">${esc(c.ticket)}</a>` : esc(c.ticket)) : '')}
         ${!aberta ? linha('Estimativa original', esc(c.estimativa || '—')) + linha('Responsável', c.vinculado ? 'você' : '—') : ''}
         ${c.motivo ? linha('Motivo', esc(c.motivo)) : ''}
       </div>
       ${aberta ? `<div class="tm-campos">
         <label>Estimativa original<input data-tcampo="estimativa" value="${esc(c.estimativa || '')}" placeholder="ex.: 30m, 2h, 1d"></label>
-        <label class="tchk"><input type="checkbox" data-tcampo="vinculado" ${c.vinculado ? 'checked' : ''}>Vincular a mim (responsável no ${esc(jira.nome)})</label></div>
+        <label class="tchk"><input type="checkbox" data-tcampo="vinculado" ${c.vinculado ? 'checked' : ''}>Vincular a mim (responsável no ${esc(ondeNome(t))})</label></div>
       <div class="tm-acoes"><button class="aprovar" data-tacao="tarefaAprovar">Aprovar</button>
         <button class="reprovar" data-tacao="tarefaReprovar">Reprovar</button><button data-talterar>Pedir alteração</button></div>
       <div class="tm-alt" hidden><textarea placeholder="O que o Claude deve mudar nesta tarefa?"></textarea>
         <div class="tm-acoes"><button class="primario" data-tenviar>Enviar para o Claude</button><button data-tcancelar>Cancelar</button></div></div>` : ''}
       ${c.revisao ? `<div class="tm-rev"><b>↻ Alteração proposta</b> — ${esc(c.revisao.motivo)}
-        ${c.revisao.comentario ? ` · <a href="${esc(c.revisao.comentario)}">comentário</a>` : ''}
+        ${c.revisao.comentario && !jira.ehDocumento(t) ? ` · <a href="${esc(c.revisao.comentario)}">comentário</a>` : ''}
         ${Object.entries(c.revisao.campos || {}).map(([k, v]) => `<div class="tm-l"><span>${esc(k)} (novo)</span><div>${esc(v)}</div></div>`).join('')}
         ${c.tipo === 'qa' ? '<div class="tm-l"><span>Plano</span><div>testes.md atualizado (acima)</div></div>' : ''}
-        <div class="tm-acoes"><button class="aprovar" data-tacao="revisaoAplicar">Aplicar no ${esc(jira.nome)}</button><button data-tacao="revisaoDescartar">Descartar</button></div></div>` : ''}
+        <div class="tm-acoes"><button class="aprovar" data-tacao="revisaoAplicar">Aplicar no ${esc(ondeNome(t))}</button><button data-tacao="revisaoDescartar">Descartar</button></div></div>` : ''}
       ${(c.historico || []).length ? `<div class="tm-hist">${c.historico.map((h) => `<div><span>${esc(quando(h.em))}</span> ${esc(h.texto || h.evento)}</div>`).join('')}</div>` : ''}
     </div></div>`;
   };
@@ -179,7 +182,7 @@ const acoes = (s) => ({
     if (!c || c.status !== 'pendente') return;
     if (campo === 'estimativa') {
       const v = String(valor || '').trim();
-      if (v && !/^(\d+(\.\d+)?[wdhm]\s*)+$/i.test(v)) return vscode.window.showWarningMessage(`Estimativa no formato do ${jira.nome}: 30m, 2h, 1d ou 1d 4h.`);
+      if (v && !/^(\d+(\.\d+)?[wdhm]\s*)+$/i.test(v)) return vscode.window.showWarningMessage(`Estimativa no formato do ${ondeNome(s.ticketAberto())}: 30m, 2h, 1d ou 1d 4h.`);
       if ((c.estimativa || '') === v) return;
       c.estimativa = v;
     } else if (campo === 'vinculado') {
@@ -196,8 +199,8 @@ const acoes = (s) => ({
     await new Promise((ok) => setTimeout(ok, 150)); // os campos do detalhe chegam antes
     const c = tarefasDe(s.pasta(t.chave)).find((x) => x.id === id);
     if (c.tipo === 'qa') return acoes(s).qaAprovar(t, c);
-    const ok = await vscode.window.showWarningMessage(`Aprovar ${c.id}? A subtarefa será criada no ${jira.nome}, no ticket ${t.chave}.`, { modal: true,
-      detail: `“${c.titulo}”\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` }, `Aprovar e criar no ${jira.nome}`);
+    const ok = await vscode.window.showWarningMessage(`Aprovar ${c.id}? A subtarefa será criada no ${ondeNome(t)}, no ticket ${t.chave}.`, { modal: true,
+      detail: `“${c.titulo}”\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` }, `Aprovar e criar no ${ondeNome(t)}`);
     if (!ok) return;
     let r;
     try {
@@ -205,7 +208,7 @@ const acoes = (s) => ({
     } catch (e) { return vscode.window.showErrorMessage(`Subtarefa não criada: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
     Object.assign(x, { status: 'aprovada', ticket: r.key });
-    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: `Aprovada: subtarefa ${r.key} criada no ${jira.nome}` });
+    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: `Aprovada: subtarefa ${r.key} criada no ${ondeNome(t)}` });
     s.gravar(t.chave, TAREFAS, l);
     s.notificar(t.chave, 'jira', `subtarefa ${r.key} criada`);
     vscode.window.showInformationMessage(`${id} aprovada: subtarefa ${r.key} criada em ${t.chave}.${r.aviso ? ` Atenção: ${r.aviso}.` : ''}`);
@@ -222,9 +225,9 @@ const acoes = (s) => ({
     } catch (e) { return vscode.window.showErrorMessage(`Não consegui ler as subtarefas de ${t.chave}: ${e.message}`); }
     const ok = await vscode.window.showWarningMessage(existente
       ? `Aprovar o plano de testes? A subtarefa ${existente.key} (“${existente.resumo}”) já existe em ${t.chave}: a descrição dela será substituída pelo plano.`
-      : `Aprovar o plano de testes? A subtarefa “${c.titulo}” será criada no ${jira.nome}, no ticket ${t.chave}.`, { modal: true,
+      : `Aprovar o plano de testes? A subtarefa “${c.titulo}” será criada no ${ondeNome(t)}, no ticket ${t.chave}.`, { modal: true,
       detail: `${c.resumo || ''}\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` },
-      existente ? `Aprovar e atualizar no ${jira.nome}` : `Aprovar e criar no ${jira.nome}`);
+      existente ? `Aprovar e atualizar no ${ondeNome(t)}` : `Aprovar e criar no ${ondeNome(t)}`);
     if (!ok) return;
     let key, aviso;
     try {
@@ -233,7 +236,7 @@ const acoes = (s) => ({
     } catch (e) { return vscode.window.showErrorMessage(`Plano de testes não enviado: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === c.id);
     Object.assign(x, { status: 'aprovada', ticket: key });
-    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: existente ? `Aprovada: descrição de ${key} atualizada` : `Aprovada: subtarefa ${key} criada no ${jira.nome}` });
+    (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: existente ? `Aprovada: descrição de ${key} atualizada` : `Aprovada: subtarefa ${key} criada no ${ondeNome(t)}` });
     s.gravar(t.chave, TAREFAS, l);
     s.notificar(t.chave, 'jira', `subtarefa ${key} [QA] ${existente ? 'atualizada' : 'criada'}`);
     vscode.window.showInformationMessage(`Plano de testes aprovado: ${existente ? `${key} atualizada` : `${key} criada`} em ${t.chave}.${aviso ? ` Atenção: ${aviso}.` : ''}`);
@@ -250,7 +253,7 @@ const acoes = (s) => ({
     const descricao = c.tipo === 'qa' ? lerTexto(c.arquivo || '') : descricaoJira(t, novo);
     const origem = impactosDe(s.pasta(t.chave)).find((i) => i.link === c.revisao.comentario);
     const ok = await vscode.window.showWarningMessage(`Aplicar a alteração em ${c.ticket}?`, { modal: true,
-      detail: `A descrição de ${c.ticket} será substituída${c.revisao.campos.titulo ? ' (e o título)' : ''} e um comentário vai registrar o motivo.\n\nMotivo: ${c.revisao.motivo}${origem ? `\nMudança pedida por: ${origem.autor}` : ''}` }, `Aplicar no ${jira.nome}`);
+      detail: `A descrição de ${c.ticket} será substituída${c.revisao.campos.titulo ? ' (e o título)' : ''} e um comentário vai registrar o motivo.\n\nMotivo: ${c.revisao.motivo}${origem ? `\nMudança pedida por: ${origem.autor}` : ''}` }, `Aplicar no ${ondeNome(t)}`);
     if (!ok) return;
     let r = {}, eu = { nome: os.userInfo().username };
     try {
@@ -258,7 +261,7 @@ const acoes = (s) => ({
       try { eu = await jira.eu(s.secrets, t.site); } catch {}
       await jira.comentar(s.secrets, { key: c.ticket, site: t.site }, ['🔄 **Descrição atualizada pela Crafting Table**', '',
         `**Motivo:** ${c.revisao.motivo}`,
-        origem ? `**Mudança pedida por:** ${origem.autor} — [comentário em ${t.chave}](${origem.link})` : c.revisao.comentario ? `**Origem:** [comentário](${c.revisao.comentario})` : null,
+        origem ? `**Mudança pedida por:** ${origem.autor}${origem.link ? ` — [comentário em ${t.chave}](${origem.link})` : ''}` : c.revisao.comentario && !jira.ehDocumento(t) ? `**Origem:** [comentário](${c.revisao.comentario})` : null,
         `**Alteração feita por:** ${eu.nome}`].filter((x) => x !== null).join('\n'));
     } catch (e) { return vscode.window.showErrorMessage(`Alteração não aplicada em ${c.ticket}: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
@@ -274,7 +277,7 @@ const acoes = (s) => ({
     const t = s.ticketAberto();
     const l = t ? tarefasDe(s.pasta(t.chave)) : [], x = l.find((y) => y.id === id);
     if (!x?.revisao) return;
-    const ok = await vscode.window.showWarningMessage(`Descartar a alteração proposta para ${x.ticket || id}?`, { modal: true, detail: `A subtarefa no ${jira.nome} fica como está.` }, 'Descartar');
+    const ok = await vscode.window.showWarningMessage(`Descartar a alteração proposta para ${x.ticket || id}?`, { modal: true, detail: `A subtarefa no ${ondeNome(t)} fica como está.` }, 'Descartar');
     if (!ok) return;
     (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'revisao', texto: `Alteração descartada (${x.revisao.motivo.slice(0, 120)})` });
     delete x.revisao;

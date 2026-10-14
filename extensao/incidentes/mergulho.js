@@ -46,7 +46,9 @@ const controlesDe = (sit) => ({ pausar: 'mergulhoPausar', dicaPausar: 'Pausar o 
 const existe = (dir, n) => fs.existsSync(path.join(dir, ETAPAS[n - 1].arq));
 
 // ── Gatekeeper da etapa 2: anexos do Jira ainda não baixados (mesma conta da aba Docs) ──
+const ehDocumento = (t) => require('../provedores/documento').ehDocumento(t);
 const anexosFaltando = (s, t) => {
+  if (ehDocumento(t)) return []; // ticket-documento: o original e os extras já estão na pasta (.origem.json); nada a baixar
   const { ler, ORIGEM } = require('../refinamento/locais');
   return require('../componentes/aba-docs').pendentes(s.cacheJira[t.id]?.anexos, ler(path.join(s.pasta(t.id), ORIGEM), {}));
 };
@@ -55,11 +57,9 @@ const anexosFaltando = (s, t) => {
 // A pasta ~/.claude é bloqueada para Write/Edit no claude -p: a gravação dos artefatos passa por mergulho-gravar (como o qa-state do QA).
 const GRAVAR = path.join(__dirname, 'mergulho-gravar');
 const FERRAMENTAS = (mapa) => ['Read', 'Glob', 'Grep', `Bash(${GRAVAR}:*)`, `Bash(${mapa}/bin/mapa-db:*)`, `Bash(${mapa}/bin/mapa-git:*)`,
-  'Bash(ls:*)', 'Bash(ffmpeg:*)', 'Bash(ffprobe:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(grep:*)', 'Bash(mkdir:*)'];
-const html2txt = (h) => String(h || '').replace(/<(br|\/p|\/li|\/tr|\/h\d)[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
-// Descrição e comentários do Jira em texto, para o Claude ler sem depender de outra ferramenta.
-const contextoJira = (j) => `# ${j.key} · ${j.resumo}\nStatus: ${j.status} · Tipo: ${j.tipo}\n\n## Descrição\n\n${html2txt(j.descricao)}\n\n## Comentários (mais recente primeiro)\n\n`
-  + ((j.comentarios || []).map((c) => `### ${c.autor} · ${c.data}\n${html2txt(c.corpo)}`).join('\n\n') || '(sem comentários)');
+  'Bash(ls:*)', 'Bash(ffmpeg:*)', 'Bash(ffprobe:*)', 'Bash(pdftotext:*)', 'Bash(pdftoppm:*)', 'Bash(unzip:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(grep:*)', 'Bash(mkdir:*)'];
+// Descrição, subtarefas e comentários (e o documento, se o ticket for um) em texto, para o Claude ler sem depender de outra ferramenta.
+const contextoJira = (j, t) => require('../infra/contexto').contextoDoTicket(j, t);
 
 const TAREFA = {
   1: (d) => `ETAPA 1 · TRIAGEM. Leia ${CONTEXTO} (descrição do ticket). Identifique Módulo, Submódulo e Fluxo do WMS e explique em qual etapa específica do fluxo o problema ocorreu. Use o código dos repositórios só para confirmar nomes de módulo/fluxo. Grave em ${d}/${ETAPAS[0].arq}, seções: Módulo, Submódulo, Fluxo, Etapa do fluxo em que o problema ocorreu (com a justificativa).`,
@@ -67,11 +67,16 @@ const TAREFA = {
   3: (d) => `ETAPA 3 · DADOS E LOGS (base de BKP). Leia ${d}/${ETAPAS[0].arq} e ${d}/${ETAPAS[1].arq}. (a) MASSA: prioridade 1 é a massa já citada no ticket/comentários/anexos (seção "Massa de dados"). Só se ela não estiver no ticket, procure a massa na base de BKP com mapa-db (somente SELECT; nunca altere nem grave nada no banco). Grave as consultas/estrutura da massa real em ${d}/massa-real.sql. (b) LOGS: no código dos repositórios, identifique as tabelas de log ligadas a essa massa/módulo e o caminho do código que grava nelas. No banco, consulte a tabela de log e confira se há registros recentes. Se a tabela achada NÃO tiver uso recente (ou houver mais de uma candidata e você não souber qual), PAUSE e pergunte ao usuário qual tabela consultar. Se estiver ativa, busque a movimentação específica da massa do incidente. Grave em ${d}/${ETAPAS[2].arq}: onde a massa foi achada (ticket ou BKP), tabelas de log (com o caminho do código) e os registros de movimentação encontrados.`,
   4: (d) => `ETAPA 4 · DIAGNÓSTICO. Leia ${d}/${ETAPAS[0].arq}, ${d}/${ETAPAS[1].arq}, ${d}/${ETAPAS[2].arq} e ${d}/massa-real.sql. Cruze o estado da massa, o log e o relato do PO e defina a ação exata do usuário, ou a falha de ambiente, que gerou a anomalia (ex.: "tentou finalizar a tarefa sem completar todos os cards"; "app crashou no meio da requisição e o usuário reiniciou o celular"). Grave em ${d}/${ETAPAS[3].arq}: a ação/falha, as evidências que a sustentam (cite arquivo e registro) e o grau de certeza. Se não houver base para concluir, PAUSE e pergunte exatamente o que falta.`
 };
+// Ticket por documento (só etapas 1 e 2): onde estão o original, o texto extraído, as páginas e os anexos extras do incidente.
+const BLOCO_DOC = (t, n) => {
+  const { EXTRAIDO, PAGINAS } = require('../infra/contexto'), d = require('../infra/tickets').pasta(t.chave), arq = path.join(d, t.documento?.arquivo || '');
+  return `\n\nTicket por documento (sem ferramenta de gestão): o documento original é ${arq}; texto extraído em ${path.join(d, EXTRAIDO)} (se existir); para PDF escaneado as páginas estão em ${path.join(d, PAGINAS)}/ (leia as imagens com Read). Comentários = os da aba Ticket do documento (no ${CONTEXTO}). Anexos extras do incidente (prints, vídeos) estão em ${path.join(d, '.anexos')}/ (pasta oculta: liste com ls, o Glob não a enxerga)${n === 2 ? ' e devem ser analisados todos; vídeos: extraia os quadros como indicado acima' : ''}. Documento escrito à mão ou imagem: leia direto com Read e transcreva o que entender no arquivo da etapa, marcando o que estiver ilegível em vez de inventar. PDF paginado: pdftotext/pdftoppm; docx: unzip -p arquivo word/document.xml (somente leitura).`;
+};
 const REGRAS = (d) => `\n\nRegras: português; você roda em segundo plano, SEM ninguém para aprovar permissões: ação que pede aprovação é negada, então nunca diga que algo "precisa de aprovação" — use outra ferramenta ou registre a limitação no arquivo; só leia em ${d} (e no código dos repositórios). ESCRITA: Write/Edit são bloqueados nesta pasta; para gravar qualquer arquivo dela ("Grave em ${d}/NOME") use ${GRAVAR} NOME <<'FIM' … FIM (texto pela entrada padrão, só o nome do arquivo, sem a pasta); no Bash use um comando simples por vez (sem ; && | encadeados: pedem aprovação e são bloqueados), prefira Read/Glob/Grep; banco SOMENTE SELECT via mapa-db; não invente nada que não esteja nas fontes. Grave o arquivo da etapa só quando ela estiver pronta. Para PAUSAR e perguntar ao usuário (sem AskUserQuestion), grave ${d}/${PAUSA} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio) e NÃO grave o arquivo da etapa; termine em seguida.`;
 
 const prompt = (t, dir, n, repos, banco, ajuste = false) => {
   const resp = fs.existsSync(path.join(dir, RESPOSTAS)) ? `\nRespostas do usuário a perguntas anteriores (use-as): ${path.join(dir, RESPOSTAS)}` : '';
-  return `[segundo plano] [Crafting Table · Incidente ${t.chave}] Mergulho no incidente ${t.link || t.chave}.\nPasta de trabalho: ${dir}\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}`).join(' · ') || 'nenhum configurado'}\nBanco: ${banco}${resp}\n\n${TAREFA[n](dir, estado(dir).obsPO)}${ajuste ? `\n\nAJUSTE: ${path.join(dir, ETAPAS[n - 1].arq)} já existe e o usuário pediu mudança: leia a ÚLTIMA entrada de ${path.join(dir, RESPOSTAS)}, aplique o pedido e regrave o arquivo completo, sem refazer o que já está certo.` : ''}${REGRAS(dir)}`;
+  return `[segundo plano] [Crafting Table · Incidente ${t.chave}] Mergulho no incidente ${t.link || t.chave}.\nPasta de trabalho: ${dir}\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}`).join(' · ') || 'nenhum configurado'}\nBanco: ${banco}${resp}\n\n${TAREFA[n](dir, estado(dir).obsPO)}${n <= 2 && ehDocumento(t) ? BLOCO_DOC(t, n) : ''}${ajuste ? `\n\nAJUSTE: ${path.join(dir, ETAPAS[n - 1].arq)} já existe e o usuário pediu mudança: leia a ÚLTIMA entrada de ${path.join(dir, RESPOSTAS)}, aplique o pedido e regrave o arquivo completo, sem refazer o que já está certo.` : ''}${REGRAS(dir)}`;
 };
 
 // ── Branch dos repositórios (etapa 3) ──
@@ -102,7 +107,10 @@ const TROCAR = 'Trocar para a branch correta e continuar', SEGUIR = 'Continuar a
 const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   const dir = s.pastaAba(t.id), { cfg } = require('../configuracao/configuracao');
   if (n <= 2) { // gatekeeper: todos os anexos do ticket precisam estar baixados
-    if (!s.cacheJira[t.id] && s.atualizarJira) await s.atualizarJira(t.id);
+    if (ehDocumento(t)) { // fonte local: extrai texto/páginas e usa o buscar local (sem rede)
+      await require('../infra/contexto').prepararDocumento(t);
+      s.cacheJira[t.id] = require('../provedores/documento').buscarSync({ key: t.chave });
+    } else if (!s.cacheJira[t.id] && s.atualizarJira) await s.atualizarJira(t.id);
     if (!controle.valida(dir, rodada)) return;
     const falta = anexosFaltando(s, t);
     if (falta.length) {
@@ -128,7 +136,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
     }
   }
   const j = s.cacheJira[t.id];
-  if (j && !j.erro) fs.writeFileSync(path.join(dir, CONTEXTO), contextoJira(j));
+  if (j && !j.erro) fs.writeFileSync(path.join(dir, CONTEXTO), contextoJira(j, t));
   const mapa = vagas.raiz('incidentes.mapa') || '', conexao = cfg().get('bancoConexao') || '', amb = cfg().get('bancoAmbiente') || '';
   const repos = s.reposDe(t), banco = conexao && amb && amb !== 'producao' ? `configurado (${amb === 'qas' ? 'QAS' : 'cópia de produção'}): mapa-db, só leitura` : 'NÃO configurado: não consulte banco; registre como pendência';
   const arqEtapa = path.join(dir, ETAPAS[n - 1].arq), antes = ajuste && fs.existsSync(arqEtapa) ? fs.statSync(arqEtapa).mtimeMs : 0;
@@ -334,4 +342,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { corpo, acoes, botaoPlay, sincronizarRepos, _teste: { situacao, branchesErradas, FERRAMENTAS, estado, mudar, anexosFaltando, aposEtapa, responder, prompt, ETAPAS, ESTADO, PAUSA, RESPOSTAS } };
+module.exports = { corpo, acoes, botaoPlay, sincronizarRepos, _teste: { situacao, branchesErradas, FERRAMENTAS, estado, mudar, anexosFaltando, aposEtapa, responder, prompt, rodarEtapa, ETAPAS, ESTADO, PAUSA, RESPOSTAS } };

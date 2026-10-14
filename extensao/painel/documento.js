@@ -38,6 +38,7 @@ const acoes = (s) => ({
     if (!t || !doc.ehDocumento(t) || !String(texto || '').trim()) return;
     doc.adicionarComentario(t.chave, { autor: 'Você', texto: String(texto).trim(), externo: true });
     s.render();
+    s.orq?.vigiarComentarios?.(); // o vigia classifica na hora: resposta de dúvida (triagem) ou mudança (impacto)
   },
   async docAbrir() {
     const t = s.ticketAberto();
@@ -46,6 +47,30 @@ const acoes = (s) => ({
     const v = vs(), u = v.Uri.file(a);
     if (String(t.documento.tipo).toLowerCase() === 'pdf') return v.commands.executeCommand('vscode.open', u);
     return v.env.openExternal(u);
+  },
+  async docAnexar() {
+    const t = s.ticketAberto();
+    if (!t || !doc.ehDocumento(t)) return;
+    const esc = await vs().window.showOpenDialog({ canSelectMany: true, canSelectFolders: false, openLabel: 'Adicionar anexo', title: 'Anexos do incidente (prints, vídeos)' });
+    if (!esc?.length) return;
+    const d = tickets().pasta(t.chave), an = path.join(d, '.anexos'), orig = path.join(d, '.origem.json');
+    fs.mkdirSync(an, { recursive: true });
+    let o = {}; try { o = JSON.parse(fs.readFileSync(orig, 'utf8')); } catch { /* sem origem */ }
+    for (const u of esc) { // copia (o original do usuário não é tocado); nome repetido ganha -2, -3
+      const { name, ext } = path.parse(u.fsPath);
+      let nome = name + ext;
+      for (let n = 2; fs.existsSync(path.join(an, nome)); n++) nome = `${name}-${n}${ext}`;
+      fs.copyFileSync(u.fsPath, path.join(an, nome));
+      o[nome] = { origem: 'documento', id: nome };
+    }
+    fs.writeFileSync(orig, JSON.stringify(o, null, 2));
+    s.render();
+  },
+  async docAbrirAnexo({ id }) {
+    const t = s.ticketAberto();
+    if (!t || !doc.ehDocumento(t) || !id) return;
+    const a = path.join(tickets().pasta(t.chave), '.anexos', path.basename(String(id)));
+    if (fs.existsSync(a)) return vs().env.openExternal(vs().Uri.file(a));
   },
   async docPasta() {
     const t = s.ticketAberto();

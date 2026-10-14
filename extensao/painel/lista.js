@@ -32,12 +32,20 @@ const modo = () => modoLista;
 const naLista = (t, l = modoLista) => tickets.listasDe(t).includes(l);
 // Põe o ticket também nesta aba (não tira das outras); grava listas no lugar do lista/implementacao de antes.
 const porNaLista = (t) => (naLista(t) ? t : tickets.gravar({ ...t, listas: [...tickets.listasDe(t), modoLista], lista: undefined, implementacao: undefined }));
-const meusPor = {}; // modo -> { itens, etapas, filtro, erro, carregando, semCredencial, em }: caixa "Vinculados a você"
+const meusPor = {}; // modo -> { itens, etapas, filtro, erro, carregando, pendencias, em }: caixa "Vinculados a você"
 let etapasJira = null; // colunas do board [{ nome, ids }] (buscadas uma vez por sessão)
 let previa = null; const cachePrevia = {}; // ticket vinculado aberto só para ver (chave) e os dados dele
 let labelsQA = null; // labels do Jira com "QA" (buscadas uma vez por sessão)
 // Mudou a configuração: esquece o que foi buscado com a configuração antiga.
-const resetar = () => { etapasJira = null; for (const k in meusPor) delete meusPor[k]; };
+const resetar = () => { etapasJira = null; ferramenta = null; for (const k in meusPor) delete meusPor[k]; };
+// Ferramenta de gestão cadastrada (provedor ativo com conta conectada): só então a caixa de vinculados existe. null = ainda não avaliado
+// (a caixa fica oculta); reavaliada a cada desenho da lista, então conectar/sair da conta em Configurações aparece sem recarregar.
+let ferramenta = null;
+const avaliarFerramenta = async (s) => {
+  const ok = !!(await jira.conectado(s.secrets).catch(() => false));
+  if (ok !== ferramenta) { const antes = ferramenta; resetar(); ferramenta = ok; if (antes !== null || !ok) s.render(); }
+  return ok;
+};
 const fecharPrevia = () => { previa = null; };
 
 // Visualização de um ticket vinculado (sem trazer para a lista): o mesmo conteúdo da aba Ticket.
@@ -55,19 +63,21 @@ const corpo = (s, estilo, emRefino) => {
   if (previa) return telaPrevia(estilo, previa, cachePrevia[previa]);
   const meus = meusPor[modoLista];
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).map((x) => ({ ...x, refinando: emRefino(x) })),
-    meus ? { ...meus, ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
+    ferramenta !== true ? null : meus ? { ...meus, ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 
 // Implementações e QA: só os nos status das variáveis etapasImplementacao / etapasQA (pelo nome do status, sem acento).
 // QA: os com a label de QA (não o responsável).
 const labelQA = (s) => variaveis.ler('labelQA') || s.globalState.get('labelQA') || '';
 const carregarMeus = async (s, forcar) => {
-  const k = modoLista, meus = meusPor[k], fixo = k !== tickets.REFINAMENTO;
+  const k = modoLista, fixo = k !== tickets.REFINAMENTO;
+  if (meusPor[k]?.carregando) return;
+  if (!(await avaliarFerramenta(s))) return; // sem ferramenta cadastrada: nada é buscado nem desenhado
+  const meus = meusPor[k]; // depois de avaliar: conectar/sair da conta já limpou o cache
   if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
-  const pendencias = await pendenciasDe(s.secrets, k); // sem Jira configurado, a caixa não busca nada
+  const pendencias = await pendenciasDe(s.secrets, k); // conectada mas incompleta: a caixa avisa e não busca
   if (pendencias.length) { meusPor[k] = { pendencias, em: Date.now() }; return s.render(); }
-  if (!forcar && !(await jira.conectado(s.secrets))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return s.render(); }
-  meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };
+  meusPor[k] = { ...(meus || {}), carregando: true };
   s.render();
   const filtro = fixo ? '' : s.globalState.get('meusFiltro') || '';
   const projeto = projetoJira(); // um ou vários
@@ -85,7 +95,7 @@ const carregarMeus = async (s, forcar) => {
   s.render();
 };
 // Depois de desenhar a lista (não a prévia): busca os vinculados se ainda não estão carregando.
-const carregarSeNecessario = (s) => { if (!previa && !meusPor[modoLista]?.carregando) carregarMeus(s, false); };
+const carregarSeNecessario = (s) => { if (!previa && !meusPor[modoLista]?.carregando) carregarMeus(s, false).catch(() => {}); };
 
 // Contrato: `acoes(servicos)` devolve { nome: handler }; o painel espalha no seu `acoes`. Sem `this`.
 const acoes = (s) => ({
