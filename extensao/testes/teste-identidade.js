@@ -27,7 +27,7 @@ const nome = path.basename(tk.pasta(n.chave));
 assert.ok(/^[\p{L}\p{N}._-]+$/u.test(nome) && !nome.includes('/'), nome);
 assert.ok(fs.existsSync(path.join(tk.pasta(n.chave), '.ticket.json')));
 assert.strictEqual(tk.ler(n.chave).idProvedor, uuid);
-assert.deepStrictEqual(tk.alvo(tk.ler(n.chave)), { key: uuid, site: 'https://www.notion.so' });
+assert.deepStrictEqual(tk.alvo(tk.ler(n.chave)), { key: uuid, site: 'https://www.notion.so', provedor: 'notion' });
 assert.strictEqual(tk.nomeSeguro('../../etc'), 'etc');
 assert.strictEqual(tk.nomeSeguro('WMS-123'), 'WMS-123');
 assert.strictEqual(tk.listar().length, 3);

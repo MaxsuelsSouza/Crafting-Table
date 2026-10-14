@@ -100,7 +100,7 @@ const acoes = (s) => ({
       for (let n = 2; fs.existsSync(path.join(dir, nome)); n++) nome = `${name}-${n}${ext}`;
       fs.writeFileSync(path.join(dir, nome), conteudo);
       const origens = ler(path.join(dir, ORIGEM), {});
-      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: require('../provedores').provedorAtivo().id, id } }, null, 1));
+      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: require('../provedores/documento').ehDocumento(require('../infra/tickets').ler(chave)) ? 'documento' : require('../provedores').provedorAtivo().id, id } }, null, 1));
     } catch (e) {
       vscode.window.showErrorMessage(`Não consegui baixar ${a.nome}: ${e.message}`);
     } finally {

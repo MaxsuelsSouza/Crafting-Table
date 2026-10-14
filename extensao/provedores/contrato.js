@@ -56,6 +56,6 @@ const OPERACOES = ['lerLink', 'chaveDaBranch', 'linkDo', 'credenciais', 'conecta
   'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boardsPorNome', 'boards', 'projetos', 'projetoInfo', 'statusDoProjeto', 'descobrir', 'criarSubtarefa', 'atualizarDescricao'];
 
 // O que falta no adaptador para cumprir o contrato (vazio: cumpre).
-const faltando = (p) => [...['id', 'nome', 'capacidades'].filter((k) => !p[k]), ...(Array.isArray(p.camposCredencial) && p.camposCredencial.length ? [] : ['camposCredencial']), ...OPERACOES.filter((k) => typeof p[k] !== 'function')];
+const faltando = (p) => [...['id', 'nome', 'capacidades'].filter((k) => !p[k]), ...(Array.isArray(p.camposCredencial) && (p.camposCredencial.length || p.local) ? [] : ['camposCredencial']), ...OPERACOES.filter((k) => typeof p[k] !== 'function')];
 
 module.exports = { OPERACOES, faltando };

@@ -41,7 +41,7 @@ function gravar(t) {
 }
 const existe = (chave) => !!chave && fs.existsSync(path.join(pasta(chave), '.ticket.json'));
 // Ticket → alvo das operações do provedor ({ key: id no provedor, site }).
-const alvo = (t) => ({ key: t.idProvedor ?? t.chave, site: t.site });
+const alvo = (t) => ({ key: t.idProvedor ?? t.chave, site: t.site, provedor: t.provedor });
 
 // link → ticket novo; se já existe, devolve o existente. `ident` = { id, chave, site, projeto?, provedor } vem de provedor.lerLink
 // (o provedor entende o link); sem ele (migração, sem vscode) vale o formato antigo do Jira.

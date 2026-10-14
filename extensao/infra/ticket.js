@@ -1,11 +1,11 @@
 // @ts-check
 const { esc } = require('./texto');
-const { provedorAtivo } = require('../provedores');
+const { provedorAtivo, provedorPara } = require('../provedores');
 const { OPERACOES } = require('../provedores/contrato');
 
 // Fachada do provedor de gestão de trabalho (provedores/): cada operação vai para o provedor ativo, escolhido na hora da
-// chamada (trocar de provedor nas configurações vale sem recarregar). Aqui fica só a UI do ticket (aba Ticket e pills).
-const operacoes = Object.fromEntries(OPERACOES.map((op) => [op, (...a) => provedorAtivo()[op](...a)]));
+// chamada, salvo ticket-documento (alvo/site 'documento:…' ou anexo com provedor 'documento'), que vai ao adaptador local (trocar de provedor nas configurações vale sem recarregar). Aqui fica só a UI do ticket (aba Ticket e pills).
+const operacoes = Object.fromEntries(OPERACOES.map((op) => [op, (...a) => provedorPara(a)[op](...a)]));
 
 // Estilo da folha do ticket (aba Ticket do painel).
 const estiloDetalhe = `
@@ -71,4 +71,6 @@ const folhaTicket = (t) => `
 const alvo = (t) => require('./tickets').alvo(t);
 const identidade = (link) => ({ ...provedorAtivo().lerLink(link), provedor: provedorAtivo().id });
 
-exports.jira = { ...operacoes, alvo, identidade, get nome() { return provedorAtivo().nome; }, get capacidades() { return provedorAtivo().capacidades; }, folhaTicket, corStatus, estiloDetalhe };
+const ehDocumento = (t) => !!t && (t.provedor === 'documento' || String(t.site || '').startsWith('documento:'));
+
+exports.jira = { ...operacoes, alvo, ehDocumento, identidade, get nome() { return provedorAtivo().nome; }, get capacidades() { return provedorAtivo().capacidades; }, folhaTicket, corStatus, estiloDetalhe };

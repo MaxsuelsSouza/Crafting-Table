@@ -142,10 +142,11 @@ const filaImpactos = (t) => {
 // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
 let vigiando = false;
 const vigiarComentarios = async () => {
-  if (vigiando || !(await jira.conectado(s.secrets))) return;
+  if (vigiando) return;
+  const conectado = await jira.conectado(s.secrets).catch(() => false); // ticket-documento é local: vigia sem conta
   vigiando = true;
   try {
-    for (const t0 of tickets.listar().filter((x) => x.spec?.dir)) {
+    for (const t0 of tickets.listar().filter((x) => x.spec?.dir && (conectado || jira.ehDocumento(x)))) {
       let cs, eu;
       try { [cs, eu] = await Promise.all([jira.comentarios(s.secrets, jira.alvo(t0)), jira.eu(s.secrets, t0.site)]); } catch { continue; }
       const t = tickets.ler(t0.chave);

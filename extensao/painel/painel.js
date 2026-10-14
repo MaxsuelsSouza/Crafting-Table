@@ -43,6 +43,7 @@ const rodape = require('../componentes/rodape'); // cabeçalho, rodapé, CSS e p
 function corpoAba(t, aba, d) {
   if (aba === 'docs') return abaDocs.corpo(d, t.id === SEM_TICKET);
   if (aba === 'spec') return spec.corpoAba(t, d);
+  if (aba === 'ticket' && jira.ehDocumento(t)) return require('../componentes/folha-documento').folhaDocumento(t, undefined, d.uri);
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`;
   if (aba === 'analise') return analise.corpoAba(d);
@@ -117,7 +118,8 @@ exports.provider = (ctx) => {
       origens: dir ? ler(path.join(dir, ORIGEM), {}) : {},
       baixando: abaDocs.baixando
     };
-    if (['evidenciasInc', 'mergulho'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
+    if (aba === 'ticket' && jira.ehDocumento(t)) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(pasta(t.id))] };
+    else if (['evidenciasInc', 'mergulho'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
     view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
       ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
     avisarMoldura();
@@ -138,6 +140,7 @@ exports.provider = (ctx) => {
   const atualizarJira = async (chave) => {
     const t = tickets.ler(chave);
     if (!t) return;
+    if (jira.ehDocumento(t)) return render(); // ticket-documento: a fonte é a pasta; sem busca nem rede
     try {
       const j = await jira.buscar(ctx.secrets, jira.alvo(t));
       cacheJira[chave] = j;
@@ -157,12 +160,12 @@ exports.provider = (ctx) => {
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
     abrir(/** @type {{ id: string, key?: string }} */ { id, key }) {
-      if (key) { const t = ticketAberto(); return t && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
+      if (key) { const t = ticketAberto(); return t && !jira.ehDocumento(t) && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
       aberto = id;
       aba = 'docs';
       sessao.focar(id === SEM_TICKET ? null : id, lista.modo());
@@ -173,10 +176,19 @@ exports.provider = (ctx) => {
     aba({ id }) { aba = id; render(); if (id === 'ticket' && aberto !== SEM_TICKET && cacheJira[aberto]?.erro) atualizarJira(aberto); },
     lado({ id }) { lado = id; render(); },
     async novo() {
-      const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
-      if (!link) return;
+      const via = await vscode.window.showQuickPick([{ label: 'Link do ticket', d: 'link' }, { label: 'Anexar documento', d: 'doc' }], { title: 'Novo ticket', placeHolder: 'Como criar o ticket?' });
+      if (!via) return;
       let t;
-      try { const ident = jira.identidade(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      if (via.d === 'doc') {
+        const doc = require('../provedores/documento');
+        const r = await vscode.window.showOpenDialog({ canSelectMany: false, title: 'Anexar documento ao ticket', filters: { Documentos: doc.ACEITAS } });
+        if (!r?.length) return;
+        try { t = lista.porNaLista(doc.criarPorDocumento(r[0].fsPath, { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      } else {
+        const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
+        if (!link) return;
+        try { const ident = jira.identidade(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+      }
       this.abrir({ id: t.chave });
     },
     async excluir({ id }) {
@@ -194,7 +206,7 @@ exports.provider = (ctx) => {
       if (aberto === id) { aberto = null; sessao.focar(null); }
       render();
     },
-    atualizar() { if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
+    atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
     vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
     jira() { const t = ticketAberto(); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); }
   };

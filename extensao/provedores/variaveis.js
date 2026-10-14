@@ -56,7 +56,7 @@ function migrado(chave) {
 function doUsuario(chave) {
   if (chave !== 'site' && chave !== 'projeto' || testeCfg) return '';
   try {
-    const t = require('../infra/tickets').listar();
+    const t = require('../infra/tickets').listar().filter((x) => x.provedor !== 'documento' && !String(x.site || '').startsWith('documento:'));
     return chave === 'site' ? normalizar(chave, t.find((x) => x.site)?.site) : normalizar(chave, t.find((x) => x.projeto)?.projeto || (t[0]?.chave || '').split('-')[0]);
   } catch { return ''; }
 }
