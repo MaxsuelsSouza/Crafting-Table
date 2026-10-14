@@ -12,10 +12,10 @@ const { dataBr } = cardCenario;
 // Módulo QA (lista QA do painel). O ▶ roda tudo em ordem (executar): planejamento → mapa de cenários → ambiente → massa → um
 // `claude -p` por cenário. Estado em arquivos da pasta qa/ do ticket, então pausar/retomar é só parar entre execuções.
 // Fase 1: planejamento.
-// A extensão acha o planejamento sozinha (1 chamada ao Jira, sem Claude): subtarefa de QA do ticket com cenários na descrição
-// (convenção do fcx-qa-test-planning:jira-qa-planner: "[QA] Planejamento dos Casos de Testes" / "[QA] Teste de Qualidade", CT01…).
+// A extensão acha o planejamento sozinha (1 chamada ao provedor, sem Claude): subtarefa de QA do ticket com cenários na descrição
+// (convenção herdada do plugin fcx-qa-test-planning: "[QA] Planejamento dos Casos de Testes" / "[QA] Teste de Qualidade", CT01…).
 // Cada versão diferente da descrição vira planejamento-qa-vN.md na pasta qa/ do ticket (aba Docs); o índice fica em .planejamento.json.
-// Sem planejamento, o QA fica bloqueado até o Claude criar um (jira-qa-planner em segundo plano, o clique vale como OK).
+// Sem planejamento, o QA fica bloqueado até o Claude criar um (a IA escreve qa-plano.md em segundo plano e a extensão publica no provedor; o clique vale como OK).
 const INDICE = '.planejamento.json';
 // { fase: procurando | sem_plano | criando | erro | plano_encontrado (espera aprovação) | alterando | plano_aprovado, execucao: rodando | pausado | parado }
 const ESTADO = '.qa.json';
@@ -48,7 +48,7 @@ function versionar(dir, s) {
   if (ult && ult.hash === hash && ult.subtarefa === s.key) return { ...ult, nova: false };
   const v = (ult?.v || 0) + 1, arquivo = `planejamento-qa-v${v}.md`;
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, arquivo), `# Planejamento de QA · v${v}\n\nFonte: ${s.key} · ${s.resumo} · atualizado no Jira em ${s.updated}\n\n---\n\n${s.md}\n`);
+  fs.writeFileSync(path.join(dir, arquivo), `# Planejamento de QA · v${v}\n\nFonte: ${s.key} · ${s.resumo} · atualizado em ${s.updated}\n\n---\n\n${s.md}\n`);
   const nova = { v, arquivo, hash, subtarefa: s.key, resumo: s.resumo, jiraUpdated: s.updated, em: new Date().toISOString() };
   gravarJson(path.join(dir, INDICE), { ...ind, versoes: [...ind.versoes, nova] });
   return { ...nova, nova: true };
@@ -295,7 +295,7 @@ async function viaComandos(dir, d) {
 // ── Prompts do Claude em segundo plano (execução). A skill testes-funcionais é o método; as paradas dela viram registro.
 const QA_STATE = path.join(__dirname, 'qa-state');
 const REGRAS = 'Modo não interativo: onde a skill manda parar e confirmar, não pergunte; registre e siga, ou conclua como bloqueado. '
-  + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE, liberar usuário ou permissão), publicar no Jira, commit e push. '
+  + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE, liberar usuário ou permissão), publicar no provedor, commit e push. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
 const promptMassa = (chave, cens) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
   + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):\n`
@@ -424,18 +424,22 @@ const rodando = (dir) => { if (ativos.has(dir) || maestro.rodando(dir)) return t
 const estado = (dir) => lerJson(path.join(dir, ESTADO), {});
 const mudar = (dir, e) => gravarJson(path.join(dir, ESTADO), { ...estado(dir), ...e, em: new Date().toISOString() });
 
-// ▶ do QA: acha o plano no Jira e versiona em Docs. Plano novo (ou mudado) espera a aprovação do humano; já aprovado, lista os cenários.
+// ▶ do QA: acha o plano no provedor (ou em qa-plano.md) e versiona em Docs. Plano novo (ou mudado) espera a aprovação do humano; já aprovado, lista os cenários.
 async function verificarPlano(dir, chave, filhos) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   vivo('etapa', 'QA · 1. Planejamento');
-  vivo('acao', `Lendo as subtarefas do ${chave} no Jira`);
+  vivo('acao', `Lendo as subtarefas do ${chave} no ${nomeProvedor()}`);
   mudar(dir, { fase: 'procurando', erro: null, chave });
   let r;
   try { r = await procurar(filhos, chave); } catch (e) {
-    vivo('erro', `Não consegui ler o ticket no Jira: ${e.message}`);
+    vivo('erro', `Não consegui ler o ticket no ${nomeProvedor()}: ${e.message}`);
     return mudar(dir, { fase: 'erro', erro: e.message });
   }
   vivo('acao', r.qa.length ? `Subtarefas com QA no nome: ${r.qa.map((x) => `${x.key} (${x.resumo})`).join(', ')}` : 'Nenhuma subtarefa com QA no nome');
+  if (!r.plano) { // sem subtarefa com plano no provedor (ex.: sem subtarefas): vale o arquivo local
+    const l = planoLocal(dir);
+    if (l) r.plano = { key: chave, resumo: `Plano de QA (${PLANO_LOCAL})`, updated: new Date(l.mtime).toISOString(), md: l.md };
+  }
   if (!r.plano) {
     vivo('aviso', r.qa.length ? 'Nenhuma delas tem cenários (CT01, Cenário 1, Dado que…): o QA só começa com o planejamento'
       : 'Sem planejamento de QA: o QA só começa com ele. Crie pelo cartão acima');
@@ -470,19 +474,60 @@ function aprovar(dir) {
   return true;
 }
 
-// Prompt do jira-qa-planner em segundo plano: a skill pede OK antes de cada escrita; aqui o clique do humano é o OK.
-const promptCriar = (link) => `/fcx-qa-test-planning:jira-qa-planner ${link}\n\n[segundo plano · Crafting Table] O humano já aprovou a criação do `
-  + 'planejamento ao clicar em "Criar planejamento" no painel: não peça confirmação, siga até gravar a subtarefa e o plano no Jira. '
-  + 'Use as ferramentas MCP do Atlassian (o twg não está instalado). Se já existir subtarefa de QA, não crie outra: preencha a descrição dela.';
-// Pedir mudança: o Claude aplica o pedido na descrição da subtarefa de QA (de onde o ▶ tira a versão). O Enviar do humano é o OK da escrita.
-const promptMudanca = (link, sub, arquivo, pedido) => `[segundo plano · Crafting Table] Ticket ${link}. O humano pediu esta mudança no planejamento de QA `
-  + `(subtarefa ${sub}; texto atual em ${arquivo}): "${pedido}".\nAplique na DESCRIÇÃO de ${sub} pelo MCP do Atlassian (editJiraIssue, markdown), sem pedir confirmação: `
-  + 'mantenha o formato e a numeração dos cenários que não mudaram e continue a numeração nos novos. Não crie subtarefa nem comentário. '
-  + 'Termine dizendo em uma frase o que mudou.';
-// Ferramentas liberadas: leitura do plugin e Jira (MCP). Sem Bash livre.
-const FERRAMENTAS_PLANO = ['Skill', 'Read', 'Glob', 'Grep', 'Bash(jq:*)', 'Bash(cat:*)', 'Bash(mkdir:*)',
-  ...['getAccessibleAtlassianResources', 'atlassianUserInfo', 'getJiraIssue', 'searchJiraIssuesUsingJql', 'getJiraProjectIssueTypesMetadata',
-    'getJiraIssueTypeMetaWithFields', 'createJiraIssue', 'editJiraIssue', 'addCommentToJiraIssue'].map((f) => `mcp__claude_ai_Atlassian__${f}`)];
+// ── Planejamento: a IA só escreve o plano em Markdown numa pasta local (qa-plano.md); quem publica no provedor é a extensão (publicarPlano).
+// Sem ferramentas do provedor (MCP): o contexto do ticket vai num arquivo (.ticket-contexto.md, buscado pelo provedor).
+const PLANO_LOCAL = 'qa-plano.md', CONTEXTO = '.ticket-contexto.md';
+const TITULO_SUBTAREFA = '[QA] Planejamento dos Casos de Testes'; // convenção que procurar() reconhece
+// Nome do provedor para os rótulos (fora do VS Code, nos testes, cai no Jira).
+const nomeProvedor = () => { try { return require('../infra/ticket').jira.nome || 'Jira'; } catch { return 'Jira'; } };
+
+const html2txt = (h) => String(h || '').replace(/<(br|\/p|\/li|\/tr|\/h\d)[^>]*>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/\n{3,}/g, '\n\n').trim();
+// Ticket normalizado do provedor (buscar) → arquivo de contexto que a IA lê.
+const contextoTicket = (j) => `# ${j.key} · ${j.resumo}\nStatus: ${j.status} · Tipo: ${j.tipo}\n\n## Descrição\n\n${html2txt(j.descricao)}\n\n## Subtarefas\n\n`
+  + ((j.subtarefas || []).map((x) => `- ${x.key} · ${x.resumo} (${x.status})`).join('\n') || '(sem subtarefas)') + '\n\n## Comentários (mais recente primeiro)\n\n'
+  + ((j.comentarios || []).map((c) => `### ${c.autor} · ${c.data}\n${html2txt(c.corpo)}`).join('\n\n') || '(sem comentários)') + '\n';
+
+// Método do planejamento (o do jira-qa-planner, sem a parte que publica): casos de teste no formato que cenariosDo() entende.
+const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os comentários e monte os casos de teste que os cobrem. '
+  + 'Estrutura do arquivo: "## Cenários de Teste" com um título "#### CT01 – <o que valida>" por caso (numeração contínua CT01, CT02…); '
+  + 'em cada caso, o passo a passo em Gherkin, uma linha por item em negrito no início: **Dado que** …, **Quando** …, **Então** … (**E** … para continuar); '
+  + 'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. '
+  + 'Casos que dependem de exploração livre vão ao final como "#### Exploratório 1 – …". Termine com "## Critérios de aceite cobertos" (tabela CA × CT) e "## Riscos e pré-requisitos" '
+  + '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos).';
+const REGRAS_PLANO = (dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${nomeProvedor()}). `
+  + `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). `
+  + `Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(dir, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
+// Criar: o clique em "Criar planejamento" é o OK do humano.
+const promptCriar = (dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano já aprovou ao clicar em "Criar planejamento": não peça confirmação.\n\n${METODO}\n\n${REGRAS_PLANO(dir)}`
+  + ' Termine dizendo em uma frase quantos casos montou.';
+// Pedir mudança: a IA edita o arquivo local; a extensão republica.
+const promptMudanca = (dir, pedido) => `[segundo plano · Crafting Table] O humano pediu esta mudança no planejamento de QA, que está em ${path.join(dir, PLANO_LOCAL)}: "${pedido}".\n`
+  + 'Aplique o pedido editando esse arquivo (não pergunte nada): mantenha o formato e a numeração dos cenários que não mudaram e continue a numeração nos novos.\n\n'
+  + `${METODO}\n\n${REGRAS_PLANO(dir)} Não crie outro arquivo. Termine dizendo em uma frase o que mudou.`;
+// Ferramentas liberadas: só leitura do contexto local e escrita/edição do plano. Nada do provedor.
+const FERRAMENTAS_PLANO = ['Read', 'Glob', 'Grep', 'Write', 'Edit'];
+
+// Plano escrito pela IA em PLANO_LOCAL (null se não existe ou não tem cenários).
+function planoLocal(dir) {
+  try {
+    const arq = path.join(dir, PLANO_LOCAL), md = fs.readFileSync(arq, 'utf8');
+    return cenariosDo(md).length ? { md, mtime: fs.statSync(arq).mtimeMs } : null;
+  } catch { return null; }
+}
+// Publica o plano local no provedor: subtarefa [QA] nova (criarSubtarefa) ou a existente (atualizarDescricao); sem subtarefas no provedor,
+// comentário no ticket (o arquivo local segue como fonte). deps: { chave, filhos, subtarefas, criarSubtarefa, atualizarDescricao, comentar }.
+async function publicarPlano(dir, deps) {
+  const p = planoLocal(dir);
+  if (!p) throw new Error(`O Claude não gravou ${PLANO_LOCAL} com cenários (CT01…)`);
+  if (!deps.subtarefas) {
+    await deps.comentar(`**${TITULO_SUBTAREFA}** (Crafting Table)\n\n${p.md}`);
+    return { modo: 'comentario', key: deps.chave };
+  }
+  const existente = candidatas(await deps.filhos(deps.chave))[0];
+  if (existente) { await deps.atualizarDescricao(existente.key, p.md); return { modo: 'atualizada', key: existente.key }; }
+  const { key } = await deps.criarSubtarefa({ resumo: TITULO_SUBTAREFA, descricao: p.md });
+  return { modo: 'criada', key };
+}
 
 // Bloco do topo da seção Evidências no QA: cartão do planejamento + Ao vivo. Botões vão ao painel (data-painel, grupo.js).
 const CSS = `<style>${aoVivo.CSS}${cardCenario.CSS}
@@ -514,13 +559,13 @@ function html(dir, uri = () => '') {
   const lido = ult && e.lido === ult.v;
   const card = e.fase === 'sem_plano' || (e.fase === 'criando' && !rodando)
     ? `<div class="qa-card bloq"><b>Sem planejamento de QA</b><p>O QA só começa com o planejamento.${e.subtarefas?.length ? ` A subtarefa ${esc(e.subtarefas.join(', '))} não tem cenários.` : ''}
-       O Claude cria a subtarefa e o plano no Jira com o jira-qa-planner.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
-    : e.fase === 'criando' ? '<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está montando o plano no Jira. Ao terminar, a Crafting Table procura de novo.</p></div>'
+       O Claude escreve o plano e a Crafting Table publica no ${nomeProvedor()}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
+    : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar, a Crafting Table publica no ${nomeProvedor()} e procura de novo.</p></div>`
     : e.fase === 'alterando' && rodando ? `<div class="qa-card"><b><span class="vivo-bola"></span>Aplicando sua mudança no planejamento</b><p>“${esc(e.pedido || '')}”. Ao terminar, a versão nova aparece aqui para aprovar.</p></div>`
     : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.</p>
        ${abrir}${e.fase === 'alterando' ? '' : `<div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-painel="qaPlanoAprovar" ${lido ? '' : 'disabled'}
          title="${lido ? 'Aprovar o planejamento e listar os cenários' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
-         <button data-painel="qaPlanoMudar" title="Descreva o ajuste: o Claude aplica na subtarefa do Jira e gera a versão nova">Pedir ajuste</button></div>`}</div>`
+         <button data-painel="qaPlanoMudar" title="Descreva o ajuste: o Claude aplica na subtarefa e gera a versão nova">Pedir ajuste</button></div>`}</div>`
     : e.fase === 'plano_aprovado' && ult ? `<div class="qa-card"><b>Planejamento aprovado · ${plano}</b><p>${esc(ult.resumo)}</p>${abrir}</div>`
     : e.fase === 'erro' ? `<div class="qa-card bloq"><b>Não consegui conferir o planejamento</b><p>${esc(e.erro)}</p><button data-painel="qaPlay">Tentar de novo</button></div>`
     : !e.fase ? '<div class="qa-card"><b>QA não iniciado</b><p>Clique em ▶ no topo: a Crafting Table procura o planejamento de QA do ticket.</p></div>' : '';
@@ -536,9 +581,9 @@ function execucaoHtml(dir, e, rodando) {
   if (rodando) return `<div class="qa-card"><b><span class="vivo-bola"></span>QA em andamento</b><p>⏸ no topo pausa: o cenário em andamento é descartado e volta na retomada.</p></div>`;
   if (pend) return `<div class="qa-card"><b>${pend} cenário(s) na fila${e.execucao === 'pausado' ? ' · pausado' : ''}</b><p>Sobe API, Metro, emulador e app, confere a massa e executa um cenário por vez.${outro}</p>
     <button data-painel="qaIniciar">${e.execucao === 'pausado' ? 'Retomar' : feitos ? 'Continuar' : 'Dar início'}</button>
-    ${feitos ? '<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no Jira</button>' : ''}</div>`;
+    ${feitos ? `<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no ${nomeProvedor()}</button>` : ''}</div>`;
   return `<div class="qa-card"><b>Execução concluída</b><p>Nenhum cenário na fila. ↻ Refazer num cenário o coloca de volta.</p>
-    ${feitos ? '<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no Jira</button>' : ''}</div>`;
+    ${feitos ? `<button class="sec" data-painel="qaPublicar" title="Comentário com o resultado e as evidências na subtarefa de QA (pede confirmação)">Publicar no ${nomeProvedor()}</button>` : ''}</div>`;
 }
 // Aba Massa (painel). Validade: estado 'valida' e medida depois do último refresh do banco.
 function massaHtml(dir, hora = '06:00') {
@@ -566,6 +611,6 @@ function mapaHtml(dir, r, amb, uri) {
     <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
-module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
+module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
   concluirCenario, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

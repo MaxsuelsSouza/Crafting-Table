@@ -63,6 +63,35 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   const r = await procurar(api, 'WMS-1');
   assert.deepStrictEqual([r.plano.key, r.qa.map((x) => x.key)], ['WMS-4', ['WMS-3', 'WMS-4']]);
 
+  // Novo fluxo: a IA escreve qa-plano.md local; a extensão publica no provedor. Prompts sem MCP/ferramentas do provedor.
+  for (const pr of [qa.promptCriar('/tmp/qa'), qa.promptMudanca('/tmp/qa', 'trocar CT02')]) {
+    assert.ok(!/mcp__|Atlassian|editJiraIssue|createJiraIssue|jira-qa-planner/i.test(pr), 'prompt sem MCP');
+    assert.ok(pr.includes('/tmp/qa/qa-plano.md') && pr.includes('.ticket-contexto.md') && pr.includes('#### CT01'));
+  }
+  assert.ok(qa.promptMudanca('/tmp/qa', 'trocar CT02').includes('trocar CT02'));
+  assert.ok(!qa.FERRAMENTAS_PLANO.some((f) => /mcp__|Skill/.test(f)));
+  const ctx = qa.contextoTicket({ key: 'WMS-1', resumo: 'X', status: 'Novo', tipo: 'Story', descricao: '<p>Regra &amp; A</p>', subtarefas: [{ key: 'WMS-2', resumo: 'Dev', status: 'Novo' }], comentarios: [{ autor: 'Ana', data: 'hoje', corpo: '<p>ok</p>' }] });
+  assert.ok(ctx.includes('# WMS-1 · X') && ctx.includes('Regra & A') && ctx.includes('WMS-2 · Dev') && ctx.includes('Ana'));
+  const dp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-pub-'));
+  const chamadas = [];
+  const falso = (filhos, subtarefas = true) => ({ chave: 'WMS-1', subtarefas, filhos: async () => filhos,
+    criarSubtarefa: async (o) => { chamadas.push(['criar', o]); return { key: 'WMS-9' }; },
+    atualizarDescricao: async (k, md) => { chamadas.push(['atualizar', k, md]); return {}; },
+    comentar: async (md) => { chamadas.push(['comentar', md]); } });
+  await assert.rejects(qa.publicarPlano(dp, falso([])), /qa-plano\.md/); // IA não gravou
+  fs.writeFileSync(path.join(dp, 'qa-plano.md'), PLANO_MD);
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso([{ key: 'WMS-5', resumo: 'Backend', md: '' }])), { modo: 'criada', key: 'WMS-9' });
+  assert.deepStrictEqual([chamadas[0][0], chamadas[0][1].resumo, chamadas[0][1].descricao], ['criar', '[QA] Planejamento dos Casos de Testes', PLANO_MD]);
+  chamadas.length = 0;
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso([{ key: 'WMS-3', resumo: '[QA] Teste de Qualidade', md: 'Sub-tarefa criada automaticamente' }])), { modo: 'atualizada', key: 'WMS-3' });
+  assert.deepStrictEqual(chamadas, [['atualizar', 'WMS-3', PLANO_MD]]);
+  chamadas.length = 0;
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso([], false)), { modo: 'comentario', key: 'WMS-1' }); // sem subtarefas
+  assert.deepStrictEqual([chamadas.length, chamadas[0][0], chamadas[0][1].includes('CT01 – Validar')], [1, 'comentar', true]);
+  // Sem subtarefas no provedor, o arquivo local é a fonte: verificarPlano acha o plano nele.
+  await qa.verificarPlano(dp, 'WMS-1', async () => []);
+  assert.deepStrictEqual([qa.estado(dp).fase, qa.estado(dp).subtarefa, qa.estado(dp).versao], ['plano_encontrado', 'WMS-1', 1]);
+
   // verificarPlano: sem plano → sem_plano; com plano → plano_ok + v1 + Ao vivo.
   const d2 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
   assert.strictEqual((await qa.verificarPlano(d2, 'WMS-1', async () => []), qa.estado(d2)).fase, 'sem_plano');
