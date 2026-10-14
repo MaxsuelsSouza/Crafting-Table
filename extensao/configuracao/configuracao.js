@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
-const tickets = require('../infra/tickets');
+const variaveis = require('../provedores/variaveis');
 const maestro = require('../painel/maestro');
 const banco = require('../plugins/mapa/lib/banco');
 const { botao } = require('../componentes/botao');
@@ -56,13 +56,20 @@ function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p,
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 // Settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
 const cfg = () => vscode.workspace.getConfiguration('craftingTable');
-const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar().find((t) => t.projeto)?.projeto || (tickets.listar()[0]?.chave || 'WMS').split('-')[0]);
-const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
-// O que falta em Configurações > Geral > Jira para os vinculados buscarem no Jira: site, projeto, conta (e-mail + token) e o board principal.
-const jiraPendencias = async (secrets) => [
+// Site e projeto vêm das variáveis do provedor (Configurações > Variáveis); sem elas, '' (pendência), nunca um valor da empresa.
+const projetoJira = () => String(variaveis.ler('projeto') || '');
+const siteJira = () => String(variaveis.ler('site') || '');
+// Variável que cada módulo exige além das comuns (modo = id do módulo da lista).
+const EXIGE = { qa: ['etapasQA'], impl: ['etapasImplementacao'], incidentes: ['tipoIncidente'] };
+const ROTULO_VAR = Object.fromEntries(variaveis.definicoes.map((d) => [d.chave, d.rotulo.toLowerCase()]));
+// O que falta configurar para os vinculados buscarem no provedor: site, projeto, conta (e-mail + token), board principal e as
+// variáveis do módulo (modo). Cada item vira o aviso de configuração na caixa.
+const pendencias = async (secrets, modo = '') => [
   !siteJira() && 'site', !projetoJira() && 'projeto',
   !(await jira.conectado(secrets)) && 'conta',
-  !(cfg().get('jiraBoard') || '').trim() && 'board principal'].filter(Boolean);
+  !variaveis.ler('boardPrincipal') && 'board principal',
+  ...(EXIGE[modo] || []).filter((c) => !variaveis.ler(c).length).map((c) => ROTULO_VAR[c])].filter(Boolean);
+const jiraPendencias = pendencias; // nome antigo
 // Repositórios de código: ao lado do repositório de specs (…/WMS/specs → …/WMS/novo-wms-backend e …/WMS/wms-mobile).
 const reposAuto = (specs) => [['backend', 'novo-wms-backend'], ['mobile', 'wms-mobile']]
   .map(([camada, n]) => ({ caminho: path.join(path.dirname(specs), n), camada })).filter((r) => fs.existsSync(r.caminho));
@@ -72,7 +79,7 @@ const REPO = path.resolve(fs.realpathSync(__dirname), '..', '..');
 let avisoInstalacao = null; // { motivos: string[] } | null: o instalar.sh precisa rodar de novo (preenchido por conferirInstalacao)
 const aviso = () => avisoInstalacao;
 
-const ABAS = [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, { id: 'plugins', nome: 'Plugins' }, { id: 'cofre', nome: 'Cofre' }];
+const ABAS = [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, { id: 'plugins', nome: 'Plugins' }, { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
 const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
 
 const geral = (v) => {
@@ -114,6 +121,14 @@ const geral = (v) => {
   ].join('\n');
 };
 
+// Aba Variáveis: o que muda de empresa para empresa. v.variaveis = variaveis.todas(); o selo diz quem preencheu (manual, IA ou migrada dos settings antigos).
+const seloVar = (x) => (!x.definida ? '<span class="cfg-st cfg-mal">⚠ falta configurar</span>'
+  : x.migrada ? '<span class="cfg-st cfg-esp">migrada dos settings antigos</span>' : `<span class="cfg-st cfg-esp">${x.origem === 'ia' ? 'IA' : 'manual'}</span>`);
+const variaveisTela = (v) => (v.variaveis || []).map((x) => card({ titulo: esc(x.rotulo), selo: seloVar(x),
+  acao: botao('Editar', { variante: 'contorno', acao: 'varEditar', id: x.chave }),
+  corpo: `<div class="cfg-var">${[].concat(x.valor).join(', ') ? esc([].concat(x.valor).join(', ')) : '<i>—</i>'}</div>` + dica(esc(x.descricao))
+    + (x.atualizado ? `<div class="cfg-dim">atualizado em ${esc(x.atualizado.slice(0, 10))}</div>` : '') })).join('\n');
+
 const MKT_FC = { nome: 'fcxlabs', url: 'https://gitlab.fcxlabs.com/ai-tools/marketplace-claude/-/raw/main/marketplace.json' };
 const MODULOS = [['refinamento', 'Refinamento'], ['implementacao', 'Implementação'], ['qa', 'QA']];
 const porModulo = (v) => MODULOS.map(([m, nome]) => {
@@ -153,7 +168,7 @@ const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
     <span class="ct-titulo">Configurações</span></div>
     ${menuAbas.menu(ABAS, { aba: v.aba || 'geral', secao: 'cfg', principal: 'cfg', dentro: true, acao: 'cfgAba' })}</header>
-  <main class="rolagem cfg">${v.aba === 'plugins' ? plugins(v) : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
+  <main class="rolagem cfg">${v.aba === 'plugins' ? plugins(v) : v.aba === 'variaveis' ? variaveisTela(v) : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
 
 const CSS = `
   ${cardConfig.CSS}
@@ -164,11 +179,13 @@ const CSS = `
   .cfg-repo > div { flex: 1; min-width: 0; word-break: break-all; } .cfg-acoes { display: flex; gap: 4px; }
   .cfg-cam { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: var(--surface-2); }
   .cfg-add { margin-top: 6px; }
+  .cfg-var { word-break: break-word; }
 `;
 
 
 // Controle da tela: estado (aberta, aba, resultado dos testes) e os cliques. Um por painel.
 const criar = (ctx, { render, aoAbrir, voltar }) => {
+  variaveis.vincular(ctx.globalState);
   let cfgAberta = false, cfgEstado = {}, cfgAba = 'geral', aposPull = false;
   // Marketplace FC: conectado? e, com o catálogo recarregado, o commit da origem de cada plugin instalado difere do instalado (git ls-remote, sem pedir senha)?
   let mkt = { conectado: null, checando: false, nova: {}, erro: '' };
@@ -205,8 +222,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     }
     return '';
   }
-  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
-    etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
+  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: String(variaveis.ler('boardPrincipal') || ''),
+    etapasExtras: [].concat(variaveis.ler('etapasExtras')), specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
     bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
     bancoSensiveis: cfg().get('bancoColunasSensiveis')?.length ? cfg().get('bancoColunasSensiveis') : banco.SENSIVEIS_PADRAO });
@@ -247,7 +264,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     },
     async board() {
       try {
-        const cols = await jira.etapas(ctx.secrets, siteJira(), projetoJira(), cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []);
+        const cols = await jira.etapas(ctx.secrets, siteJira(), projetoJira(), String(variaveis.ler('boardPrincipal') || ''), [].concat(variaveis.ler('etapasExtras')));
         return { ok: true, colunas: cols.map((c) => c.nome), texto: `${cols.length} etapas no filtro dos vinculados` };
       } catch (e) { return { ok: false, curto: 'falhou', texto: e.message }; }
     },
@@ -306,7 +323,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   };
   const acoes = {
     cfgAba({ id }) {
-      cfgAba = ['cofre', 'comandos', 'plugins'].includes(id) ? id : 'geral';
+      cfgAba = ['cofre', 'comandos', 'plugins', 'variaveis'].includes(id) ? id : 'geral';
       require('../modulos/cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
       if (cfgAba === 'plugins' && !mkt.checando) mktChecar(false);
       if (cfgAba === 'comandos') { require('../modulos/comandos').api?.atualizar(); require('../modulos/emulador').api?.atualizar(); }
@@ -345,16 +362,50 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     config() { cfgAba = 'geral'; cfgAberta = true; aoAbrir(); checar(); },
     configFechar() { cfgAberta = false; render(); },
     cfgTestar({ id }) { if (CHECAR[id]) checar([id]); },
+    // Edita uma variável do provedor: escolhe numa lista do provedor (boards, status, labels) quando dá, senão digita.
+    async varEditar({ id }) {
+      const d = variaveis.definicoes.find((x) => x.chave === id);
+      if (!d) return;
+      const atual = variaveis.ler(id), site = siteJira(), proj = projetoJira();
+      const digitar = async () => {
+        const v = await vscode.window.showInputBox({ title: d.rotulo, value: [].concat(atual).join(d.tipo === 'lista' ? ', ' : ''), ignoreFocusOut: true,
+          prompt: d.tipo === 'lista' ? `${d.descricao} Separe por vírgula.` : d.descricao });
+        return v === undefined ? undefined : v.trim();
+      };
+      let novo;
+      try {
+        if (d.escolha === 'boards' && site && proj) {
+          const p = await vscode.window.showQuickPick((await jira.boards(ctx.secrets, site, proj)).map((b) => ({ label: b.nome, description: b.tipo })), { title: d.rotulo, placeHolder: d.descricao });
+          novo = p?.label;
+        } else if (d.escolha === 'labels' && site) {
+          const p = await vscode.window.showQuickPick((await jira.labels(ctx.secrets, site, '')).map((l) => ({ label: l })), { title: d.rotulo, placeHolder: d.descricao });
+          novo = p?.label;
+        } else if (d.escolha === 'status' && site && proj) {
+          const DIGITAR = 'Digitar à mão…';
+          const nomes = await jira.statusDoProjeto(ctx.secrets, site, proj), marcados = new Set([].concat(atual));
+          const itens = [...[...marcados].filter((n) => !nomes.includes(n)), ...nomes].map((n) => ({ label: n, picked: marcados.has(n) })).concat([{ label: DIGITAR, picked: false }]);
+          const p = await vscode.window.showQuickPick(itens, { canPickMany: true, title: d.rotulo, placeHolder: d.descricao });
+          novo = !p ? undefined : p.some((x) => x.label === DIGITAR) ? await digitar() : p.map((x) => x.label);
+        } else novo = await digitar();
+      } catch (e) {
+        vscode.window.showWarningMessage(`Não consegui listar as opções (${e.message}). Digite o valor.`);
+        novo = await digitar();
+      }
+      if (novo === undefined) return;
+      await variaveis.gravar(id, novo, 'manual');
+      checar(['jira', 'board']);
+      render();
+    },
     async cfgEditar({ id }) {
       const site = siteJira(), proj = projetoJira();
       if (id === 'jiraSite') {
         const v = await vscode.window.showInputBox({ title: 'Site do Jira', value: site, prompt: 'https://<org>.atlassian.net', ignoreFocusOut: true,
           validateInput: (x) => (/^https:\/\/[\w-]+\.atlassian\.net\/?$/.test(x.trim()) ? null : 'Use https://<org>.atlassian.net') });
-        if (v) { await salvarCfg('jiraSite', v.trim().replace(/\/+$/, '')); checar(['jira', 'board']); }
+        if (v) { await variaveis.gravar('site', v.trim().replace(/\/+$/, '')); checar(['jira', 'board']); }
       } else if (id === 'jiraProjeto') {
         const v = await vscode.window.showInputBox({ title: 'Projeto do Jira', value: proj, prompt: 'Chave do projeto (ex.: WMS)', ignoreFocusOut: true,
           validateInput: (x) => (/^[A-Z][A-Z0-9_]+$/.test(x.trim().toUpperCase()) ? null : 'Chave do projeto, ex.: WMS') });
-        if (v) { await salvarCfg('jiraProjeto', v.trim().toUpperCase()); checar(['jira', 'board']); }
+        if (v) { await variaveis.gravar('projeto', v.trim().toUpperCase()); checar(['jira', 'board']); }
       } else if (id === 'jiraConta') {
         await jira.sairConta(ctx.secrets);
         if (await jira.credenciais(ctx.secrets)) checar(['jira', 'board']);
@@ -364,13 +415,13 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         try { lista = await jira.boards(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os boards: ${e.message}`); }
         if (!lista.length) return vscode.window.showWarningMessage(`O projeto ${proj} não tem boards visíveis para você.`);
         const p = await vscode.window.showQuickPick(lista.map((b) => ({ label: b.nome, description: b.tipo })), { title: `Board principal de ${proj}`, placeHolder: 'As colunas dele viram as etapas do filtro' });
-        if (p) { await salvarCfg('jiraBoard', p.label); checar(['board']); }
+        if (p) { await variaveis.gravar('boardPrincipal', p.label); checar(['board']); }
       } else if (id === 'etapasExtras') {
         let nomes;
         try { nomes = await jira.statusDoProjeto(ctx.secrets, site, proj); } catch (e) { return vscode.window.showErrorMessage(`Não consegui listar os status: ${e.message}`); }
-        const atuais = new Set(cfg().get('etapasExtras') || []);
+        const atuais = new Set([].concat(variaveis.ler('etapasExtras')));
         const p = await vscode.window.showQuickPick(nomes.map((n) => ({ label: n, picked: atuais.has(n) })), { canPickMany: true, title: 'Etapas extras', placeHolder: 'Status fora das colunas do board que também entram no filtro' });
-        if (p) { await salvarCfg('etapasExtras', p.map((x) => x.label)); checar(['board']); }
+        if (p) { await variaveis.gravar('etapasExtras', p.map((x) => x.label)); checar(['board']); }
       } else if (id === 'specsDir') {
         const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Pasta local do repositório de specs', openLabel: 'Usar esta pasta' });
         if (u) { await salvarCfg('specsDir', u[0].fsPath); checar(['specs', 'repos']); }
@@ -481,9 +532,9 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado,
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado,
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };
 
-module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, jiraPendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };
+module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, jiraPendencias, pendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };

@@ -9,7 +9,8 @@ const vinculados = require('../componentes/vinculados'); // caixa de vinculados 
 const implementacoes = require('../implementacoes/implementacoes');
 const incidentes = require('../incidentes/incidentes');
 const menuModulos = require('../componentes/menu-modulos');
-const { cfg, siteJira, projetoJira, jiraPendencias } = require('../configuracao/configuracao');
+const { siteJira, projetoJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
+const variaveis = require('../provedores/variaveis');
 
 // Lista de tickets (Refinamento, Implementações ou QA) e a caixa "Vinculados a você" de cada uma. Estado de módulo (singleton:
 // o painel é criado uma vez); o painel lê por modo/resetar/fecharPrevia/corpo/carregarSeNecessario e iniciar().
@@ -19,12 +20,14 @@ const VINCULADOS = {
   refinamento: { titulo: 'Vinculados a você', seletor: 'etapa' },
   [implementacoes.ID]: implementacoes.VINCULADOS,
   [incidentes.ID]: incidentes.VINCULADOS,
-  qa: { titulo: 'Com a label', seletor: 'label', status: ['Pronto para QA|Pronto p/ QA', 'Teste integrado'] }
+  qa: { titulo: 'Com a label', seletor: 'label', variavel: 'etapasQA' }
 };
+// Status de cada caixa vêm das variáveis do provedor (variavel: chave); sem variável, a caixa não filtra (e a pendência avisa).
+const vinculadosDe = (k) => { const v = VINCULADOS[k]; return v?.variavel ? { ...v, status: [].concat(variaveis.ler(v.variavel)) } : v; };
 
 // Lista mostrada: Refinamento, Implementações, QA ou Incidentes (ticket.lista: 'impl' | 'qa' | 'incidentes'). Cada uma tem a sua caixa de vinculados.
 let modoLista = tickets.REFINAMENTO;
-const iniciar = (globalState) => { modoLista = tickets.modulo(globalState.get('listaModo')) || tickets.REFINAMENTO; };
+const iniciar = (globalState) => { variaveis.vincular(globalState); modoLista = tickets.modulo(globalState.get('listaModo')) || tickets.REFINAMENTO; };
 const modo = () => modoLista;
 const naLista = (t, l = modoLista) => tickets.listasDe(t).includes(l);
 // Põe o ticket também nesta aba (não tira das outras); grava listas no lugar do lista/implementacao de antes.
@@ -52,16 +55,16 @@ const corpo = (s, estilo, emRefino) => {
   if (previa) return telaPrevia(estilo, previa, cachePrevia[previa]);
   const meus = meusPor[modoLista];
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).map((x) => ({ ...x, refinando: emRefino(x) })),
-    meus ? { ...meus, ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: VINCULADOS[modoLista] });
+    meus ? { ...meus, ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 
-// Implementações: só os que estão em Buffer, Não iniciado ou Em andamento/In progress (pelo nome do status, sem acento).
-// QA: os com a label de QA (não o responsável) em Pronto para QA ou Teste integrado.
-const labelQA = (s) => s.globalState.get('labelQA') || '';
+// Implementações e QA: só os nos status das variáveis etapasImplementacao / etapasQA (pelo nome do status, sem acento).
+// QA: os com a label de QA (não o responsável).
+const labelQA = (s) => variaveis.ler('labelQA') || s.globalState.get('labelQA') || '';
 const carregarMeus = async (s, forcar) => {
   const k = modoLista, meus = meusPor[k], fixo = k !== tickets.REFINAMENTO;
   if (meus?.carregando || (!forcar && meus?.em && Date.now() - meus.em < 120000)) return;
-  const pendencias = await jiraPendencias(s.secrets); // sem Jira configurado, a caixa não busca nada
+  const pendencias = await pendenciasDe(s.secrets, k); // sem Jira configurado, a caixa não busca nada
   if (pendencias.length) { meusPor[k] = { pendencias, em: Date.now() }; return s.render(); }
   if (!forcar && !(await jira.conectado(s.secrets))) { meusPor[k] = { semCredencial: true, em: Date.now() }; return s.render(); }
   meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };
@@ -69,14 +72,14 @@ const carregarMeus = async (s, forcar) => {
   const filtro = fixo ? '' : s.globalState.get('meusFiltro') || '';
   const projeto = projetoJira();
   try {
-    // Etapas = colunas do board Downstream (buscadas uma vez); a escolhida vira os status dela na busca.
+    // Etapas = colunas do board principal (buscadas uma vez); a escolhida vira os status dela na busca.
     let avisoBoard = '';
-    if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream', cfg().get('etapasExtras') || []).catch((e) => { avisoBoard = e.message; return null; });
+    if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, String(variaveis.ler('boardPrincipal')), [].concat(variaveis.ler('etapasExtras'))).catch((e) => { avisoBoard = e.message; return null; });
     const coluna = (etapasJira || []).find((c) => c.nome === filtro);
     if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
-    const boardId = k === incidentes.ID ? (await jira.boardPorNome(s.secrets, siteJira(), projeto, cfg().get('jiraBoard') || 'Downstream')).id : undefined; // Incidentes: só o board das configurações
-    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: k === incidentes.ID ? incidentes.TIPOS : '', boardId, projeto });
-    itens = vinculados.filtrar(itens, VINCULADOS[k].status);
+    const boardId = k === incidentes.ID ? (await jira.boardPorNome(s.secrets, siteJira(), projeto, String(variaveis.ler('boardPrincipal')))).id : undefined; // Incidentes: só o board das configurações
+    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: k === incidentes.ID ? String(variaveis.ler('tipoIncidente')) : '', boardId, projeto });
+    itens = vinculados.filtrar(itens, vinculadosDe(k).status);
     meusPor[k] = { itens, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: s.globalState.get('meusOcultos') || [], em: Date.now() };
   } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }
   s.render();
@@ -87,7 +90,7 @@ const carregarSeNecessario = (s) => { if (!previa && !meusPor[modoLista]?.carreg
 // Contrato: `acoes(servicos)` devolve { nome: handler }; o painel espalha no seu `acoes`. Sem `this`.
 const acoes = (s) => ({
   meusAtualizar() { carregarMeus(s, true); },
-  async labelQA({ id }) { await s.globalState.update('labelQA', id || ''); carregarMeus(s, true); },
+  async labelQA({ id }) { await s.globalState.update('labelQA', id || ''); await variaveis.gravar('labelQA', id || '', 'manual'); carregarMeus(s, true); },
   async meusFiltro({ id }) { await s.globalState.update('meusFiltro', id || ''); carregarMeus(s, true); },
   // Vinculado: clique só mostra o ticket; Puxar traz para a lista (e já busca título, status e anexos); Remover esconde.
   async meuVer({ id }) {

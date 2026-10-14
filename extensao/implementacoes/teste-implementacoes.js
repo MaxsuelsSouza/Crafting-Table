@@ -9,7 +9,8 @@ const tickets = require('../infra/tickets');
 const menu = require('../componentes/menu-modulos');
 
 const itens = ['Buffer', 'Não iniciado', 'In progress', 'em andamento', 'Pronto para QA'].map((status) => ({ status }));
-assert.deepStrictEqual(filtrar(itens, impl.VINCULADOS.status).map((i) => i.status), ['Buffer', 'Não iniciado', 'In progress', 'em andamento']);
+assert.deepStrictEqual(filtrar(itens, ['Buffer', 'Não iniciado', 'Em andamento|In progress']).map((i) => i.status), ['Buffer', 'Não iniciado', 'In progress', 'em andamento']);
+assert.strictEqual(impl.VINCULADOS.variavel, 'etapasImplementacao'); // os status vêm da variável, não do código
 assert.strictEqual(tickets.pasta('WMS-1', impl.ID).endsWith('WMS-1/impl'), true);
 assert.deepStrictEqual(tickets.listasDe({ implementacao: true }), [impl.ID]);
 assert.strictEqual(menu.nome(impl.ID), impl.ROTULO);

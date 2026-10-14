@@ -175,27 +175,30 @@
         "craftingTable.jiraSite": {
           "type": "string",
           "default": "",
-          "description": "Site do Jira (https://<org>.atlassian.net). Vazio: o site do primeiro ticket da lista."
+          "description": "Antigo: use a variável site (Configurações > Variáveis). Site do Jira (https://<org>.atlassian.net)."
         },
         "craftingTable.jiraProjeto": {
           "type": "string",
           "default": "",
-          "description": "Chave do projeto no Jira (ex.: WMS). Vazio: a do primeiro ticket da lista."
+          "description": "Antigo: use a variável projeto (Configurações > Variáveis). Chave do projeto no Jira (ex.: WMS)."
         },
         "craftingTable.jiraBoard": {
           "type": "string",
-          "default": "Downstream",
-          "description": "Board principal do projeto: as colunas dele viram as etapas do filtro dos vinculados (procura pelo nome)."
+          "default": "",
+          "description": "Antigo: use a variável boardPrincipal (Configurações > Variáveis). Board principal do projeto: as colunas dele viram as etapas do filtro dos vinculados (procura pelo nome)."
         },
         "craftingTable.etapasExtras": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "default": [
-            "Pronto p/ Dev"
-          ],
-          "description": "Status que não são coluna do board mas entram no filtro de etapas."
+          "default": [],
+          "description": "Antigo: use a variável etapasExtras (Configurações > Variáveis). Status que não são coluna do board mas entram no filtro de etapas."
+        },
+        "craftingTable.variaveis": {
+          "type": "object",
+          "default": {},
+          "description": "Variáveis do provedor (site, projeto, board, etapas de QA…): { chave: { valor, descricao, origem: manual|ia, atualizado } }. Edite em Configurações > Variáveis."
         },
         "craftingTable.pluginsAuto": {
           "type": "boolean",
