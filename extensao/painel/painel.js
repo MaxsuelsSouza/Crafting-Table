@@ -165,7 +165,7 @@ exports.provider = (ctx) => {
     ...conf.acoes,
     ...modulosAcoes,
     abrir(/** @type {{ id: string, key?: string }} */ { id, key }) {
-      if (key) { const t = ticketAberto(); return t && !jira.ehDocumento(t) && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
+      if (key) { const t = ticketAberto(); if (t && jira.ehDocumento(t)) return vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); return t && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
       aberto = id;
       aba = 'docs';
       sessao.focar(id === SEM_TICKET ? null : id, lista.modo());
@@ -176,19 +176,17 @@ exports.provider = (ctx) => {
     aba({ id }) { aba = id; render(); if (id === 'ticket' && aberto !== SEM_TICKET && cacheJira[aberto]?.erro) atualizarJira(aberto); },
     lado({ id }) { lado = id; render(); },
     async novo() {
-      const via = await vscode.window.showQuickPick([{ label: 'Link do ticket', d: 'link' }, { label: 'Anexar documento', d: 'doc' }], { title: 'Novo ticket', placeHolder: 'Como criar o ticket?' });
+      const via = await require('./novo-ticket').pedir(vscode); // link (padrão) ou "Anexar documento" (opcional)
       if (!via) return;
       let t;
-      if (via.d === 'doc') {
+      if (via.documento) {
         const doc = require('../provedores/documento');
         const r = await vscode.window.showOpenDialog({ canSelectMany: false, title: 'Anexar documento ao ticket', filters: { Documentos: doc.ACEITAS } });
         if (!r?.length) return;
         try { t = lista.porNaLista(doc.criarPorDocumento(r[0].fsPath, { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
         require('../infra/contexto').prepararDocumento(t).then(() => render(), () => {}); // extrai o texto sem bloquear a abertura
       } else {
-        const link = await vscode.window.showInputBox({ title: 'Novo ticket', prompt: `Link do ticket no ${jira.nome}`, placeHolder: 'https://ferreiracosta.atlassian.net/browse/WMS-123', ignoreFocusOut: true });
-        if (!link) return;
-        try { const ident = jira.identidade(link); t = lista.porNaLista(tickets.criar(link.trim(), { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
+        try { const ident = jira.identidade(via.link); t = lista.porNaLista(tickets.criar(via.link, { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
       }
       this.abrir({ id: t.chave });
     },
@@ -201,7 +199,7 @@ exports.provider = (ctx) => {
         return render();
       }
       const ok = t && await vscode.window.showWarningMessage(`Excluir o ticket ${id}?`, { modal: true,
-        detail: `Sai da lista. A pasta (documentos, notas, tarefas, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
+        detail: `Sai da lista. A pasta (${t && jira.ehDocumento(t) ? 'o documento, anexos, ' : 'documentos, '}notas, tarefas, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
       if (!ok) return;
       tickets.arquivar(id);
       if (aberto === id) { aberto = null; sessao.focar(null); }
@@ -209,7 +207,7 @@ exports.provider = (ctx) => {
     },
     atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
     vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
-    jira() { const t = ticketAberto(); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); }
+    jira() { const t = ticketAberto(); if (t && jira.ehDocumento(t)) return vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); }
   };
 
   const provider = {

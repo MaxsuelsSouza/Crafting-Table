@@ -95,4 +95,18 @@ function gravarContexto(dir, nome, j, t) {
   return arq;
 }
 
-module.exports = { contextoDoTicket, prepararDocumento, gravarContexto, EXTRAIDO, PAGINAS, _teste: { docxParaTexto } };
+/** Bloco de texto que aponta a conversa interativa para o documento do ticket-documento (''. para Jira). Grava o contexto de forma síncrona
+ *  e dispara a extração sem await; cita só o que já existe. */
+function blocoDocumento(t) {
+  if (!ehDocumento(t) || !t.documento?.arquivo) return '';
+  const d = tickets().pasta(t.chave), CTX = '.contexto-ticket.md';
+  const regravar = () => { try { gravarContexto(d, CTX, require('../provedores/documento').buscarSync({ key: t.chave }), tickets().ler(t.chave) || t); } catch { /* pasta sumiu */ } };
+  regravar();
+  try { prepararDocumento(tickets().ler(t.chave) || t).then(regravar, () => {}); } catch { /* sem extração */ }
+  const ex = path.join(d, EXTRAIDO), pg = path.join(d, PAGINAS);
+  return `Ticket por documento (sem ferramenta de gestão). Documento original: ${path.join(d, t.documento.arquivo)}. Contexto do ticket: ${path.join(d, CTX)}.`
+    + (fs.existsSync(ex) ? ` Texto extraído: ${ex}.` : '') + (fs.existsSync(pg) ? ` Páginas: ${pg}/.` : '')
+    + ' Leia o documento (imagem e PDF com Read) antes de começar; tudo que o ticket pediria da ferramenta de gestão está nesses arquivos.';
+}
+
+module.exports = { contextoDoTicket, prepararDocumento, gravarContexto, blocoDocumento, EXTRAIDO, PAGINAS, _teste: { docxParaTexto } };

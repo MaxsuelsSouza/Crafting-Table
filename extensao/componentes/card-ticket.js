@@ -11,12 +11,18 @@ const pill = require('./pill');
 const SEM_TICKET = '__sem-ticket'; // id do "Sem ticket" no painel (aberto, pastas, abas)
 const LIXO = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg>';
 
+// Ticket por documento: selo com o tipo do arquivo no lugar da pill do provedor; o status local (se houver) fica neutro.
+const TIPOS = { pdf: 'PDF', png: 'Imagem', jpg: 'Imagem', jpeg: 'Imagem', webp: 'Imagem', gif: 'Imagem', md: 'Texto', txt: 'Texto', docx: 'Word' };
+const ehDoc = (t) => require('../provedores/documento').ehDocumento(t);
+const tipoDoc = (t) => TIPOS[String(t.documento?.tipo || '').toLowerCase()] || 'Documento';
+const statusDoc = (t) => (t.status && t.status !== 'Documento' ? pill.pill(t.status, { cor: 'novo' }) : '');
+
 const conversas = (n) => `${n} conversa${n === 1 ? '' : 's'}`;
 
-const card = (t) => `<li data-acao="abrir" data-id="${esc(t.chave)}" data-busca="${esc(`${t.chave} ${t.titulo || ''} ${t.status || ''}`.toLowerCase())}"${t.refinando ? ' class="refinando"' : ''} title="Abrir o ticket">
+const card = (t) => `<li data-acao="abrir" data-id="${esc(t.chave)}" data-busca="${esc(`${t.chave} ${t.titulo || ''} ${t.status || ''}${ehDoc(t) ? ` documento ${tipoDoc(t)}` : ''}`.toLowerCase())}"${t.refinando ? ' class="refinando"' : ''} title="Abrir o ticket">
     <div class="corpo">
       <div class="nome"><span>${esc(t.titulo || t.chave)}</span></div>
-      <div class="det"><span class="chave">${esc(t.chave)}</span>${t.status ? pill.status(t.status) : ''}${t.refinando ? pill.pill('● refinando', { cor: 'ia' }) : ''}
+      <div class="det"><span class="chave">${esc(t.chave)}</span>${ehDoc(t) ? `${pill.pill(`📄 ${tipoDoc(t)}`, { cor: 'ia', dica: 'Ticket por documento: o arquivo anexado é o ticket' })}${statusDoc(t)}` : t.status ? pill.status(t.status) : ''}${t.refinando ? pill.pill('● refinando', { cor: 'ia' }) : ''}
         <span>${conversas(t.conversas.length)}</span></div>
     </div>
     <span class="mini"><button class="perigo" data-acao="excluir" data-id="${esc(t.chave)}" title="Excluir (a pasta vai para _arquivados, nada é apagado)">${LIXO}</button></span></li>`;
@@ -36,4 +42,4 @@ const CSS = `
   .chave { font-family: var(--fc-font); color: var(--accent); font-weight: 600; }
 `;
 
-module.exports = { card, semTicket, SEM_TICKET, CSS, _teste: { conversas } };
+module.exports = { card, semTicket, SEM_TICKET, CSS, _teste: { conversas, tipoDoc } };

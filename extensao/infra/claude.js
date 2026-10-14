@@ -28,13 +28,19 @@ exports.ultimaConversa = (t, lista = require('./tickets').REFINAMENTO) => {
 // (arquivo como @/caminho, o resto como bloco curto) para o usuário completar a frase.
 // Com ticket aberto no painel: a conversa do ticket; sem conversa ainda, uma nova que o painel vincula ao ticket
 // (ela leva a pasta do ticket no texto). Sem ticket: a conversa atual.
+// Cabeçalho do ticket na conversa nova; ticket-documento acrescenta o documento original e o contexto (ficam na raiz, não na pasta da aba).
+const textoTicket = (t, lista, texto) => {
+  const bloco = require('./contexto').blocoDocumento(t);
+  return `Ticket ${t.chave} (pasta do ticket: ${require('./tickets').pasta(t.chave, lista)})${bloco ? ` · ${bloco}` : ''}\n${texto}`;
+};
+exports._textoTicket = textoTicket;
 exports.mencionar = async (texto) => {
   const sessao = require('./sessao'), tickets = require('./tickets');
   const chave = sessao.foco(), t = chave && tickets.ler(chave), lista = sessao.focoLista();
   let sid = t ? exports.ultimaConversa(t, lista) : sessao.conversaAtual();
   if (t && !sid) {
     tickets.gravar({ ...t, pedidoEm: Date.now(), pedidoLista: lista });
-    texto = `Ticket ${t.chave} (pasta do ticket: ${tickets.pasta(t.chave, lista)})\n${texto}`;
+    texto = textoTicket(t, lista, texto);
   }
   texto = texto.trimEnd() + ' ';
   // Conversa nova: o texto vai junto. Conversa existente: o Claude recusa texto em conversa já aberta

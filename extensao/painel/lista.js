@@ -46,6 +46,9 @@ const avaliarFerramenta = async (s) => {
   if (ok !== ferramenta) { const antes = ferramenta; resetar(); ferramenta = ok; if (antes !== null || !ok) s.render(); }
   return ok;
 };
+// Ticket por documento (chave reservada DOC-N ou ticket local do provedor documento): nunca vai ao provedor; a lista local vence.
+const ehChaveDoc = (id) => /^DOC-\d+$/i.test(String(id || '')) || require('../provedores/documento').ehDocumento(tickets.ler(id));
+const avisoDoc = () => { vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); };
 const fecharPrevia = () => { previa = null; };
 
 // Visualização de um ticket vinculado (sem trazer para a lista): o mesmo conteúdo da aba Ticket.
@@ -63,7 +66,7 @@ const corpo = (s, estilo, emRefino) => {
   if (previa) return telaPrevia(estilo, previa, cachePrevia[previa]);
   const meus = meusPor[modoLista];
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).map((x) => ({ ...x, refinando: emRefino(x) })),
-    ferramenta !== true ? null : meus ? { ...meus, ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
+    ferramenta !== true ? null : meus ? { ...meus, itens: meus.itens?.filter((i) => !ehChaveDoc(i.key)), ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 
 // Implementações e QA: só os nos status das variáveis etapasImplementacao / etapasQA (pelo nome do status, sem acento).
@@ -104,6 +107,7 @@ const acoes = (s) => ({
   async meusFiltro({ id }) { await s.globalState.update('meusFiltro', id || ''); carregarMeus(s, true); },
   // Vinculado: clique só mostra o ticket; Puxar traz para a lista (e já busca título, status e anexos); Remover esconde.
   async meuVer({ id }) {
+    if (ehChaveDoc(id)) return avisoDoc();
     previa = id;
     s.render();
     if (cachePrevia[id] && !cachePrevia[id].erro) return;
@@ -112,9 +116,10 @@ const acoes = (s) => ({
     if (previa === id) s.render();
   },
   previaFechar() { previa = null; s.render(); },
-  previaJira({ id }) { vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(siteJira(), id))); },
+  previaJira({ id }) { if (ehChaveDoc(id)) return avisoDoc(); vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(siteJira(), id))); },
   async listaModo({ id }) { modoLista = id; await s.globalState.update('listaModo', id); s.render(); },
   meuPuxar({ id }) {
+    if (ehChaveDoc(id) && !tickets.ler(id)) return avisoDoc(); // chave de documento sem ticket local: não vira ticket do provedor
     const t0 = tickets.ler(id);
     if (!t0) {
       try { const link = jira.linkDo(siteJira(), id); tickets.criar(link, { listas: [modoLista] }, jira.identidade(link)); } catch (e) { return vscode.window.showErrorMessage(e.message); }

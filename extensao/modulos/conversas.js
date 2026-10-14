@@ -261,6 +261,11 @@ function titularConversa(sid, titulo, tentativas = 20) {
 const ultimaConversa = (t) => require('../infra/claude').ultimaConversa(t, sessao.focoLista());
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
+const tituloConversa = (t, lista) => {
+  const implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
+  const etapa = { [implementacoes.ID]: implementacoes.ETAPA, qa: 'QA', [incidentes.ID]: incidentes.ETAPA }[lista];
+  return [t.chave, etapa, t.titulo || t.documento?.nome].filter(Boolean).join(' · ');
+};
 const reconciliar = (s) => {
   const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
   let mudou = false;
@@ -271,7 +276,7 @@ const reconciliar = (s) => {
       tickets.vincular(sid, t.chave, t.pedidoLista);
       const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
       tickets.gravar(resto);
-      titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA', [incidentes.ID]: ` · ${incidentes.ETAPA}` }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
+      titularConversa(sid, tituloConversa(t, pedidoLista));
       mudou = true;
     } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
   }
@@ -283,7 +288,7 @@ const pedido = (s, t) => {
   return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
     + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${t.link}\n`
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
       + `Anexos do ticket em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
@@ -307,5 +312,6 @@ const acoes = (s) => ({
 });
 
 exports.reconciliar = reconciliar;
+exports._teste2 = { pedido, tituloConversa };
 exports.acoes = acoes;
 exports._teste = { listar, rastros, titulo, projeto, historico, telaLeitura };

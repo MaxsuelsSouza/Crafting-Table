@@ -26,7 +26,7 @@ const pendentes = (anexos, origens) => {
 const corpo = (d, semTicket) => {
   const docs = d.docs.length ? d.docs.map((x) => `<div class="linha-doc" data-acao="docAbrir" data-id="${esc(x.nome)}" title="${esc(x.origem || x.full)}">
       <span class="sigla">${sigla(x.nome)}</span><span class="nome">${esc(x.nome)}</span>
-      ${d.origens[x.nome]?.origem ? `<span class="selo" title="Baixado dos anexos do ${esc(jira.nome)}">↓ ${esc(jira.nome)}</span>` : ''}
+      ${d.origens[x.nome]?.origem === 'documento' ? '<span class="selo" title="Documento do ticket">documento</span>' : d.origens[x.nome]?.origem ? `<span class="selo" title="Baixado dos anexos do ${esc(jira.nome)}">↓ ${esc(jira.nome)}</span>` : ''}
       <span class="mini"><button data-acao="docMencionar" data-id="${esc(x.nome)}" title="Mencionar no Claude">@</button></span></div>`).join('')
     : `<div class="vazio-aba">${semTicket && !d.dir ? 'Nenhuma conversa do Claude aberta ainda.' : 'Nenhum documento ainda. O que o Claude criar aparece aqui.'}</div>`;
   // Pendentes ficam apagados, com botão de baixar. Baixado, sobe para Documentos.
@@ -67,7 +67,8 @@ const docsDe = (dir) => (dir ? require('../infra/documentos')._teste.listar(dir)
 // Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
 function docsDoTicket(s, t) {
   const docs = docsDe(s.pastaAba(t.id));
-  if (require('../infra/sessao').focoLista() !== require('../infra/tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome])); }
+  if (require('../infra/sessao').focoLista() !== require('../infra/tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome]));
+    if (require('../provedores/documento').ehDocumento(t)) docs.push(...docsDe(path.join(s.pasta(t.id), '.anexos')).filter((d) => jira[d.nome] && !docs.some((x) => x.nome === d.nome))); }
   const vistos = new Set(docs.map((x) => x.origem || x.full));
   for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
   return docs.sort((a, b) => b.mtime - a.mtime);
