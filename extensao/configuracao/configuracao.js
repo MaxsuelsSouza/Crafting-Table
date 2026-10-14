@@ -53,6 +53,11 @@ function listarPlugins(nova = {}) {
 }
 function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
 
+// Agentes de IA que a tela oferece no seletor do card "Agente de IA". Só 'claude' tem o motor de refinamento de fato (maestro.js);
+// os demais são opções para vincular a preferência do usuário, com selo de experimental até o motor saber rodar outro agente.
+const NOMES_AGENTE = { claude: 'Claude Code', codex: 'Codex CLI (OpenAI)', gemini: 'Gemini CLI (Google)' };
+const nomeAgente = (val) => (val.agente === 'outro' ? (val.agenteNome || 'Outro agente') : (NOMES_AGENTE[val.agente] || NOMES_AGENTE.claude));
+
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 // Settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
 const cfg = () => vscode.workspace.getConfiguration('craftingTable');
@@ -86,9 +91,12 @@ const geral = (v) => {
   return [
     card({ titulo: 'Instalação', selo: aviso ? `<span class="cfg-st cfg-mal">⚠ ${esc(aviso.motivos.join(' · '))}</span>` : '<span class="cfg-st cfg-ok">✅ em dia</span>',
       acao: botao('Atualizar agora', { variante: 'contorno', acao: 'atualizarExtensao', titulo: 'Roda o instalar.sh (faz git pull antes se houver novidades)' }) }),
-    cardTeste('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
-      + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
-      + dica('Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.')),
+    cardTeste('agente', 'Agente de IA', e.agente, linha('Agente', esc(nomeAgente(val)) + ((val.agente || 'claude') !== 'claude' ? ' <span class="cfg-dim">(experimental)</span>' : ''), 'agente')
+      + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), (val.agente || 'claude') === 'claude' ? 'modelo' : '')
+      + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), (val.agente || 'claude') === 'claude' ? 'esforco' : '')
+      + dica((val.agente || 'claude') === 'claude'
+        ? 'Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.'
+        : 'O motor de refinamento em segundo plano (etapas, plugins, skills) hoje só roda no Claude Code: Modelo e Esforço não se aplicam a este agente ainda.')),
     cardTeste('jira', 'Jira', e.jira, linha('Site', esc(val.jiraSite), 'jiraSite') + linha('Projeto', esc(val.jiraProjeto), 'jiraProjeto')
       + linha('Conta', esc(e.jira?.conta || ''), 'jiraConta')),
     cardTeste('board', 'Board e etapas', e.board, linha('Board principal', esc(val.jiraBoard), 'jiraBoard')
@@ -205,7 +213,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     }
     return '';
   }
-  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
+  const valoresCfg = () => ({ agente: cfg().get('agente') || 'claude', agenteNome: cfg().get('agenteNome') || '', agenteComando: cfg().get('agenteComando') || '',
+    modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: cfg().get('jiraBoard') || 'Downstream',
     etapasExtras: cfg().get('etapasExtras') || [], specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
     bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
@@ -232,6 +241,16 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   ctx.subscriptions?.push({ dispose: () => clearInterval(timerInst) }, vscode.window.onDidCloseTerminal((t) => { if (t.name === 'Atualizar Crafting Table') conferirInstalacao(); }));
   const CHECAR = {
     async agente() {
+      const ag = cfg().get('agente') || 'claude';
+      if (ag !== 'claude') {
+        const nome = ag === 'outro' ? (cfg().get('agenteNome') || 'Outro agente') : (NOMES_AGENTE[ag] || ag);
+        const comando = ag === 'outro' ? (cfg().get('agenteComando') || '').trim() : '';
+        if (ag === 'outro' && !comando) return { ok: false, curto: 'falta o comando', texto: 'Informe o comando/caminho do executável em Agente → Editar.' };
+        const achado = comando ? await exec('which', [comando]) : null;
+        return { ok: false, curto: 'experimental',
+          texto: `${nome}: suporte experimental. O motor de refinamento em segundo plano, os plugins e as skills hoje só rodam no Claude Code.`
+            + (achado ? (achado.ok ? ` Comando "${comando}" encontrado no PATH.` : ` Comando "${comando}" não encontrado no PATH.`) : '') };
+      }
       const v = await exec(maestro.claudeBin(), ['--version']);
       if (!v.ok) return { ok: false, curto: 'Claude não encontrado', texto: 'Instale o Claude Code e faça login (claude no terminal).' };
       const qa = pluginInstalado('fcx-qa-test-planning@');
@@ -374,6 +393,30 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       } else if (id === 'specsDir') {
         const u = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Pasta local do repositório de specs', openLabel: 'Usar esta pasta' });
         if (u) { await salvarCfg('specsDir', u[0].fsPath); checar(['specs', 'repos']); }
+      } else if (id === 'agente') {
+        const OPCOES = [
+          { label: 'Claude Code', v: 'claude', description: 'padrão · suporte completo' },
+          { label: 'Codex CLI (OpenAI)', v: 'codex', description: 'experimental' },
+          { label: 'Gemini CLI (Google)', v: 'gemini', description: 'experimental' },
+          { label: 'Outro…', v: 'outro', description: 'informe nome e comando · experimental' },
+        ];
+        const atual = cfg().get('agente') || 'claude';
+        const p = await vscode.window.showQuickPick(OPCOES, { title: 'Agente de IA', placeHolder: OPCOES.find((o) => o.v === atual)?.label });
+        if (!p) return;
+        if (p.v !== 'claude') {
+          const CONTINUAR = 'Continuar mesmo assim';
+          const r = await vscode.window.showWarningMessage(`${p.label}: suporte experimental`, { modal: true,
+            detail: 'O motor de refinamento em segundo plano (etapas 0–6, plugins e skills) hoje só roda no Claude Code. Vincular outro agente aqui não muda isso ainda; é só para guardar sua preferência até o motor suportá-lo.' }, CONTINUAR);
+          if (r !== CONTINUAR) return;
+        }
+        if (p.v === 'outro') {
+          const nomeAg = await vscode.window.showInputBox({ title: 'Nome do agente', value: cfg().get('agenteNome') || '', prompt: 'Como mostrar na tela (ex.: Meu Agente CLI)', ignoreFocusOut: true });
+          if (nomeAg === undefined) return;
+          const comando = await vscode.window.showInputBox({ title: 'Comando ou caminho do executável', value: cfg().get('agenteComando') || '', prompt: 'Ex.: meu-agente ou /usr/local/bin/meu-agente', ignoreFocusOut: true });
+          if (comando === undefined) return;
+          await salvarCfg('agenteNome', nomeAg.trim()); await salvarCfg('agenteComando', comando.trim());
+        }
+        await salvarCfg('agente', p.v); checar(['agente']);
       } else if (id === 'modelo') {
         const PADRAO = 'padrão do Claude Code', OUTRO = 'Outro…';
         const p = await vscode.window.showQuickPick([PADRAO, 'opus', 'sonnet', 'fable', 'haiku', OUTRO], { title: 'Modelo do refinamento', placeHolder: cfg().get('modelo') || PADRAO });

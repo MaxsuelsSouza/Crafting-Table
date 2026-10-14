@@ -143,10 +143,23 @@
         "craftingTable.agente": {
           "type": "string",
           "enum": [
-            "claude"
+            "claude",
+            "codex",
+            "gemini",
+            "outro"
           ],
           "default": "claude",
-          "description": "Agente de IA do modo refinamento (por enquanto só Claude Code)."
+          "description": "Agente de IA vinculado à extensão. Hoje só 'claude' (Claude Code) tem suporte completo: o motor de refinamento em segundo plano, plugins e skills só rodam nele. Os demais são experimentais."
+        },
+        "craftingTable.agenteNome": {
+          "type": "string",
+          "default": "",
+          "description": "Nome de exibição do agente quando craftingTable.agente = 'outro' (ex.: Meu Agente CLI)."
+        },
+        "craftingTable.agenteComando": {
+          "type": "string",
+          "default": "",
+          "description": "Comando ou caminho do executável do agente quando craftingTable.agente = 'outro' (ex.: meu-agente ou /usr/local/bin/meu-agente). Ainda não é usado pelo motor de refinamento (suporte experimental)."
         },
         "craftingTable.modelo": {
           "type": "string",
