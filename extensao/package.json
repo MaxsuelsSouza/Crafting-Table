@@ -203,7 +203,12 @@
         "craftingTable.pluginsAuto": {
           "type": "boolean",
           "default": true,
-          "description": "Instala e atualiza sozinho, pelo marketplace da Ferreira Costa, os plugins marcados como automáticos (fcx-qa-test-planning)."
+          "description": "Instala os plugins escolhidos nas etapas que faltarem (do marketplace de cada um) e atualiza quando a origem tem versão nova."
+        },
+        "craftingTable.pluginsEtapa": {
+          "type": "object",
+          "default": {},
+          "description": "Plugin ou skill trocado em cada etapa (vaga → { tipo: plugin|skill|local, id, nome, caminho?, skill? }). Edite em Configurações > Plugins; sem troca vale o padrão."
         },
         "craftingTable.specsRemoto": {
           "type": "string",

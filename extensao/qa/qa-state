@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // qa-state: o Claude do QA (claude -p, qa.js) grava resultado de cenário, evidências e massa por aqui (~/.claude é bloqueada para Write).
 // A pasta do QA vem em QA_DIR (o maestro passa). Uso:
-//   qa-state cenario CT01 concluir --status passou|falhou|bloqueado --nota "o que foi visto"
+//   qa-state cenario CT01 concluir --status passou|falhou|bloqueado|sem-massa --nota "o que foi visto"
 //   qa-state evidencia CT01 <arquivo...>
-//   qa-state massa add --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
+//   qa-state massa add   (só na Etapa 4; recusado na execução do cenário)
+//     --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
 //   qa-state massa M3 valida|consumida|invalida
 //   qa-state analise <<'FIM' … FIM        (análise do ambiente que parou; texto pela entrada padrão)
 //   qa-state status
@@ -18,6 +19,7 @@ try {
   if (obj === 'cenario' && b === 'concluir') { qa.concluirCenario(dir, a, opt.status, opt.nota || ''); sair(`${a}: ${opt.status}`, 0); }
   if (obj === 'evidencia') { sair(qa.evidencia(dir, a, [b, ...resto]).map((f) => `salvo: ${f}`).join('\n'), 0); }
   if (obj === 'massa' && a === 'add') {
+    if (!qa.emEtapaMassa(dir)) sair('qa-state: massa add só vale na Etapa 4 (Massa de dados). Na execução do cenário use só a massa recebida: se ela não serve, massa <ID> invalida e cenario <CT> concluir --status sem-massa');
     let dados = {};
     try { dados = JSON.parse(opt.dados || '{}'); } catch { sair('qa-state: --dados precisa ser JSON'); }
     sair(qa.massaAdd(dir, { papel: opt.papel, cenarios: String(opt.cenarios || '').split(',').map((x) => x.trim()).filter(Boolean), dados, consulta: opt.consulta }), 0);

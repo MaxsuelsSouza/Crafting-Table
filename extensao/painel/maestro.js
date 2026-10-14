@@ -166,7 +166,6 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
 }
 
 // Mata todas as execuções em segundo plano (claude -p); devolve quantas eram.
-const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
 const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, parar, matarTodos, rodando: rodandoEm, vivo, claudeBin, _teste: { DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };
+module.exports = { rodar, parar, rodando: rodandoEm, vivo, claudeBin, _teste: { DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };

@@ -117,14 +117,23 @@ function iniciarCenario(dir, id, sha) {
   gravarJson(path.join(dir, CENARIOS), r);
   return ex;
 }
-// status: passou | falhou | bloqueado | descartado (pausa no meio: a execução fica no histórico e o cenário volta para a fila).
+// status: passou | falhou | bloqueado | descartado (pausa no meio: a execução fica no histórico e o cenário volta para a fila) |
+// sem-massa (a massa da Etapa 4 não serve: o cenário volta para a fila e a extensão refaz a Etapa 4 antes de tentar de novo; não é falha).
+const VOLTAM = ['descartado', 'sem-massa'];
 function concluirCenario(dir, id, status, nota = '') {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id), ex = c?.execucoes?.at(-1);
   if (!c || c.status !== 'executando' || !ex) throw new Error(`${id} não está em execução`);
-  if (![...RESULTADOS, 'descartado'].includes(status)) throw new Error(`status inválido: ${status} (use ${RESULTADOS.join(', ')})`);
+  if (![...RESULTADOS, ...VOLTAM].includes(status)) throw new Error(`status inválido: ${status} (use ${[...RESULTADOS, 'sem-massa'].join(', ')})`);
   Object.assign(ex, { status, nota, fim: new Date().toISOString() });
-  c.status = status === 'descartado' ? (c.statusAntes || 'pendente') : status;
+  c.status = VOLTAM.includes(status) ? (c.statusAntes || 'pendente') : status;
   delete c.statusAntes;
+  gravarJson(path.join(dir, CENARIOS), r);
+}
+// Cenário que ficou sem massa válida mesmo depois de refazer a Etapa 4: bloqueado, com a nota dizendo por quê (a execução já está fechada como sem-massa).
+function bloquearSemMassa(dir, id, nota) {
+  const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id), ex = c?.execucoes?.at(-1);
+  if (!c || !ex) return;
+  c.status = 'bloqueado'; Object.assign(ex, { status: 'bloqueado', nota });
   gravarJson(path.join(dir, CENARIOS), r);
 }
 // Copia arquivos para a pasta da execução em andamento do cenário.
@@ -153,6 +162,8 @@ function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '' }) {
   gravarJson(path.join(dir, MASSA), m);
   return id;
 }
+// A Etapa 4 marca `etapa: 'massa'` no estado enquanto levanta; o qa-state só aceita `massa add` nessa janela (a Execução só usa o que sobrou dela).
+const emEtapaMassa = (dir) => estado(dir).etapa === 'massa';
 function massaEstado(dir, id, est) {
   if (!['valida', 'consumida', 'invalida'].includes(est)) throw new Error(`estado inválido: ${est} (use valida, consumida, invalida)`);
   const m = massa(dir), i = m.itens.find((x) => x.id === id);
@@ -170,8 +181,11 @@ const donoAmbiente = () => lerJson(TRAVA(), null);
 const travar = (chave) => gravarJson(TRAVA(), { chave, em: new Date().toISOString() });
 const ambiente = (dir) => lerJson(path.join(dir, AMBIENTE), null);
 const hoje = (d = new Date()) => d.toLocaleDateString('sv-SE');
-const SKILL = () => path.join(os.homedir(), '.claude', 'skills', 'testes-funcionais');
-const scriptPreparo = (backend) => [path.join(backend, 'testes-funcionais', 'preparar-ambiente.py'), path.join(SKILL(), 'assets', 'backend', 'preparar-ambiente.py')].find((f) => fs.existsSync(f)) || null;
+// Skill de cada etapa (Configurações > Plugins, agentes/etapas.js; padrão: ~/.claude/skills/testes-funcionais): ambiente (preparo e diagnóstico) e execução (massa e cenários).
+const vagas = require('../agentes/etapas');
+const SKILL = () => vagas.pastaSkill('qa.execucao') || '';
+const SKILL_AMB = () => vagas.pastaSkill('qa.ambiente') || '';
+const scriptPreparo = (backend) => [path.join(backend, 'testes-funcionais', 'preparar-ambiente.py'), path.join(SKILL_AMB(), 'assets', 'backend', 'preparar-ambiente.py')].find((f) => fs.existsSync(f)) || null;
 const shaDe = (repo) => { try { return repo ? execFileSync('git', ['-C', repo, 'rev-parse', '--short', 'HEAD'], { timeout: 5000 }).toString().trim() : null; } catch { return null; } };
 const preparos = new Map(); // dir -> processo do preparar-ambiente (a pausa mata)
 const LOG_AMB = '.ambiente.log'; // saída completa do último preparo (rodapé → Ambiente: log ao vivo; base da análise do Claude)
@@ -196,7 +210,7 @@ function prepararPelaSkill(dir, chave, backend) {
   const script = backend && scriptPreparo(backend);
   if (!script) {
     vivo('erro', backend ? 'Não achei o preparar-ambiente.py (nem no backend, nem na skill testes-funcionais)' : 'Sem repositório backend configurado (Configurações → repositórios)');
-    const erro = backend ? `preparar-ambiente.py não encontrado em ${path.join(backend, 'testes-funcionais')} nem em ${path.join(SKILL(), 'assets', 'backend')}`
+    const erro = backend ? `preparar-ambiente.py não encontrado em ${path.join(backend, 'testes-funcionais')} nem em ${path.join(SKILL_AMB(), 'assets', 'backend')}`
       : 'nenhum repositório backend configurado (Configurações → repositórios) e nenhum novo-wms-backend ao lado do repositório de specs';
     fs.writeFileSync(path.join(dir, LOG_AMB), `${new Date().toISOString()}\n${erro}\n`);
     gravarJson(path.join(dir, AMBIENTE), { parou_em: 'config', erro, itens: [], em: new Date().toISOString(), data: hoje(), fonte: 'skill' });
@@ -298,24 +312,27 @@ const REGRAS = 'Modo não interativo: onde a skill manda parar e confirmar, não
   + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE, liberar usuário ou permissão), publicar no provedor, commit e push. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
 const promptMassa = (chave, cens) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
-  + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):\n`
+  + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}\n`
   + cens.map((c) => `- ${c.id} · ${c.titulo}${c.resumo ? ` (${c.resumo})` : ''}`).join('\n')
   + `\nPara cada papel encontrado: ${QA_STATE} massa add --papel "<papel>" --cenarios CT01,CT02 --dados '<json com os campos>' --consulta "<SQL usado>". `
   + 'Traga 2 registros por papel quando der (reserva: um cenário pode consumir o registro). Cenário que não precisa de massa: não registre nada. '
   + `Se o banco não responder, termine dizendo isso. ${REGRAS}`;
 const promptCenario = (chave, c, amb, itens) => `[segundo plano · Crafting Table · QA de ${chave}] Execute SÓ o cenário ${c.id} do planejamento de QA, `
-  + `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md).\n\nCenário ${c.id} · ${c.titulo}\n${c.texto}\n\n`
+  + `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md).${vagas.aviso('qa.execucao')}\n\nCenário ${c.id} · ${c.titulo}\n${c.texto}\n\n`
   + `Ambiente já preparado (não rode preparar-ambiente): backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · API http://localhost:5111 · Metro 8081 · emulador ligado.\n`
   + `Massa válida para este cenário: ${itens.length ? JSON.stringify(itens.map((i) => ({ id: i.id, papel: i.papel, dados: i.dados }))) : 'nenhuma registrada'}. `
-  + `Antes de usar, confira que o registro ainda está no estado esperado; se não estiver, ${QA_STATE} massa <ID> invalida e use outro (ou levante e registre com massa add). `
+  + `Use SÓ essa massa (a da Etapa 4): nunca procure nem registre massa nova (massa add é recusado aqui). Antes de usar, confira que o registro ainda está no estado esperado; `
+  + `se não estiver, ${QA_STATE} massa <ID> invalida e use outro item válido da lista; se não houver outro, NÃO falhe o cenário: conclua com --status sem-massa --nota "<o que mudou no registro>" `
+  + `(a extensão refaz o levantamento e volta aqui). Cenário que não precisa de massa segue sem ela. `
   + `Se o cenário alterar o registro, ${QA_STATE} massa <ID> consumida.\n`
   + `Evidências: a tela do emulador já está sendo gravada. Prints e arquivos de resultado (log Robot, junit, relatório): ${QA_STATE} evidencia ${c.id} <arquivo...>.\n`
-  + `OBRIGATÓRIO ao final: ${QA_STATE} cenario ${c.id} concluir --status passou|falhou|bloqueado --nota "<1 frase: o que foi visto>". ${REGRAS}`;
+  + `OBRIGATÓRIO ao final: ${QA_STATE} cenario ${c.id} concluir --status passou|falhou|bloqueado|sem-massa --nota "<1 frase: o que foi visto>". ${REGRAS}`;
 const FERRAMENTAS_EXEC = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill'];
 // Ambiente parou: o Claude lê o log e o diagnóstico da skill (só leitura) e grava a análise com `qa-state analise`.
 const promptAnalise = (chave, dir, a) => `[segundo plano · Crafting Table · QA de ${chave}] O preparo do ambiente de testes (preparar-ambiente.py da skill `
   + `testes-funcionais) parou na etapa "${a.parou_em}"${a.erro ? ` (${a.erro})` : ''}. Descubra por quê.\nLog completo do preparo: ${path.join(dir, LOG_AMB)}\n`
-  + `Use o diagnóstico da skill: ${SKILL()}/references/diagnostico.md e ${SKILL()}/references/ambiente-execucao.md. `
+  + `Use o diagnóstico da skill: ${SKILL_AMB()}/references/diagnostico.md e ${SKILL_AMB()}/references/ambiente-execucao.md. `
+  + vagas.aviso('qa.ambiente')
   + `Investigue só lendo (log da API em testes-funcionais/resultados/api-*.log do backend, portas, processos, ~/.wms-testes.env sem mostrar senhas): não suba, derrube nem instale nada.\n`
   + 'Responda em português, curto, neste formato:\nCausa: <1 a 2 frases>\nEvidência: <a linha do log ou o fato que prova>\nComo resolver:\n1. <passo>\n'
   + `Grave a resposta com: ${QA_STATE} analise <<'FIM'\n<resposta>\nFIM`;
@@ -358,6 +375,11 @@ const claude = (dir, opts, d) => new Promise((ok) => {
   if (!foi) ok();
 });
 
+// Etapa 4: o Claude levanta massa para os cenários dados. `etapa: 'massa'` no estado libera o `qa-state massa add` só durante ela.
+async function levantarMassa(dir, d, amb, cens) {
+  mudar(dir, { etapa: 'massa' });
+  try { await claude(dir, { prompt: promptMassa(d.chave, cens), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend }, d); } finally { mudar(dir, { etapa: null }); }
+}
 // ▶ do QA: tudo em ordem. d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, gravarTela(dir), pararTela(), avisar(texto) }.
 const ativos = new Set();
 const pausado = (dir) => estado(dir).execucao === 'pausado';
@@ -382,15 +404,30 @@ async function executar(dir, d) {
     vivo('etapa', 'QA · Massa de dados');
     if (falta.length) {
       vivo('acao', `Sem massa válida para ${falta.join(', ')} (refresh do banco às ${d.horaRefresh || '06:00'}): levantando`);
-      await claude(dir, { prompt: promptMassa(d.chave, pend.filter((c) => falta.includes(c.id))), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend }, d);
+      await levantarMassa(dir, d, amb, pend.filter((c) => falta.includes(c.id)));
       if (pausado(dir)) return;
     } else vivo('fim', 'Massa de hoje ainda válida: reaproveitada');
+    const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª fica bloqueado)
     while (!pausado(dir) && (pend = fila(cenarios(dir))).length) {
       const c = pend[0], ex = iniciarCenario(dir, c.id, amb.sha);
       const itens = massa(dir).itens.filter((i) => (i.cenarios || []).includes(c.id) && massaValida(i, new Date(), d.horaRefresh));
       d.gravarTela?.(path.join(dir, ex.evidencias));
       await claude(dir, { prompt: promptCenario(d.chave, c, amb, itens), titulo: `QA · ${c.id} · ${c.titulo}`, cwd: amb.backend || d.backend }, d);
       d.pararTela?.();
+      if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && itens.length && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) {
+        concluirCenario(dir, c.id, 'sem-massa', 'Massa invalidada e o Claude não registrou o resultado'); // invalidou tudo e parou: é falta de massa, não falha
+      }
+      if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.execucoes?.at(-1)?.status === 'sem-massa') {
+        if (pausado(dir)) continue;
+        if (retentou.has(c.id)) { bloquearSemMassa(dir, c.id, 'Sem massa válida mesmo depois de refazer a Etapa 4'); vivo('aviso', `${c.id}: de novo sem massa válida (bloqueado; levante a massa na aba Massa e use ↻ Refazer)`); continue; }
+        retentou.add(c.id);
+        vivo('aviso', `Etapa 5 → voltando para a Etapa 4: massa de ${c.id} inválida`); vivo('etapa', 'QA · Massa de dados');
+        await levantarMassa(dir, d, amb, [c]);
+        if (!pausado(dir) && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) { bloquearSemMassa(dir, c.id, 'A Etapa 4 não achou massa válida para o cenário'); vivo('aviso', `${c.id}: a Etapa 4 não achou massa válida (bloqueado)`); }
+        else vivo('fim', `Etapa 4 refeita para ${c.id}: retomando a Etapa 5`);
+        vivo('etapa', 'QA · Execução');
+        continue;
+      }
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') {
         if (pausado(dir)) { concluirCenario(dir, c.id, 'descartado', 'QA pausado no meio do cenário'); vivo('aviso', `${c.id} descartado (pausa no meio): volta da fila na retomada`); }
         else { concluirCenario(dir, c.id, 'bloqueado', 'O Claude terminou sem registrar o resultado'); vivo('aviso', `${c.id}: o Claude não registrou o resultado (bloqueado)`); }
@@ -612,5 +649,5 @@ function mapaHtml(dir, r, amb, uri) {
 }
 
 module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando,
-  concluirCenario, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
+  concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

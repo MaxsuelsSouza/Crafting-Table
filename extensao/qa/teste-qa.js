@@ -147,7 +147,13 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.ok(fs.existsSync(path.join(d4, ex.evidencias, 'p.png')));
   cli('cenario', 'CT02', 'concluir', '--status', 'falhou', '--nota', 'erro 500');
   assert.deepStrictEqual([qa.cenarios(d4).cenarios[1].status, qa.cenarios(d4).cenarios[1].execucoes[0].nota], ['falhou', 'erro 500']);
+  // massa add só na Etapa 4 (estado.etapa = massa); fora dela o qa-state recusa, mesmo que o modelo desobedeça.
+  assert.throws(() => cli('massa', 'add', '--papel', 'x', '--cenarios', 'CT01'), /só vale na Etapa 4/);
+  qa.mudar(d4, { etapa: 'massa' });
   assert.strictEqual(cli('massa', 'add', '--papel', 'x', '--cenarios', 'CT01,CT02', '--dados', '{"a":1}'), 'M2');
+  qa.mudar(d4, { etapa: null });
+  const pc = qa._teste.promptCenario('WMS-1', { id: 'CT01', titulo: 'A', texto: '' }, {}, []);
+  assert.ok(!/levante e registre|registre com massa add/.test(pc) && pc.includes('sem-massa') && pc.includes('nunca procure nem registre massa'));
   assert.throws(() => cli('cenario', 'CT02', 'concluir', '--status', 'passou')); // só cenário em execução
 
   // ▶ inteiro: plano com 2 CTs, ambiente simulado, massa levantada, CT01 passa, pausa durante o CT02 → descartado; retomada termina.
@@ -188,6 +194,45 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   await qa.executar(d5, deps);
   assert.deepStrictEqual([st5(), prompts], [['passou', 'passou'], ['QA · CT02 · B']]);
   assert.ok(qa.html(d5).includes('Execução concluída') && qa.html(d5).includes('Publicar no Jira'));
+  // Execução invalida a massa: volta à Etapa 4 só para esse cenário, retoma e, na 2ª vez, bloqueia (sem laço infinito).
+  const d10 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
+  await qa.verificarPlano(d10, 'WMS-1', apiPlano); qa.aprovar(d10);
+  let dirQs = d10;
+  const qs = (env, ...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: dirQs, ...env } }).toString().trim();
+  let invalidar = 2, massaAdds = 0; prompts.length = 0; pausarNo = null; // invalidar = quantas execuções do CT01 acham a massa ruim
+  maestro.rodar = (dir, o) => {
+    prompts.push(o.titulo);
+    setTimeout(() => {
+      const id = o.titulo.match(/CT\d+/)?.[0];
+      if (/massa/.test(o.titulo)) { qs({}, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'); massaAdds++; }
+      else if (id === 'CT01' && invalidar-- > 0) { for (const i of qa.massa(dir).itens) if (qa.massaValida(i, new Date(), '06:00')) qs({}, 'massa', i.id, 'invalida'); qs({}, 'cenario', id, 'concluir', '--status', 'sem-massa', '--nota', 'registro mudou'); }
+      else qs({}, 'cenario', id, 'concluir', '--status', 'passou');
+      o.aoMudar();
+    }, 5);
+    return true;
+  };
+  const notas = [], anotarOrig = require('../componentes/ao-vivo').anotar; // as linhas do Ao vivo saem em fila; aqui capturo na hora
+  require('../componentes/ao-vivo').anotar = (dir, l) => { notas.push(l.texto); anotarOrig(dir, l); };
+  await qa.executar(d10, deps);
+  // massa → CT01 (invalida) → volta à massa só do CT01 → CT01 (invalida de novo) → bloqueado (sem 3ª massa) → CT02 passa.
+  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · CT02 · B']);
+  assert.deepStrictEqual(qa.cenarios(d10).cenarios.map((c) => c.status), ['bloqueado', 'passou']);
+  assert.ok(qa.cenarios(d10).cenarios[0].execucoes.at(-1).nota.includes('Etapa 4') && massaAdds === 2);
+  assert.ok(notas.some((t) => t.includes('Etapa 5 → voltando para a Etapa 4: massa de CT01 inválida')));
+  assert.strictEqual(qa.estado(d10).etapa, null);
+  // Uma só invalidação: a 2ª passada na Etapa 4 resolve e o CT01 passa.
+  const d11 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-')); dirQs = d11;
+  await qa.verificarPlano(d11, 'WMS-1', apiPlano); qa.aprovar(d11);
+  invalidar = 1; prompts.length = 0;
+  await qa.executar(d11, deps);
+  assert.deepStrictEqual(qa.cenarios(d11).cenarios.map((c) => c.status), ['passou', 'passou']);
+  assert.strictEqual(prompts.filter((t) => /massa/.test(t)).length, 2);
+  // Retomada: massa vencida (antes do refresh) → a Etapa 4 roda antes da Execução.
+  const m11 = qa.massa(d11); m11.itens.forEach((i) => { i.medidaEm = new Date(2000, 0, 1).toISOString(); }); fs.writeFileSync(path.join(d11, qa.MASSA), JSON.stringify(m11));
+  qa.refazer(d11, 'CT02'); prompts.length = 0;
+  await qa.executar(d11, deps);
+  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT02 · B']);
+
   // Cenário expandido: pasta/copiar e as evidências de TODAS as execuções (CT02 tem a descartada e a que passou).
   const ct2 = qa.cenarios(d5).cenarios[1];
   ct2.execucoes.forEach((x, i) => fs.writeFileSync(path.join(d5, x.evidencias, `print-${i}.png`), 'x'));

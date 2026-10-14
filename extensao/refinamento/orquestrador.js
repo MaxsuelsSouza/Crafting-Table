@@ -5,12 +5,15 @@ const os = require('os');
 const path = require('path');
 const jira = require('../infra/ticket').jira;
 const tickets = require('../infra/tickets');
+const { areaIA } = require('../infra/area-ia');
 const maestro = require('../painel/maestro');
 const mudancas = require('./mudancas');
 const { NIVEL } = mudancas;
-const { cfg, reposAuto, SPECS_PADRAO, pluginInstalado, sddState } = require('../configuracao/configuracao');
+const { cfg, reposAuto, SPECS_PADRAO, sddState } = require('../configuracao/configuracao');
+const vagas = require('../agentes/etapas');
 const { notificar } = require('../painel/notificacoes');
-const { dirSpec, ondeSalvar, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
+const { anotar } = require('../componentes/ao-vivo');
+const { dirSpec, ondeSalvar, arquivoPasso, HANDOFF, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
 
 // ORQUESTRADOR do refinamento: o Maestro dirigido pela extensão. Monta cada execução do Claude em segundo plano (etapa),
 // decide a próxima (seguir, filas de triagem/impacto/tarefas) e vigia comentários novos na ferramenta de tickets. O painel só chama a interface
@@ -20,13 +23,13 @@ const pasta = (id) => tickets.pasta(id);
 let s;
 
 // ── Maestro: o Claude em segundo plano (maestro.js), uma execução por etapa. A extensão decide quando rodar:
-// Dar início/▶, aprovação (execução nova: contexto limpo), respostas e ajuste (mesma sessão). Pausado não roda.
+// Dar início/▶, aprovação (execução nova: contexto limpo), respostas e ajuste (também execução nova, com a memória do passo em disco). Pausado não roda.
 const binsSdd = () => [sddState(), path.join(os.homedir(), '.claude', 'plugins-locais', 'crafting', 'plugins', 'sdd', 'bin', 'sdd-state')].filter(Boolean);
-// Plugin "mapa" (mapeamento do código do passo 3): mora na extensão e só o maestro carrega (--plugin-dir).
-const MAPA = path.join(__dirname, '..', 'plugins', 'mapa');
-const FOCO = path.join(__dirname, '..', 'plugins', 'foco'); // texto curto em tudo que o Claude escreve (regras + medição dos .md)
-const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA}/bin/mapa-git:*)`, `Bash(${MAPA}/bin/mapa-conferir:*)`,
-  `Bash(${MAPA}/bin/mapa-db:*)`, 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill',
+// Plugins de cada etapa (Configurações > Plugins, agentes/etapas.js). Padrão: "mapa" (mapeamento do código do passo 3) e "foco" (texto curto
+// em tudo que o Claude escreve: regras + medição dos .md) moram na extensão e só o maestro carrega (--plugin-dir).
+const MAPA = () => vagas.raiz('refinamento.mapa') || '';
+const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA()}/bin/mapa-git:*)`, `Bash(${MAPA()}/bin/mapa-conferir:*)`,
+  `Bash(${MAPA()}/bin/mapa-db:*)`, 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill',
   'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)'];
 const reposDe = (t) => {
   const lista = (cfg().get('repositorios') || []).filter((r) => r?.caminho && fs.existsSync(r.caminho));
@@ -38,18 +41,20 @@ const bancoEnv = (t) => {
   return { MAPA_DB_CONEXAO: conexao, MAPA_DB_AMBIENTE: ambiente, MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '',
     MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(pasta(t.chave), '.mapa-db.jsonl') };
 };
-const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo) => {
+const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois) => {
   const repos = reposDe(t);
   const bd = bancoEnv(t);
+  fs.mkdirSync(areaIA(pasta(t.chave)), { recursive: true }); // memória do passo: ~/.claude é negada para escrita no claude -p
   return maestro.rodar(pasta(t.chave), {
-    cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { s.render(); depoisDaEtapa(t); },
+    cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { if (depois && !maestro.rodando(pasta(t.chave))) depois(); s.render(); depoisDaEtapa(t); },
     // O foco substitui o i-have-adhd global nestas execuções (as regras não entram duas vezes).
     extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
-      '--plugin-dir', FOCO, '--plugin-dir', MAPA, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), ...repos.map((r) => r.caminho)],
+      ...vagas.pluginDirs('refinamento.foco'), ...vagas.pluginDirs('refinamento.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), areaIA(pasta(t.chave)), ...repos.map((r) => r.caminho)],
     prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
       + ondeSalvar(t)
       + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
-      + ` · plugin mapa: ${MAPA} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
+      + ` · plugin mapa: ${MAPA()} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
+      + vagas.aviso('refinamento.sdd') + vagas.aviso('refinamento.mapa')
       + `\nBanco de dados: ${bd.MAPA_DB_CONEXAO && bd.MAPA_DB_AMBIENTE && bd.MAPA_DB_AMBIENTE !== 'producao' ? `configurado (${bd.MAPA_DB_AMBIENTE === 'qas' ? 'QAS' : 'cópia de produção'}): use mapa-db (só leitura)` : 'NÃO configurado: não consulte banco; liste as consultas como pendência'}`
   });
 };
@@ -160,7 +165,7 @@ const vigiarComentarios = async () => {
     }
   } finally { vigiando = false; }
 };
-// Pedidos de alteração esperando: uma execução só para todos (mesma sessão do passo 4).
+// Pedidos de alteração esperando: uma execução só para todos.
 const filaTarefas = (t) => {
   if (maestro.rodando(pasta(t.chave))) return;
   const l = tarefasDe(pasta(t.chave)), fila = l.filter((c) => c.status === 'em_alteracao' && c.fila);
@@ -170,16 +175,18 @@ const filaTarefas = (t) => {
   etapa(t, `Pedidos de alteração nos cards da aba Tarefas: ${fila.map((c) => `${c.id}: "${c.alteracao}"`).join('; ')}. `
     + 'Para cada tNN: ajuste a linha em tasks.md e o card com sdd-state card editar <id> (só os campos que mudam). '
     + 'Para o card qa: ajuste testes.md (plano de testes) e rode sdd-state card editar qa (com --estimativa/--resumo se mudarem). '
-    + 'Não mexa em outras tarefas, não conclua nem inicie passos.', true, undefined, `Alterando ${fila.map((c) => c.id).join(', ')}`);
+    + 'Não mexa em outras tarefas, não conclua nem inicie passos.', false, undefined, `Alterando ${fila.map((c) => c.id).join(', ')}`);
 };
 const estadoDe = (chave) => tickets.ler(chave)?.refinamento?.estado;
 // Rodando e sem nada esperando o humano → próxima etapa numa execução nova (true se começou).
-// Passo 6: o método do plugin fcx-qa-test-planning (jira-qa-planner + test-estimation), lido do plugin instalado.
+// Passo 6: o método de QA da vaga refinamento.metodoQa (padrão: plugin fcx-qa-test-planning, jira-qa-planner + test-estimation), lido do plugin instalado.
 const qaCaminhos = () => {
-  const qa = pluginInstalado('fcx-qa-test-planning@');
-  if (!qa) return ' Plugin fcx-qa-test-planning não instalado: siga as regras do passo 6 da skill sdd sem ele.';
+  const qa = vagas.raiz('refinamento.metodoQa'), nome = vagas.rotulo('refinamento.metodoQa');
+  if (!qa) return ` Plugin ${nome} não instalado: siga as regras do passo 6 da skill sdd sem ele.`;
+  const fim = ' Não use twg nem a ferramenta de tickets: o card [QA] é criado pela extensão.';
+  if (!vagas.ehPadrao('refinamento.metodoQa')) return ` Método de QA: skill ${nome} (${vagas.pastaSkill('refinamento.metodoQa')}/SKILL.md e as referências dela).${fim}`;
   return ` Método de QA: ${path.join(qa, 'skills', 'jira-qa-planner', 'SKILL.md')} (Passos 3, 6 e 7) e ${path.join(qa, 'skills', 'jira-qa-planner', 'reference', 'test-plan-templates.md')};`
-    + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado). Não use twg nem a ferramenta de tickets: o card [QA] é criado pela extensão.`;
+    + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado).${fim}`;
 };
 // O que o refinamento espera de você agora (null = nada: o Claude pode seguir).
 const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') ? 'perguntas'
@@ -189,13 +196,89 @@ const seguir = (t) => {
   if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(pasta(t.chave))).length || est.proximoPasso > 6) return false;
   const novas = respondidas.splice(0).join('; ');
   const reprovadas = est.proximoPasso === 5 ? tarefasDe(pasta(t.chave)).filter((c) => c.status === 'reprovada') : [];
-  return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${est.proximoPasso} (${est.passos[est.proximoPasso].titulo}).`
-    + (est.proximoPasso === 6 ? qaCaminhos() : '')
-    + (est.proximoPasso === 3 ? ' Comece pelo mapeamento do código com a skill mapa:mapear (camadas, ref de leitura, análises mapa-backend.md/mapa-mobile.md na pasta da spec, mapa-conferir) e só depois escreva o plan.md.' : '')
-    + (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
-    + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : ''), false, undefined, `Passo ${est.proximoPasso} · ${est.passos[est.proximoPasso].titulo}`);
+  const n = est.proximoPasso, titulo = est.passos[n].titulo;
+  const extra = (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
+    + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : '');
+  if (n === 3) return seguirPlano(t, titulo, extra);
+  return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${n} (${titulo}).`
+    + (n === 6 ? qaCaminhos() : '') + extra + pedirMemoria(t, n, false), false, undefined, `Passo ${n} · ${titulo}`);
+};
+
+// ── Passo 3 em duas subetapas, cada uma numa execução nova que só conta com o que a anterior deixou em disco:
+// 3.1 Mapeamento do código (grava mapa-backend.md/mapa-mobile.md na pasta da spec, sem plan.md e sem concluir) e
+// 3.2 Plano técnico (lê os mapas, escreve plan.md e roda concluir 3). Estado em .ticket.json › refinamento.sub3 = { mapa, plano }:
+// 'pendente' | 'rodando' | 'concluida' | 'erro' | 'pausada' (a IA não grava em ~/.claude; quem grava é a extensão).
+const SUBETAPAS3 = [{ id: 'mapa', nome: 'Mapeamento do código' }, { id: 'plano', nome: 'Plano técnico' }];
+const mapasDe = (t) => Object.values(HANDOFF).map((f) => path.join(dirSpec(t) || '', f)).filter((f) => dirSpec(t) && fs.existsSync(f));
+const sub3De = (chave) => tickets.ler(chave)?.refinamento?.sub3 || {};
+const gravarSub3 = (chave, parte) => {
+  const x = tickets.ler(chave);
+  if (x) tickets.gravar({ ...x, refinamento: { ...x.refinamento, sub3: { ...x.refinamento?.sub3, ...parte } } });
+};
+// Estados das duas subetapas para a tela (passo = o passo 3 do sdd-state; rodando = o Claude está executando agora).
+const subetapas3 = (t, passo, rodando) => {
+  const sub = sub3De(t.id || t.chave), feito = ['aguardando_revisao', 'aprovado'].includes(passo?.status);
+  const est = (v, fim) => (fim ? 'concluida' : v === 'rodando' && !rodando ? 'pausada' : v || 'pendente');
+  return SUBETAPAS3.map((x) => ({ nome: x.nome, estado: est(sub[x.id], feito || (x.id === 'mapa' && sub.mapa === 'concluida')) }));
+};
+const seguirPlano = (t, titulo, extra) => {
+  const sub = sub3De(t.chave), mapas = mapasDe(t);
+  if (sub.mapa !== 'concluida') {
+    gravarSub3(t.chave, { mapa: 'rodando', plano: 'pendente' });
+    const ok = etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar. Passo 3 (${titulo}), SUBETAPA 3.1 · MAPEAMENTO DO CÓDIGO. Rode status e, se o passo 3 ainda não estiver em andamento, rode sdd-state iniciar 3. `
+      + `Faça SÓ o mapeamento do código com a skill ${vagas.rotulo('refinamento.mapa')} (camadas, ref de leitura): grave mapa-backend.md e/ou mapa-mobile.md na pasta da spec e rode mapa-conferir em cada um até passar. `
+      + 'NÃO escreva o plan.md e NÃO rode concluir: outra execução, depois desta, escreve o plano a partir dos mapas. Termine quando os mapas existirem.' + extra,
+    false, undefined, `Passo 3.1 · Mapeamento do código`, () => fimMapeamento(t));
+    if (!ok) gravarSub3(t.chave, { mapa: sub.mapa || 'pendente' });
+    return ok;
+  }
+  if (!mapas.length) {
+    gravarSub3(t.chave, { mapa: 'erro' });
+    anotar(pasta(t.chave), { tipo: 'erro', texto: 'Passo 3.2 não começou: o mapeamento (3.1) não deixou mapa-backend.md nem mapa-mobile.md na pasta da spec', detalhe: `Procurei em ${dirSpec(t)}. Continue o refinamento para refazer o mapeamento.` });
+    s.render();
+    return false;
+  }
+  gravarSub3(t.chave, { plano: 'rodando' });
+  const ok = etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar. Passo 3 (${titulo}), SUBETAPA 3.2 · PLANO TÉCNICO. O mapeamento do código (3.1) já foi feito: NÃO o refaça. Leia ${mapas.join(' e ')} e a spec, `
+    + 'escreva o plan.md (com "## Mapeamento do código" resumindo os mapas e "## Conformidade com a Constituição") e rode concluir 3. Só consulte o código para tirar uma dúvida pontual.' + extra + pedirMemoria(t, 3, false),
+  false, undefined, `Passo 3.2 · Plano técnico`, () => fimPlano(t));
+  if (!ok) gravarSub3(t.chave, { plano: 'pendente' });
+  return ok;
+};
+// Terminou a execução do 3.1: mapas em disco → conclui e segue sozinho para o 3.2; senão erro (ou "pausada" se foi a pessoa que parou).
+const fimMapeamento = (t) => {
+  const pausado = estadoDe(t.chave) !== 'rodando';
+  if (mapasDe(t).length) { gravarSub3(t.chave, { mapa: 'concluida' }); seguir(ticketDe(t.chave) || t); return; }
+  gravarSub3(t.chave, { mapa: pausado ? 'pausada' : 'erro' });
+  if (!pausado) anotar(pasta(t.chave), { tipo: 'erro', texto: 'O mapeamento do código (3.1) terminou sem gravar mapa-backend.md nem mapa-mobile.md na pasta da spec', detalhe: `Pasta da spec: ${dirSpec(t)}. O plano técnico (3.2) só começa com os mapas em disco: continue o refinamento para tentar de novo.` });
+};
+const fimPlano = (t) => {
+  const p = estadoSpec(ticketDe(t.chave) || t)?.passos[3];
+  const feito = ['aguardando_revisao', 'aprovado'].includes(p?.status), pausado = estadoDe(t.chave) !== 'rodando';
+  gravarSub3(t.chave, { plano: feito ? 'concluida' : pausado ? 'pausada' : 'erro' });
+  if (!feito && !pausado) anotar(pasta(t.chave), { tipo: 'erro', texto: 'O plano técnico (3.2) terminou sem concluir o passo 3', detalhe: 'Continue o refinamento ou peça ajuste no passo 3.' });
 };
 const respondidas = []; // respostas ainda não entregues ao Claude
+
+// ── Memória do passo: cada execução de passo deixa em disco o que a próxima precisa (ajuste e respostas rodam em execução nova, sem --resume).
+const memoriaPasso = (t, n) => path.join(areaIA(pasta(t.chave)), `.memoria-passo-${n}.md`);
+const pedirMemoria = (t, n, ajuste) => ` Ao terminar, grave (Write) em ${memoriaPasso(t, n)} a memória do passo, curta (até 40 linhas): decisões tomadas e por quê, alternativas descartadas, o que ficou pendente e arquivos tocados.`
+  + (ajuste ? ` Esse arquivo já pode existir: ATUALIZE-o acrescentando a seção "Ajuste ${new Date().toISOString().slice(0, 10)}".` : '');
+// Contexto que a conversa antiga daria: passo, artefato, memória (ou como reconstruir sem ela) e o protocolo de retomada.
+const retomada = (t, n, titulo) => {
+  const mem = memoriaPasso(t, n);
+  return ` Passo ${n} (${titulo}). Artefato do passo: ${arquivoPasso(t, n)}. `
+    + (fs.existsSync(mem) ? `Memória do passo (decisões e pendências da execução anterior): ${mem}. Leia-a antes de começar.`
+      : `Não há memória deste passo (feito antes desta mudança): leia o artefato do passo e reconstrua o contexto por ele e pelo status.`)
+    + ' Siga o protocolo de retomada da skill sdd (rode status), aplique só o que foi pedido sem refazer o que está certo';
+};
+const promptAjuste = (t, n, texto, titulo = estadoSpec(t)?.passos[n]?.titulo || '') =>
+  `O humano pediu ajuste.${retomada(t, n, titulo)} e rode concluir ${n} de novo. Pedido de ajuste: "${texto}".${pedirMemoria(t, n, true)}`;
+const promptRespostas = (t, n, lista, titulo = estadoSpec(t)?.passos[n]?.titulo || '') =>
+  `Respostas do humano na aba (também registradas no estado, sdd-state pergunta responder): ${lista.join('; ')}.${retomada(t, n, titulo)} e continue o passo ${n} com elas.${pedirMemoria(t, n, false)}`;
+// Ajuste e respostas: execução nova (continuar=false), tudo o que precisa vai no prompt.
+const ajustar = (t, n, texto) => etapa(t, promptAjuste(t, n, texto), false, undefined, `Ajuste no passo ${n} · ${estadoSpec(t)?.passos[n]?.titulo || ''}`);
+const aplicarRespostas = (t, n, lista) => etapa(t, promptRespostas(t, n, lista), false, undefined, `Aplicando suas respostas · passo ${n}`);
 const sdd = (args) => new Promise((ok) => (sddState() ? require('child_process').execFile(sddState(), args, (e, out, err) => {
   if (e) vscode.window.showErrorMessage(String(err || e.message).replace(/^sdd-state: /, ''));
   ok(!e);
@@ -209,4 +292,4 @@ const iniciar = (servicos, ctx) => {
   ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
 };
 
-module.exports = { iniciar, etapa, seguir, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };
+module.exports = { iniciar, etapa, seguir, subetapas3, mapasDe, memoriaPasso, promptAjuste, promptRespostas, ajustar, aplicarRespostas, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };

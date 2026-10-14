@@ -123,6 +123,13 @@ assert.deepStrictEqual(anexosFaltando(s, t), []);
   mudar(dir, { fase: 'rodando' });
   await aposEtapa(s, t, 3, undefined, m0 - 1000);
   assert.strictEqual(estado(dir).fase, 'aguardando');
+  // etapa 5: a caixa expande sozinha com 5.1 a 5.4 (pendentes) antes de qualquer processo; fora da etapa 5 fica recolhida
+  mudar(dir, { etapa: 5, fase: 'parado', aprovacao: null, sub: {} });
+  const h5 = mg.corpo(t, {}, dir);
+  assert.ok(['5.1', '5.2', '5.3', '5.4'].every((n, i, a) => h5.includes(`<b>${n}</b>`) && (!i || h5.indexOf(`<b>${a[i - 1]}</b>`) < h5.indexOf(`<b>${n}</b>`))));
+  assert.ok(h5.indexOf('Planejar o fluxo') < h5.indexOf('Massa de teste') && h5.indexOf('Massa de teste') < h5.indexOf('Subir o ambiente') && h5.indexOf('Subir o ambiente') < h5.indexOf('Reproduzir'));
+  mudar(dir, { etapa: 4 });
+  assert.ok(!mg.corpo(t, {}, dir).includes('class="ce-subs"'));
   // Aprovar/Ajuste fora de "aguardando" não fazem nada
   mudar(dir, { fase: 'parado' });
   await mg.acoes(s).mergulhoAprovar(); await mg.acoes(s).mergulhoAjuste();

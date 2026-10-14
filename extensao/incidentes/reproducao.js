@@ -101,22 +101,25 @@ function depsPadrao(s, t, dir) {
 }
 
 // ── Prompts
+// Skill da reprodução (Configurações > Plugins, agentes/etapas.js; padrão: ~/.claude/skills/testes-funcionais).
+const vagas = require('../agentes/etapas');
+const SKILL = () => vagas.pastaSkill('incidentes.reproducao') || '';
 const lista = (dir) => ['1-triagem.md', '2-artefatos.md', '3-dados-logs.md', '4-diagnostico.md'].map((f) => path.join(dir, f)).join(', ');
-const promptMassa = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Prepare a MASSA DE TESTE do incidente. Leia ${lista(dir)} e ${path.join(dir, 'massa-real.sql')} (a Massa Real: prova, intocável). `
-  + `Consulte a cópia de produção (só leitura, skill testes-funcionais: ${process.env.HOME}/.claude/skills/testes-funcionais/SKILL.md) e escreva em ${path.join(dir, 'massa-teste.sql')} os comandos INSERT que criam registros NOVOS e DISTINTOS `
+const promptMassa = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Prepare a MASSA DE TESTE do incidente. Leia ${lista(dir)}, ${path.join(dir, 'fluxo.json')} (o fluxo já planejado: a massa tem de dar ao fluxo tudo o que ele precisa em cada passo) e ${path.join(dir, 'massa-real.sql')} (a Massa Real: prova, intocável). `
+  + `Consulte a cópia de produção (só leitura, skill testes-funcionais: ${SKILL()}/SKILL.md) e escreva em ${path.join(dir, 'massa-teste.sql')} os comandos INSERT que criam registros NOVOS e DISTINTOS `
   + '(ids e códigos diferentes dos reais, copiando a estrutura) deixando o banco no estado ANTERIOR ao erro, pronto para repetir a ação do diagnóstico. '
-  + `Um comando por instrução, terminado em ";". NÃO execute o arquivo: a extensão confere e executa. ${REGRAS}`;
+  + `Um comando por instrução, terminado em ";". NÃO execute o arquivo: a extensão confere e executa. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`;
 const promptPlano = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Monte o FLUXO da reprodução: todos os passos que serão necessários para replicar NO EMULADOR a ação do diagnóstico com a Massa de Teste. `
-  + `Leia ${lista(dir)} e ${path.join(dir, 'massa-teste.sql')}, e a documentação do app (skill testes-funcionais: ${process.env.HOME}/.claude/skills/testes-funcionais/SKILL.md e references/jornada-mobile-maestro.md; código do mobile). `
-  + 'Do estado do app recém-aberto até o resultado a verificar: login/seleção de usuário, navegação até o módulo e a tela, escolha do registro da Massa de Teste, a ação do incidente e a conferência do erro. De 5 a 12 passos curtos e verificáveis; cada um com "titulo" e "texto" (o que fazer e o que esperar ver). '
-  + `Registre com: ${FLUXO} plano <<'FIM' [{"titulo":"...","texto":"..."}, ...] FIM . NÃO execute nada no emulador agora: só o plano. ${REGRAS}`;
+  + `Leia ${lista(dir)} e ${path.join(dir, 'massa-real.sql')} (a massa de teste ainda NÃO existe: ela será montada depois, a partir deste fluxo), e a documentação do app (skill testes-funcionais: ${SKILL()}/SKILL.md e references/jornada-mobile-maestro.md; código do mobile). `
+  + 'Do estado do app recém-aberto até o resultado a verificar: login/seleção de usuário, navegação até o módulo e a tela, escolha do registro (descreva o registro de que o passo precisa, sem ids: a Massa de Teste é montada depois), a ação do incidente e a conferência do erro. De 5 a 12 passos curtos e verificáveis; cada um com "titulo" e "texto" (o que fazer e o que esperar ver). '
+  + `Registre com: ${FLUXO} plano <<'FIM' [{"titulo":"...","texto":"..."}, ...] FIM . NÃO execute nada no emulador agora: só o plano. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`;
 const promptReproduzir = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Ambiente pronto (API 5111, Metro 8081, emulador e app). Leia ${path.join(dir, '4-diagnostico.md')} e ${path.join(dir, 'massa-teste.sql')}. `
-  + `Reproduza NO EMULADOR a ação exata do diagnóstico usando SÓ a Massa de Teste (jornada pelo Maestro/adb, skill testes-funcionais: references/jornada-mobile-maestro.md). A tela já está sendo gravada em vídeo pela extensão. `
+  + `Reproduza NO EMULADOR a ação exata do diagnóstico usando SÓ a Massa de Teste (jornada pelo Maestro/adb, skill testes-funcionais: ${SKILL()}/references/jornada-mobile-maestro.md). A tela já está sendo gravada em vídeo pela extensão. `
   + `O FLUXO já está planejado e o andamento é registrado por ${FLUXO} (estado atual abaixo). Para cada passo, na ordem: ${FLUXO} iniciar Pnn; execute; registre a ação EXATA que repete o passo (comando maestro/adb) com ${FLUXO} acao Pnn "<comando>"; `
   + `tire um print (adb exec-out screencap -p > /tmp/mergulho-Pnn.png) e guarde com ${FLUXO} evidencia Pnn /tmp/mergulho-Pnn.png; feche com ${FLUXO} concluir Pnn passou|falhou|bloqueado --nota "o que viu". `
   + 'RETOMADA: passos já "passou" são REFEITOS RÁPIDO só para levar o app ao ponto onde parou: rode a "ação" registrada de cada um em sequência, sem reanalisar, sem novo print e sem novo iniciar/concluir; confira apenas que a tela esperada apareceu e siga do primeiro passo pendente. '
   + `Estado do fluxo:\n${fluxo.estadoParaPrompt(dir)}\n`
-  + `Ao final salve também um print do resultado: ${GRAVAR} evidencias/NN-resultado.png --de /tmp/resultado.png. Grave ${path.join(dir, CLAUDE_JSON)} (com ${GRAVAR} ${CLAUDE_JSON}): {"ok": true se o erro do diagnóstico se repetiu (ou false), "acao": "o que foi feito e o que apareceu", "prints": [{"arquivo": "NN-resultado.png", "legenda": "..."}]}. ${REGRAS}`;
+  + `Ao final salve também um print do resultado: ${GRAVAR} evidencias/NN-resultado.png --de /tmp/resultado.png. Grave ${path.join(dir, CLAUDE_JSON)} (com ${GRAVAR} ${CLAUDE_JSON}): {"ok": true se o erro do diagnóstico se repetiu (ou false), "acao": "o que foi feito e o que apareceu", "prints": [{"arquivo": "NN-resultado.png", "legenda": "..."}]}. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`;
 const promptResumo = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Escreva em ${path.join(dir, 'resumo.md')} o Resumo Analítico do incidente, em português, texto corrido e objetivo para o PO. `
   + `Leia ${lista(dir)}, ${path.join(dir, 'reproducao.json')} e as observações do PO em ${path.join(dir, MERG)} (campo obsPO). Consolide: descrição do ticket, etapa do fluxo onde falhou, a tentativa do usuário, o que os logs mostram, os comentários/observações do PO e o resultado da reprodução no emulador. `
   + 'Adapte ao caso (ex.: "Após analisar as evidências e os logs, identificamos que em [data] às [hora], ao tentar [ação] no registro [ID], a etapa [etapa] do fluxo [fluxo] falhou porque…"), sem formulário fixo. Não invente: o que não consta nos arquivos vira "não identificado". '
@@ -138,6 +141,36 @@ function gravarReproducao(dir, ok, acao) {
   fs.writeFileSync(path.join(dir, 'reproducao.json'), JSON.stringify(j, null, 2));
   return j;
 }
+
+// ── Subetapas da etapa 5, na ordem em que rodam. Cada uma deixa um artefato e a próxima só começa com ele presente.
+// Estado guardado em .mergulho.json (sub: { id: 'rodando' | 'concluida' | 'erro' }); concluída só vale com o artefato em disco. A retomada
+// recomeça da primeira que não está concluída.
+const SUBETAPAS = [
+  { id: 'plano', n: '5.1', nome: 'Planejar o fluxo', arq: 'fluxo.json' },
+  { id: 'massa', n: '5.2', nome: 'Massa de teste', arq: 'massa-teste.sql' },
+  { id: 'ambiente', n: '5.3', nome: 'Subir o ambiente', arq: '.ambiente.ok' },
+  { id: 'reproducao', n: '5.4', nome: 'Reproduzir', arq: 'reproducao.json' }
+];
+const ARTEFATO = {
+  plano: (dir) => fluxo.ler(dir).passos.length > 0,
+  massa: (dir) => !!lerTxt(path.join(dir, 'massa-teste.sql')).trim() && fs.existsSync(path.join(dir, '.massa-teste.ok')),
+  ambiente: (dir) => fs.existsSync(path.join(dir, '.ambiente.ok')),
+  reproducao: (dir) => fs.existsSync(path.join(dir, 'reproducao.json'))
+};
+const marcarSub = (dir, id, st) => mudar(dir, { sub: { ...(lerJson(path.join(dir, MERG), {}).sub || {}), [id]: st } });
+// Estado gravado, já conferido com o artefato: 'concluida' sem artefato volta a pendente.
+const estadoSubs = (dir) => {
+  const g = lerJson(path.join(dir, MERG), {}).sub || {};
+  return Object.fromEntries(SUBETAPAS.map((x) => [x.id, g[x.id] === 'concluida' && !ARTEFATO[x.id](dir) ? 'pendente' : g[x.id] || 'pendente']));
+};
+// Primeira subetapa não concluída (retomada); null se as quatro estão prontas.
+const proximaSub = (dir) => { const e = estadoSubs(dir); return SUBETAPAS.find((x) => e[x.id] !== 'concluida') || null; };
+// A próxima só começa com o artefato da anterior: erro claro (vai para o Ao vivo) se faltar.
+const exigir = (dir, x) => {
+  const ant = SUBETAPAS[SUBETAPAS.indexOf(x) - 1];
+  if (ant && !ARTEFATO[ant.id](dir)) throw new Error(`${x.n} ${x.nome} precisa de ${ant.arq}, que a ${ant.n} ${ant.nome} ainda não deixou na pasta do incidente`);
+  if (!ant && !lerTxt(path.join(dir, '4-diagnostico.md')).trim()) throw new Error(`${x.n} ${x.nome} precisa de 4-diagnostico.md (etapa 4 aprovada)`);
+};
 
 // Pausa: o A mostra motivo/pergunta/opções; a retomada chama executar de novo.
 function pausar(dir, motivo, pergunta, opcoes = ['Tentar de novo']) {
@@ -180,17 +213,30 @@ async function executar(s, t, d = {}) {
   const dir = s.pastaAba(t.id), vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   d = { ...(d.semPadrao ? {} : depsPadrao(s, t, dir)), ...d };
   // Pausar (⏸): a rodada deixa de valer; confere entre os passos e dentro das esperas, e para sem marcar erro.
+  /** @type {any} */ let atualSub = null; // subetapa em andamento (vira "erro" se a execução cair)
   const ponto = () => { if (!controle.valida(dir, d.rodada)) throw new Error(controle.CANCELADO); };
   const esperarOrig = d.esperar;
   d = { ...d, esperar: (teste, seg) => esperarOrig(async () => { ponto(); return teste(); }, seg) };
   try {
     mudar(dir, { etapa: 5, fase: 'rodando', pausa: null });
-    vivo('etapa', 'Incidente · 5. Massa de teste');
+    const comecar = (x) => { exigir(dir, x); atualSub = x; marcarSub(dir, x.id, 'rodando'); vivo('etapa', `Incidente · ${x.n} ${x.nome}`); };
+    const concluirSub = (x) => { marcarSub(dir, x.id, 'concluida'); atualSub = null; };
+    const [S1, S2, S3, S4] = SUBETAPAS;
+    // 5.1 Planejar o fluxo: só lê 1-4 e massa-real.sql (a massa de teste vem depois, do fluxo). Retomada reaproveita o fluxo já planejado.
+    comecar(S1);
+    if (!ARTEFATO.plano(dir)) {
+      await d.claude({ prompt: promptPlano(t.chave, dir), titulo: 'Incidente · Planejando o fluxo da reprodução' });
+      ponto();
+      if (!ARTEFATO.plano(dir)) return pausar(dir, 'O Claude não montou o fluxo da reprodução', 'Tente de novo?');
+    }
+    concluirSub(S1);
+    // 5.2 Massa de teste: o Claude monta a partir do fluxo.json; a extensão confere a trava e executa.
+    ponto(); comecar(S2);
     // Preservação de prova: ambiente do banco tem de estar definido e não ser produção.
     const b = d.banco || {};
     if (b.ambiente === 'producao') return pausar(dir, 'A conexão do banco está marcada como PRODUÇÃO', 'Troque para a cópia de produção em Configurações → Banco de dados e tente de novo.');
     const arqTeste = path.join(dir, 'massa-teste.sql'), real = lerTxt(path.join(dir, 'massa-real.sql'));
-    if (!lerTxt(arqTeste).trim()) { vivo('acao', 'Claude monta a massa de teste (registros novos, estado anterior ao erro)'); await d.claude({ prompt: promptMassa(t.chave, dir), titulo: 'Incidente · Preparando a massa de teste' }); }
+    if (!lerTxt(arqTeste).trim()) { vivo('acao', 'Claude monta a massa de teste (registros novos, estado anterior ao erro, o que o fluxo precisa)'); await d.claude({ prompt: promptMassa(t.chave, dir), titulo: 'Incidente · Preparando a massa de teste' }); }
     ponto();
     const sqlTeste = lerTxt(arqTeste), trava = travaDml(sqlTeste, real);
     if (!trava.ok) return pausar(dir, `Massa de Teste recusada: ${trava.erro}`, 'Ajuste o massa-teste.sql (só registros novos) e tente de novo.');
@@ -200,17 +246,16 @@ async function executar(s, t, d = {}) {
       if (!r.ok) return pausar(dir, 'O banco recusou a massa de teste', `${String(r.saida).slice(0, 200)}. Corrigir e tentar de novo?`);
       fs.writeFileSync(path.join(dir, '.massa-teste.ok'), new Date().toISOString());
     }
-    ponto();
+    concluirSub(S2);
+    // 5.3 Subir o ambiente (idempotente: o que já está de pé segue). Na retomada roda de novo, pois o ambiente pode ter caído.
+    ponto(); comecar(S3);
     const falha = await subirAmbiente(dir, d);
     if (falha) return pausar(dir, falha.motivo, falha.pergunta);
-
-    if (!fluxo.ler(dir).passos.length) { // retomada reaproveita o fluxo já planejado
-      ponto(); vivo('etapa', 'Incidente · 5. Planejando o fluxo'); await d.claude({ prompt: promptPlano(t.chave, dir), titulo: 'Incidente · Planejando o fluxo da reprodução' });
-      ponto();
-      if (!fluxo.ler(dir).passos.length) return pausar(dir, 'O Claude não montou o fluxo da reprodução', 'Tente de novo?');
-    }
+    fs.writeFileSync(path.join(dir, '.ambiente.ok'), new Date().toISOString());
+    concluirSub(S3);
+    // 5.4 Reproduzir
+    ponto(); comecar(S4);
     fluxo.descartarEmAndamento(dir); // passo cortado por pausa/queda volta para a fila
-    vivo('etapa', 'Incidente · 5. Reprodução no emulador');
     fs.mkdirSync(path.join(dir, EVID), { recursive: true });
     fs.rmSync(path.join(dir, CLAUDE_JSON), { force: true });
     d.gravarTela(path.join(dir, EVID));
@@ -221,6 +266,7 @@ async function executar(s, t, d = {}) {
     await d.esperar(async () => true, 0);
     const rep = gravarReproducao(dir, false, 'O Claude não registrou o resultado da reprodução.');
     vivo(rep.ok ? 'fim' : 'aviso', rep.ok ? 'Problema reproduzido no emulador' : 'O problema não foi reproduzido (ou o Claude não registrou)');
+    concluirSub(S4);
 
     vivo('etapa', 'Incidente · 6. Resumo analítico');
     ponto();
@@ -231,8 +277,9 @@ async function executar(s, t, d = {}) {
   } catch (e) {
     if (e.message === controle.CANCELADO) return; // pausado por você: o mergulho.js já guardou a pausa
     vivo('erro', `Reprodução parou: ${e.message}`);
+    if (atualSub) marcarSub(dir, atualSub.id, 'erro');
     mudar(dir, { etapa: 5, fase: 'erro', pausa: null });
   } finally { s.render?.(); }
 }
 
-module.exports = { executar, _teste: { travaDml, chavesReais, subirAmbiente, gravarReproducao, acharComando, PAPEIS, promptPlano, promptReproduzir } };
+module.exports = { executar, SUBETAPAS, estadoSubs, proximaSub, _teste: { ARTEFATO, exigir, marcarSub, travaDml, chavesReais, subirAmbiente, gravarReproducao, acharComando, PAPEIS, promptPlano, promptReproduzir } };

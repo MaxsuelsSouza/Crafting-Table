@@ -6,10 +6,13 @@
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../componentes/ao-vivo');
+const caixaEtapas = require('../componentes/caixa-etapas');
 const maestro = require('../painel/maestro');
 const { execFileSync } = require('child_process');
 const controle = require('./controle');
 const fluxo = require('./fluxo');
+const reproducao = require('./reproducao'); // etapa 5 e as suas subetapas
+const vagas = require('../agentes/etapas'); // plugin de cada etapa (Configurações > Plugins)
 
 const ESTADO = '.mergulho.json', PAUSA = '.pausa.json', RESPOSTAS = '.respostas.md', CONTEXTO = '.jira-contexto.md';
 const ETAPAS = [
@@ -126,7 +129,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   }
   const j = s.cacheJira[t.id];
   if (j && !j.erro) fs.writeFileSync(path.join(dir, CONTEXTO), contextoJira(j));
-  const mapa = path.join(__dirname, '..', 'plugins', 'mapa'), conexao = cfg().get('bancoConexao') || '', amb = cfg().get('bancoAmbiente') || '';
+  const mapa = vagas.raiz('incidentes.mapa') || '', conexao = cfg().get('bancoConexao') || '', amb = cfg().get('bancoAmbiente') || '';
   const repos = s.reposDe(t), banco = conexao && amb && amb !== 'producao' ? `configurado (${amb === 'qas' ? 'QAS' : 'cópia de produção'}): mapa-db, só leitura` : 'NÃO configurado: não consulte banco; registre como pendência';
   const arqEtapa = path.join(dir, ETAPAS[n - 1].arq), antes = ajuste && fs.existsSync(arqEtapa) ? fs.statSync(arqEtapa).mtimeMs : 0;
   if (!ajuste) fs.rmSync(arqEtapa, { force: true }); // ajuste mantém o documento: o Claude o atualiza
@@ -134,9 +137,9 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   mudar(dir, { etapa: n, fase: 'rodando', pausa: null, aprovacao: null });
   let tratou = false;
   const ok = maestro.rodar(dir, {
-    prompt: prompt(t, dir, n, repos, banco, ajuste), titulo: `Mergulho · Etapa ${n}: ${ETAPAS[n - 1].nome}${ajuste ? ' (ajuste)' : ''}`, ferramentas: FERRAMENTAS(mapa),
+    prompt: prompt(t, dir, n, repos, banco, ajuste) + vagas.aviso('incidentes.mapa'), titulo: `Mergulho · Etapa ${n}: ${ETAPAS[n - 1].nome}${ajuste ? ' (ajuste)' : ''}`, ferramentas: FERRAMENTAS(mapa),
     env: { MAPA_DB_CONEXAO: conexao, MAPA_DB_AMBIENTE: amb, MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '', MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(dir, '.mapa-db.jsonl'), MERGULHO_DIR: dir },
-    extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), '--plugin-dir', mapa, '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }),
+    extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...vagas.pluginDirs('incidentes.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }),
       '--add-dir', dir, '--add-dir', s.pasta(t.id), ...repos.map((r) => r.caminho)],
     aoMudar: () => { s.render(); if (!tratou && !maestro.rodando(dir)) { tratou = true; aposEtapa(s, t, n, rodada, antes); } }
   });
@@ -172,7 +175,7 @@ const reproduzir = async (s, t, rodada) => {
   const dir = s.pastaAba(t.id);
   mudar(dir, { etapa: 5, fase: 'rodando', pausa: null });
   s.render();
-  try { await require('./reproducao').executar(s, t, { rodada }); } catch (e) {
+  try { await reproducao.executar(s, t, { rodada }); } catch (e) {
     if (!controle.valida(dir, rodada)) return s.render();
     mudar(dir, { fase: 'erro' });
     aoVivo.anotar(dir, { tipo: 'erro', texto: `Etapa 5 falhou: ${e.message}` });
@@ -227,13 +230,7 @@ const responder = (s, t, resposta) => {
 };
 
 // ── Tela ──
-const CSS = `<style>
-  .mg-etapas { display: flex; flex-direction: column; gap: 4px; }
-  .mg-et { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 3px 0; color: var(--text-dim); }
-  .mg-et b { flex: none; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10.5px; }
-  .mg-et.feita { color: var(--text); } .mg-et.feita b { background: var(--ok, #3fb950); border-color: var(--ok, #3fb950); color: #fff; }
-  .mg-et.atual { color: var(--text); } .mg-et.atual b { border-color: var(--accent); color: var(--accent); }
-  .mg-et.erro b { border-color: var(--danger); color: var(--danger); }
+const CSS = `<style>${caixaEtapas.CSS}
   .mg-obs { width: 100%; box-sizing: border-box; min-height: 90px; resize: vertical; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: 12.5px/1.5 var(--fc-font); }
   .mg-obs:focus { outline: none; border-color: var(--accent); }
   .mg-barra { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
@@ -244,12 +241,15 @@ const btn = (txt, acao, extra = '', cls = 'bt bt-contorno') => `<button class="$
 
 const corpo = (t, d, dir) => {
   const sit = situacao(dir), e = sit.e, vivo = sit.rodando, fase = sit.fase; // execução interrompida (janela recarregada) conta como parada
-  const lista = ETAPAS.map((x) => {
+  const subs = reproducao.estadoSubs(dir);
+  const estadoAtual = ({ rodando: 'rodando', pausado: 'pausada', erro: 'erro', parado: 'pendente', aguardando: 'aguardando', concluido: 'concluida' })[fase] || 'pendente';
+  const etapas = ETAPAS.map((x) => {
     const feita = existe(dir, x.n) && (x.n < e.etapa || (x.n === e.etapa && fase === 'concluido'));
-    const atual = x.n === e.etapa && !feita, cls = feita ? 'feita' : atual ? (fase === 'erro' ? 'atual erro' : 'atual') : '';
-    const rot = feita ? 'concluída' : atual ? ({ rodando: 'em andamento', pausado: 'pausada', erro: 'com erro', parado: 'pronta para iniciar', aguardando: 'aguardando sua aprovação', concluido: 'concluída' })[fase] || '' : '';
-    return `<div class="mg-et ${cls}"><b>${feita ? '✓' : x.n}</b>${esc(x.nome)}${rot ? `<span style="color:var(--text-dim);font-size:11px">· ${rot}</span>` : ''}</div>`;
-  }).join('');
+    const atual = x.n === e.etapa && !feita;
+    return { n: x.n, nome: x.nome, estado: feita ? 'concluida' : atual ? estadoAtual : 'pendente', ...(atual && fase === 'parado' ? { rotulo: 'pronta para iniciar' } : {}),
+      // etapa 5: ao entrar nela a caixa expande com 5.1 a 5.4 antes de qualquer processo; só a subetapa em andamento herda a fase (pausa, erro, parada)
+      ...(x.n === 5 ? { subetapas: reproducao.SUBETAPAS.map((r) => ({ n: r.n, nome: r.nome, estado: subs[r.id] === 'rodando' ? (atual ? estadoAtual : 'pendente') : subs[r.id] === 'erro' && !atual ? 'pendente' : subs[r.id] })) } : {}) };
+  });
   const nova = e.etapa === 1 && fase === 'parado' && !existe(dir, 1);
   const pausa = e.pausa && fase === 'pausado' ? `<div class="caixa-t">Pausa do Mergulho</div><div class="folha"><div class="mg-pausa"><p>${esc(e.pausa.pergunta)}</p>
     ${e.pausa.motivo === 'manual' ? `<div class="mg-barra">${btn('▶ Retomar', 'mergulhoRetomar', '', 'bt bt-principal')}</div>`
@@ -263,7 +263,7 @@ const corpo = (t, d, dir) => {
     <div class="aacoes"><div class="format-bar arquivo"><button class="fb-btn" data-acao="mergulhoAbrir" data-id="${et.n}" title="${esc(path.join(dir, et.arq))}">Abrir ${esc(et.arq)}</button></div>
       <div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-acao="mergulhoAprovar" ${lido ? '' : 'disabled'} title="${lido ? 'Aprovar esta etapa: o Mergulho segue sozinho' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
         <button data-acao="mergulhoAjuste">Pedir ajuste</button></div></div></div>` : '';
-  return `${CSS}<div class="caixa-t">Mergulho<span>${nova ? btn('▶ Iniciar', 'mergulhoIniciar', '', 'bt bt-principal') : ''}</span></div><div class="folha"><div class="mg-etapas">${lista}</div></div>
+  return `${CSS}${caixaEtapas.caixa({ titulo: 'Mergulho', acao: nova ? btn('▶ Iniciar', 'mergulhoIniciar', '', 'bt bt-principal') : '', etapas, atual: e.etapa })}
   ${nova ? `<div class="caixa-t">Há alguma observação adicional deixada pelo PO?<span>opcional</span></div>
   <div class="folha"><textarea class="mg-obs" data-texto data-obs placeholder="Cole aqui o que o PO comentou fora do ticket (opcional)…">${esc(e.obsPO)}</textarea></div>`
     : e.obsPO ? `<div class="caixa-t">Observação do PO</div><div class="folha"><div style="white-space:pre-wrap">${esc(e.obsPO)}</div></div>` : ''}${aprovacao}${pausa}

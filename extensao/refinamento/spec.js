@@ -14,6 +14,7 @@ const aoVivo = require('../componentes/ao-vivo');
 const pill = require('../componentes/pill');
 const mudancas = require('./mudancas');
 const orq = require('./orquestrador');
+const caixaEtapas = require('../componentes/caixa-etapas');
 const { SPECS_PADRAO, sddState } = require('../configuracao/configuracao');
 
 // Aba Spec do refinamento: os passos do SDD, o cartão Agora, a pilha de perguntas (script "Pilha de perguntas" em pagina()),
@@ -75,6 +76,9 @@ function telaConstituicao(r, est, abertos, impactos = []) {
     return `<div class="passo s-${esc(p.status)}${aten ? ' s-atencao' : ''}">
       <div class="cab"><span class="num">${p.n}</span>${aten ? `<span class="aten" title="Um comentário do ${esc(nomeProvedor())} pediu uma mudança que pode atingir este passo. Nada foi alterado: decida na caixa vermelha acima.">⚠</span>` : ''}<span class="nome">${esc(p.titulo)}${p.portao ? ` · Portão ${p.portao}` : ''}</span>
         <span class="st">${STATUS[p.status] || esc(p.status)}${p.versao ? ` · v${esc(p.versao)}` : ''}</span></div>
+      ${p.n === 3 && (p.status !== 'pendente' || est.proximoPasso === 3) ? `<div class="passo-subs">${caixaEtapas.caixa({ titulo: 'Etapas do plano técnico', etapas: [{ n: 3, nome: p.titulo, aberta: true,
+        estado: { pendente: vivo ? 'pendente' : 'rodando', em_andamento: vivo ? 'pausada' : 'rodando', aguardando_revisao: 'aguardando', aprovado: 'concluida' }[p.status] || 'pendente',
+        subetapas: orq.subetapas3(r, p, !vivo) }], atual: 3 })}</div>` : ''}
       ${p.status === 'pendente' ? '' : `<div class="corpo-passo">
         ${resumo.length ? `<div class="chips">${resumo.map(([k, v]) => chip(k, v, /viola|bloque|abertas/.test(k) && Number(v) > 0)).join('')}</div>` : ''}
         ${p.status === 'aprovado' ? `<div>Aprovado por <b>${esc(p.aprovadoPor || '')}</b> em ${esc(quando(p.aprovadoEm))}</div>` : ''}
@@ -224,10 +228,10 @@ const acoes = (s) => ({
     const texto = await vscode.window.showInputBox({ title: `Ajuste no passo ${n} (${estadoSpec(r)?.passos[n]?.titulo})`, prompt: 'O que o Claude deve mudar?', ignoreFocusOut: true });
     if (!texto?.trim()) return;
     await orq.sdd(['ajuste', String(n), '--ref', pasta(r.id), '--motivo', texto.trim()]);
-    orq.etapa(r, `O humano pediu ajuste no passo ${n}: "${texto.trim()}". Faça o ajuste no arquivo do passo e rode concluir ${n} de novo.`, true, undefined, `Ajuste no passo ${n} · ${estadoSpec(r)?.passos[n]?.titulo || ''}`);
+    orq.ajustar(r, n, texto.trim());
   },
   // Pergunta do Claude respondida na aba (id = Qnn, op = índice da opção | 'outra' | 'duvida').
-  // Todas respondidas e refinamento rodando → o Claude continua na mesma sessão com as respostas.
+  // Todas respondidas e refinamento rodando → o Claude continua na execução nova com as respostas.
   async responder({ id, op }) {
     const r = s.ticketAberto();
     const q = estadoSpec(r)?.perguntas.find((x) => x.id === id);
@@ -245,7 +249,7 @@ const acoes = (s) => ({
     orq.respondidas.push(`${id} → ${resposta}`);
     const est = estadoSpec(r);
     if (!est.perguntas.some((x) => x.status === 'aberta') && orq.estadoDe(r.id) === 'rodando' && !maestro.rodando(pasta(r.id))) {
-      orq.etapa(r, `Respostas do humano na aba: ${orq.respondidas.join('; ')}. Continue o passo ${est.proximoPasso} com elas.`, true, undefined, `Aplicando suas respostas · passo ${est.proximoPasso}`);
+      orq.aplicarRespostas(r, est.proximoPasso, orq.respondidas.slice());
       orq.respondidas.length = 0;
     }
     s.render();
@@ -284,7 +288,8 @@ const scriptPilha = () => `// Pilha de perguntas: ‹ › troca o card de cima, 
     mostrar();
   }`;
 
-const CSS = `
+const CSS = `${caixaEtapas.CSS}
+  .passo-subs { margin: 8px 0 0 30px; }
   /* Constituição: os 7 passos do SDD — cinza até acontecer */
   .sdd-topo { font-size: 11.5px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
   .sdd-topo b { color: var(--text); }

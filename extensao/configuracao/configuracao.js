@@ -13,46 +13,29 @@ const menuAbas = require('../componentes/menu-abas');
 const cardConfig = require('./card-config');
 const { card, cardTeste, selo, linha, dica, acoes } = cardConfig;
 const conexao = require('./conexao');
+const etapas = require('../agentes/etapas');
+const { agenteAtivo } = require('../agentes');
 
 // Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre e um card por seção), com os cliques e os testes de cada seção.
 // Usado pelo painel.js: criar(ctx, ganchos) devolve { corpo, acoes, aberta, aba, checar }; o painel põe corpo() na página, espalha `acoes`
 // nas suas e chama render quando algo mudar. CSS no <style>. Cliques por data-acao: config, configFechar, cfgAba, cfgEditar, cfgTestar, provedor*,
-// cfgRepo*, cfgBanco*, cfgTeams*, pluginAlternar, matarExtensao, atualizarExtensao. Cofre e Comandos são telas de outros módulos, com os
+// cfgRepo*, cfgBanco*, cfgTeams*, pluginAlternar, atualizarExtensao. Cofre e Comandos são telas de outros módulos, com os
 // cliques prefixados (cofre:, comandos:, emulador:). Redesenhe quando mudar aba, valor salvo, resultado de um teste, comandos/terminais ou cofre.
 // Também guarda o que o painel lê das settings craftingTable.* (cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO), os plugins
-// (pluginInstalado, sddState) e o aviso de instalação (aviso).
+// (sddState) e o aviso de instalação (aviso). A aba Plugins só existe para agente com plugins (agentes/index.js); as etapas
+// e o plugin de cada uma vêm de agentes/etapas.js. Cliques dela: mkt*, plugin*, plug* (Editar → verificação por IA → Usar).
 //   criar(ctx, { render, aoAbrir, voltar }): aoAbrir roda ao abrir (o painel solta o ticket aberto) · voltar = HTML da seta do cabeçalho
 //   tela(v): só o HTML; v: { aba, valores, estado: { agente, jira, board, specs, repos, banco, teams }, reposAuto, plugins, avisoInstalacao, versao, voltar }
 
 const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 // O plugin guarda o estado em <repo>/<spec.dir>/sdd-state.json; aprovar um passo é só por aqui (o hook dele bloqueia o Claude).
-function pluginInstalado(prefixo) {
-  const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {});
-  const lista = reg.plugins || reg;
-  const chave = Object.keys(lista).find((k) => k.startsWith(prefixo));
-  const info = chave && (Array.isArray(lista[chave]) ? lista[chave][0] : lista[chave]);
-  return info?.installPath || null;
+// sdd-state do plugin que ocupa a vaga da spec (Configurações > Plugins; padrão: sdd@crafting-local).
+function sddState() { const r = etapas.raiz('refinamento.sdd'), b = r && path.join(r, 'bin', 'sdd-state'); return b && fs.existsSync(b) ? b : null; }
+// Versão instalada de um plugin do Claude Code ('' se não instalado).
+function versaoInstalada(id) {
+  const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {}), v = (reg.plugins || reg)[id];
+  return (Array.isArray(v) ? v[0] : v)?.version || '';
 }
-// Plugins e skills que a extensão usa. "local" = mora na extensão e só o maestro carrega (--plugin-dir); os demais vêm do Claude Code.
-const MAPA_DIR = path.join(__dirname, '..', 'plugins', 'mapa'), FOCO_DIR = path.join(__dirname, '..', 'plugins', 'foco');
-const USADOS = [
-  { id: 'sdd@crafting-local', base: true, modulos: { refinamento: 'essencial' }, skills: ['sdd:sdd', 'sdd:iniciar', 'sdd:continuar'], uso: 'Spec: passos 0–6, sdd-state, hooks de guarda' },
-  { id: 'mapa', base: true, local: MAPA_DIR, modulos: { refinamento: 'essencial' }, skills: ['mapa:mapear'], uso: 'Mapeamento do código e banco (passo 3)' },
-  { id: 'foco', base: true, local: FOCO_DIR, modulos: { refinamento: 'usa' }, skills: [], uso: 'Hooks: regras PT-BR e limite de tamanho dos .md' },
-  { id: 'fcx-qa-test-planning@fcxlabs', auto: true, modulos: { qa: 'essencial', refinamento: 'usa' }, skills: ['jira-qa-planner', 'test-estimation'], uso: 'Método do passo 6 (plano de testes); lido, não invocado' },
-  { id: 'testes-funcionais', pasta: path.join(os.homedir(), '.claude', 'skills', 'testes-funcionais'), modulos: { qa: 'essencial' }, skills: ['testes-funcionais'], uso: 'Execução dos testes e preparo do ambiente (preparar-ambiente.py)' },
-  { id: 'i-have-adhd@i-have-adhd', desliga: true, skills: [], uso: 'Desligado nas execuções do maestro (o foco o substitui)' },
-];
-function listarPlugins(nova = {}) {
-  const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {});
-  const lista = reg.plugins || reg;
-  const ligados = ler(path.join(os.homedir(), '.claude', 'settings.json'), {}).enabledPlugins || {};
-  return USADOS.map((u) => {
-    const v = lista[u.id]; const info = Array.isArray(v) ? v[0] : v;
-    return { ...u, instalado: !!(u.local || info || (u.pasta && fs.existsSync(u.pasta))), versao: info?.version || '', ligado: u.local ? true : ligados[u.id] !== false, atualizar: !!nova[u.id] };
-  });
-}
-function sddState() { const p = pluginInstalado('sdd@'); return p ? path.join(p, 'bin', 'sdd-state') : null; }
 
 const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 // Settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
@@ -82,7 +65,8 @@ const REPO = path.resolve(fs.realpathSync(__dirname), '..', '..');
 let avisoInstalacao = null; // { motivos: string[] } | null: o instalar.sh precisa rodar de novo (preenchido por conferirInstalacao)
 const aviso = () => avisoInstalacao;
 
-const ABAS = [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, { id: 'plugins', nome: 'Plugins' }, { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
+// Plugins só aparece para agente com plugins/marketplace (agentes/index.js).
+const ABAS = (comPlugins = true) => [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, ...(comPlugins ? [{ id: 'plugins', nome: 'Plugins' }] : []), { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
 const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
 
 // Card "Ferramenta de gestão de trabalho". Sem conexão: lista dos provedores (os sem adaptador ficam "em breve", desabilitados).
@@ -119,7 +103,7 @@ const geral = (v) => {
   return [
     card({ titulo: 'Instalação', selo: aviso ? `<span class="cfg-st cfg-mal">⚠ ${esc(aviso.motivos.join(' · '))}</span>` : '<span class="cfg-st cfg-ok">✅ em dia</span>',
       acao: botao('Atualizar agora', { variante: 'contorno', acao: 'atualizarExtensao', titulo: 'Roda o instalar.sh (faz git pull antes se houver novidades)' }) }),
-    cardTeste('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
+    cardTeste('agente', 'Agente de IA', e.agente, linha('Agente', `${esc(v.agente || 'Claude Code')} <span class="cfg-dim">(outros agentes em breve)</span>`)
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + dica('Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.')),
     ferramenta(v),
@@ -159,37 +143,73 @@ const variaveisTela = (v) => {
     + (x.atualizado && x.definida ? `<div class="cfg-dim">atualizado em ${esc(x.atualizado.slice(0, 10))}</div>` : '') })).join('\n');
 };
 
-const MKT_FC = { nome: 'fcxlabs', url: 'https://gitlab.fcxlabs.com/ai-tools/marketplace-claude/-/raw/main/marketplace.json' };
-const MODULOS = [['refinamento', 'Refinamento'], ['implementacao', 'Implementação'], ['qa', 'QA']];
-const porModulo = (v) => MODULOS.map(([m, nome]) => {
-  const ps = (v.plugins || []).filter((p) => !p.base && p.modulos?.[m]);
-  return card({ titulo: nome, corpo: ps.length ? ps.map((p) => linha(esc(p.id.split('@')[0]) + bolinha(p),
-    `${p.modulos[m] === 'essencial' ? '<b>essencial</b>' : 'usado'} · ${esc(p.uso)}<br><span class="cfg-dim">${p.instalado ? 'ok' : '<b>não instalado</b>'}${p.auto ? ' · atualiza e instala pelo marketplace' : ''}</span>`, '', autoBtn(p, v), p.id)).join('')
-    : '<div class="cfg-dim">Nenhum plugin: este módulo não aciona o Claude.</div>' });
-}).join('\n');
+// Aba Plugins (só para agente com plugins: hoje o Claude Code). v.plug = { marketplaces, instalados: { id: { versao, ligado } }, nova: { id: true },
+// checando, erro, auto, verif: { vaga: { estado: 'verificando' | 'pronto' | 'erro', candidato, resultado?, erro? } } }.
+const autoBtn = (p) => botao(p.auto ? '⟳ Automático: ligado' : '⟳ Automático: desligado', { variante: 'contorno', acao: 'pluginAuto',
+  titulo: 'Instala os plugins escolhidos nas etapas que faltarem e atualiza quando a origem tem versão nova' });
+const marketplaces = (p) => card({ titulo: 'Marketplaces', acao: botao(p.checando ? 'Verificando…' : '↻ Recarregar', { variante: 'contorno', acao: 'mktRecarregar', desligado: !!p.checando }),
+  corpo: dica('De onde vêm os plugins do Claude Code. Vale qualquer marketplace: URL do marketplace.json, pasta local ou repositório GitHub (dono/repo). '
+    + 'Recarregar busca o catálogo e confere se há versão nova dos plugins instalados (<span class="cfg-bol"></span>).')
+    + (p.marketplaces ? (p.marketplaces.length ? p.marketplaces.map((m) => linha(esc(m.nome), `<span class="cfg-dim">${esc(m.origem)}</span>`, '',
+      botao('Remover', { variante: 'contorno', acao: 'mktRemover', id: m.nome }))).join('') : '<div class="cfg-dim">Nenhum marketplace adicionado.</div>')
+      : '<div class="cfg-dim">verificando…</div>')
+    + acoes(botao('＋ Adicionar marketplace', { variante: 'contorno', acao: 'mktAdicionar' }) + autoBtn(p))
+    + (p.erro ? `<div class="cfg-mal">${esc(p.erro)}</div>` : '') });
 
-const autoBtn = (p, v) => (p.auto ? botao(v.pluginsAuto ? '⟳ Automático: ligado' : '⟳ Automático: desligado', { variante: 'contorno', acao: 'pluginAuto' }) : '');
-const bolinha = (p) => (p.atualizar ? ' <span class="cfg-bol" title="Atualização disponível no marketplace"></span>' : '');
-const lista = (ps, v) => ps.map((p) => linha(esc(p.id.split('@')[0]) + bolinha(p),
-  `${esc(p.uso)}<br><span class="cfg-dim">${p.local ? 'da extensão' : p.instalado ? `${esc(p.versao)} · ${p.ligado ? 'ligado' : 'desligado'}` : '<b>não instalado</b>'}${p.skills.length ? ` · skills: ${esc(p.skills.join(', '))}` : ''}</span>`, '',
-  autoBtn(p, v) + (p.atualizar ? botao('Atualizar', { acao: 'pluginAtualizar', id: p.id }) : '') + (p.local || p.pasta || !p.instalado ? '' : botao(p.ligado ? 'Desligar' : 'Ligar', { variante: 'contorno', acao: 'pluginAlternar', id: p.id })), p.id)).join('');
+// Quem ocupa a vaga e como está na máquina, numa linha: "nome · versão" (o jeito de uso fica na dica do mouse).
+const ocupante = (vaga, p) => {
+  const e = etapas.escolha(vaga), inst = e.tipo === 'plugin' && (p.instalados || {})[e.id];
+  const est = e.tipo === 'plugin' ? (inst ? `${esc(inst.versao)}${inst.ligado ? '' : ' · <b>desligado</b>'}` : '<b>não instalado</b>')
+    : etapas.raiz(vaga) && fs.existsSync(etapas.raiz(vaga)) ? (e.tipo === 'local' ? 'da extensão' : 'skill na máquina') : '<b>não encontrado</b>';
+  return `<span title="${esc(etapas.VAGAS[vaga].como)}"><b>${esc(etapas.rotulo(vaga))}</b>${p.nova?.[e.id] ? ' <span class="cfg-bol" title="Atualização disponível no marketplace"></span>' : ''}`
+    + ` <span class="cfg-dim">· ${est}${etapas.ehPadrao(vaga) ? '' : ` · trocado (padrão: ${esc(etapas.VAGAS[vaga].padrao.nome)})`}</span></span>`;
+};
+const botoesVaga = (vaga, p) => {
+  const e = etapas.escolha(vaga), inst = e.tipo === 'plugin' && (p.instalados || {})[e.id];
+  return (p.nova?.[e.id] ? botao('Atualizar', { acao: 'pluginAtualizar', id: e.id }) : '')
+    + (inst && !inst.ligado ? botao('Ligar', { variante: 'contorno', acao: 'pluginAlternar', id: e.id }) : '')
+    + (etapas.ehPadrao(vaga) ? '' : botao('Padrão', { variante: 'contorno', acao: 'plugPadrao', id: vaga, titulo: `Volta para ${etapas.VAGAS[vaga].padrao.nome}` }))
+    + botao('Editar', { variante: 'contorno', acao: 'plugEditar', id: vaga, desligado: p.verif?.[vaga]?.estado === 'verificando', titulo: 'Trocar por outro plugin ou skill (a IA confere se atende)' });
+};
+const VEREDITO = { atende: ['cfg-ok', '✅ atende'], parcial: ['cfg-mal', '⚠ atende em parte'], nao_atende: ['cfg-mal', '✖ não atende'] };
+// Resultado da verificação do candidato escolhido no Editar.
+const verificacao = (vaga, x) => {
+  const nome = esc(x.candidato.skill && x.candidato.tipo !== 'skill' ? `${x.candidato.nome}:${x.candidato.skill}` : x.candidato.nome);
+  if (x.estado === 'verificando') return `<div class="cfg-verif"><span class="cfg-st cfg-esp">verificando ${nome} com a IA…</span></div>`;
+  if (x.estado === 'erro') return `<div class="cfg-verif"><div class="cfg-mal">Não consegui verificar ${nome}: ${esc(x.erro)}</div>${acoes(botao('Descartar', { variante: 'contorno', acao: 'plugDescartar', id: vaga }))}</div>`;
+  const r = x.resultado, [cls, txt] = VEREDITO[r.veredito] || VEREDITO.parcial, usos = etapas.usos(vaga);
+  return `<div class="cfg-verif"><div><b>${nome}</b> <span class="cfg-st ${cls}">${txt}</span></div><div>${esc(r.resumo)}</div>`
+    + (r.falta.length ? `<div class="cfg-dim">Falta para atender:</div><ul>${r.falta.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : '')
+    + (r.observacoes ? `<div class="cfg-dim">${esc(r.observacoes)}</div>` : '')
+    + (usos.length > 1 ? dica(`A troca vale para: ${esc(usos.join(' · '))}.`) : '')
+    + acoes(botao(r.veredito === 'atende' ? `Usar ${nome}` : 'Usar mesmo assim', { variante: r.veredito === 'atende' ? 'principal' : 'contorno', acao: 'plugUsar', id: vaga,
+      titulo: x.candidato.origem === 'marketplace' ? 'Instala pelo marketplace e passa a usar nesta etapa' : 'Passa a usar nesta etapa' })
+      + botao('Descartar', { variante: 'contorno', acao: 'plugDescartar', id: vaga })) + '</div>';
+};
+// Uma linha por etapa: "Etapa N. Nome · plugin · estado" e os botões à direita.
+const modulo = (m, p) => {
+  const vistas = new Set(), marcas = etapas.marcas(m); // vaga repetida em várias etapas: a verificação aparece só na primeira
+  // Uma linha de etapa ou subetapa: marca, nome, plugin da vaga e os botões; a verificação por IA aparece só na primeira linha da vaga.
+  const linhaVaga = (marca, nome, vaga, { todas = false, obs = '', sub = false, semVaga = false } = {}) => {
+    const verif = vaga && !vistas.has(vaga) && p.verif?.[vaga];
+    if (vaga) vistas.add(vaga);
+    return `<div class="cfg-etp${sub ? ' cfg-sub' : ''}"><div class="cfg-etp-p"><span class="cfg-etp-num${todas ? ' cfg-etp-todas' : ''}">${esc(marca)}</span>`
+      + `<span class="cfg-etp-nome">${esc(nome)}</span>${semVaga ? '' : ` <span class="cfg-dim">·</span> ${vaga ? ocupante(vaga, p) : `<span class="cfg-dim">sem plugin${obs ? ` · ${esc(obs)}` : ''}</span>`}`}</div>`
+      + `<span class="cfg-acoes">${vaga ? botoesVaga(vaga, p) : ''}</span></div>${verif ? verificacao(vaga, verif) : ''}`;
+  };
+  const corpo = m.etapas.length ? m.etapas.map((e, i) => linhaVaga(marcas[i].marca, marcas[i].nome, e.vaga, { todas: e.todas, obs: e.obs, semVaga: !e.vaga && !!e.subetapas })
+    + marcas[i].subs.map((x) => linhaVaga(x.marca, x.nome, x.vaga, { sub: true })).join('')).join('') : '<div class="cfg-dim">Ainda não roda etapas com o agente: o módulo só abre a conversa do ticket.</div>';
+  return card({ titulo: m.nome, corpo: corpo + (m.id === 'refinamento' ? dica('O i-have-adhd fica desligado nas execuções da extensão: as regras de escrita vêm do plugin da última linha.') : '') });
+};
 
-const marketplace = (m = {}) => card({ titulo: 'Marketplace da Ferreira Costa', corpo: (m.conectado
-  ? linha('Status', `<span class="cfg-st cfg-ok">● conectado e ativo</span> <span class="cfg-dim">${esc(MKT_FC.nome)}</span>`, '', botao(m.checando ? 'Verificando…' : '↻ Recarregar', { variante: 'contorno', acao: 'mktRecarregar' }))
-    + dica('Recarregar busca o catálogo e confere se há versão nova dos plugins instalados. Plugin com <span class="cfg-bol"></span> tem atualização.')
-  : linha('Status', m.conectado === false ? '<span class="cfg-st cfg-mal">⚠ não conectado</span>' : '<span class="cfg-st cfg-esp">verificando…</span>', '',
-    m.conectado === false ? botao('Conectar ao marketplace', { acao: 'mktConectar' }) : ''))
-  + (m.erro ? `<div class="cfg-mal">${esc(m.erro)}</div>` : '') });
-
-const plugins = (v) => [
-  marketplace(v.mkt),
-  porModulo(v),
-  card({ titulo: 'Essenciais da extensão', corpo: lista((v.plugins || []).filter((p) => p.base), v) }),
-  card({ titulo: 'Outros plugins e skills que a extensão usa', corpo: lista((v.plugins || []).filter((p) => !p.base), v)
-    + dica('Vale para as próximas conversas; as já abertas só pegam ao reabrir.') }),
-  card({ titulo: 'Extensão', corpo: dica('Encerra os refinamentos que o Claude está rodando em segundo plano. Nada é apagado; dá para retomar depois.')
-    + botao('Encerrar processos da extensão', { variante: 'contorno', acao: 'matarExtensao' }) })
-].join('\n');
+const plugins = (v) => {
+  const p = v.plug || {};
+  return [
+    marketplaces(p),
+    dica(`Etapas de cada módulo e o plugin ou skill que cada uma usa no ${esc(v.agente || 'agente')}. Editar lista o que está instalado e o catálogo dos marketplaces; a IA confere se o escolhido atende antes da troca.`),
+    ...etapas.MODULOS.map((m) => modulo(m, p))
+  ].join('\n');
+};
 
 // Cofre e Comandos (+ Emuladores) são telas de outros módulos: o clique volta com o prefixo do dono (cofre:, comandos:, emulador:).
 const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador']).map((m) => (require('../modulos/' + m).api?.html() || '<div class="cfg-dim">Indisponível.</div>').replace(/data-acao="/g, `data-acao="${m}:`)).join('');
@@ -197,8 +217,8 @@ const outras = (v) => (v.aba === 'cofre' ? ['cofre'] : ['comandos', 'emulador'])
 const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
     <span class="ct-titulo">Configurações</span></div>
-    ${menuAbas.menu(ABAS, { aba: v.aba || 'geral', secao: 'cfg', principal: 'cfg', dentro: true, acao: 'cfgAba' })}</header>
-  <main class="rolagem cfg">${v.aba === 'plugins' ? plugins(v) : v.aba === 'variaveis' ? variaveisTela(v) : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
+    ${menuAbas.menu(ABAS(v.comPlugins !== false), { aba: v.aba || 'geral', secao: 'cfg', principal: 'cfg', dentro: true, acao: 'cfgAba' })}</header>
+  <main class="rolagem cfg">${v.aba === 'plugins' && v.comPlugins !== false ? plugins(v) : v.aba === 'variaveis' ? variaveisTela(v) : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
 
 const CSS = `
   ${cardConfig.CSS}
@@ -210,6 +230,15 @@ const CSS = `
   .cfg-cam { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: var(--surface-2); }
   .cfg-add { margin-top: 6px; }
   .cfg-var { word-break: break-word; }
+  .cfg-etp { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
+  .cfg-sub { margin-left: 22px; border-top-style: dashed; }
+  .cfg-etp-p { flex: 1; min-width: 0; word-break: break-word; }
+  .cfg-etp-num { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: var(--r-pill); font-size: 10px; font-weight: 700; letter-spacing: .3px;
+    text-transform: uppercase; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .cfg-etp-todas { color: var(--text-dim); background: var(--surface-2); border-color: var(--border); }
+  .cfg-etp-nome { font-weight: 600; margin-right: 4px; }
+  .cfg-verif { margin: 0 0 6px; padding: 8px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); }
+  .cfg-verif ul { margin: 2px 0 4px; padding-left: 18px; }
   .cfg-provs { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
   .cfg-prov { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface-2); color: inherit; font: inherit; cursor: pointer; text-align: left; }
   .cfg-prov:hover:not(:disabled) { border-color: var(--accent); }
@@ -222,40 +251,55 @@ const CSS = `
 const criar = (ctx, { render, aoAbrir, voltar }) => {
   variaveis.vincular(ctx.globalState);
   let cfgAberta = false, trocando = false, cfgEstado = {}, cfgAba = 'geral', aposPull = false;
-  // Marketplace FC: conectado? e, com o catálogo recarregado, o commit da origem de cada plugin instalado difere do instalado (git ls-remote, sem pedir senha)?
-  let mkt = { conectado: null, checando: false, nova: {}, erro: '' };
-  const envGit = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' };
-  const claude = (...a) => exec(maestro.claudeBin(), a, { timeout: 60000, env: envGit });
-  const json = (t) => { try { return JSON.parse(t); } catch { return null; } };
-  async function mktChecar(recarregar) {
-    mkt = { ...mkt, checando: true, erro: '' }; render();
-    const conectado = !!json((await claude('plugin', 'marketplace', 'list', '--json')).out)?.some((m) => m.name === MKT_FC.nome);
-    const nova = {}; let erro = '';
-    if (conectado) {
-      if (recarregar) { const u = await claude('plugin', 'marketplace', 'update', MKT_FC.nome); if (!u.ok) erro = u.err; }
-      const disp = json((await claude('plugin', 'list', '--available', '--json')).out)?.available || [];
-      const reg = ler(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'), {}); const inst = reg.plugins || reg;
-      await Promise.all(disp.filter((a) => a.marketplaceName === MKT_FC.nome && a.source?.url && inst[a.pluginId]).map(async (a) => {
-        const sha = inst[a.pluginId][0]?.gitCommitSha;
-        const r = await exec('git', ['ls-remote', a.source.url, a.source.ref || 'HEAD'], { timeout: 15000, env: envGit });
-        const novo = r.ok && r.out.split(/\s/)[0];
-        if (sha && novo && novo !== sha) nova[a.pluginId] = true;
-      }));
-    }
-    if (cfg().get('pluginsAuto') !== false) erro = (await mktAuto(conectado, nova)) || erro;
-    mkt = { conectado: conectado || mkt.conectado, checando: false, nova, erro }; render();
+  // Aba Plugins: marketplaces, instalados, novidades e as verificações por IA em andamento (uma por vaga). Só com agente que tem plugins.
+  let plug = { marketplaces: null, instalados: {}, nova: {}, checando: false, erro: '', verif: {} };
+  const agp = () => agenteAtivo().plugins;
+  async function plugChecar(recarregar) {
+    const a = agp();
+    if (!a || plug.checando) return;
+    plug = { ...plug, checando: true, erro: '' }; render();
+    let erro = '';
+    if (recarregar) { const u = await a.atualizarMarketplaces(); if (!u.ok) erro = u.err; }
+    const [mks, inst, nova] = await Promise.all([a.marketplaces(), a.instalados(), a.novidades()]);
+    plug = { ...plug, marketplaces: mks, instalados: Object.fromEntries(inst.map((x) => [x.id, x])), nova };
+    if (cfg().get('pluginsAuto') !== false) erro = (await plugAuto(nova)) || erro;
+    plug = { ...plug, checando: false, erro }; render();
   }
-  // Plugins "auto" (fcx-qa-test-planning): instala se faltar (conectando o marketplace antes, se preciso) e atualiza se a origem tem commit novo.
-  async function mktAuto(conectado, nova) {
-    for (const u of USADOS.filter((x) => x.auto)) {
-      const faltando = !listarPlugins().find((x) => x.id === u.id)?.instalado;
-      if (!faltando && !nova[u.id]) continue;
-      if (!conectado) { const a = await claude('plugin', 'marketplace', 'add', MKT_FC.url); if (!a.ok) return `Marketplace: ${a.err}`; conectado = true; }
-      const r = await claude('plugin', faltando ? 'install' : 'update', u.id);
-      if (!r.ok) return `${u.id}: ${r.err}`;
-      delete nova[u.id]; mkt.conectado = true;
+  // Automático: plugin escolhido numa etapa que falta é instalado (do marketplace dele, que precisa estar adicionado); com versão nova, atualizado.
+  async function plugAuto(nova) {
+    const ids = [...new Set(Object.keys(etapas.VAGAS).map((vg) => etapas.escolha(vg)).filter((e) => e.tipo === 'plugin').map((e) => e.id))];
+    for (const id of ids) {
+      const falta = !plug.instalados[id];
+      if (!falta && !nova[id]) continue;
+      const mk = id.split('@')[1];
+      if (falta && mk && !(plug.marketplaces || []).some((m) => m.nome === mk)) return `${id} não instalado: adicione o marketplace ${mk} ou troque o plugin da etapa.`;
+      const r =await agp()[falta ? 'instalar' : 'atualizar'](id);
+      if (!r.ok) return `${id}: ${r.err.split('\n').pop()}`;
+      delete nova[id];
     }
+    plug.instalados = Object.fromEntries((await agp().instalados()).map((x) => [x.id, x]));
     return '';
+  }
+  // Plugins da extensão (não passam pelo marketplace), oferecidos no Editar.
+  const LOCAIS = () => [...new Map(Object.values(etapas.VAGAS).map((x) => x.padrao).filter((e) => e.tipo === 'local').map((e) => [e.id + (e.skill || ''), e])).values()];
+  const mesmaEscolha = (a, b) => a.tipo === b.tipo && a.id === b.id && (a.skill || '') === (b.skill || '') && (a.caminho || '') === (b.caminho || '');
+  const salvarVaga = async (vaga, e) => {
+    const t = { ...(cfg().get('pluginsEtapa') || {}) };
+    if (!e || mesmaEscolha(e, etapas.VAGAS[vaga].padrao)) delete t[vaga];
+    else t[vaga] = Object.fromEntries(Object.entries({ tipo: e.tipo, id: e.id, nome: e.nome, caminho: e.caminho, skill: e.skill }).filter(([, x]) => x));
+    await salvarCfg('pluginsEtapa', t);
+  };
+  // Verifica o candidato com a IA (baixa antes se ainda não está na máquina) e guarda o resultado para o card.
+  async function plugVerificar(vaga, op) {
+    plug.verif = { ...plug.verif, [vaga]: { estado: 'verificando', candidato: op } }; render();
+    try {
+      const pasta = op.origem === 'marketplace' ? await agp().baixar(op) : op.tipo === 'plugin' ? etapas.instalado(op.id) : op.caminho;
+      if (!pasta || !fs.existsSync(pasta)) throw new Error('não achei os arquivos do plugin');
+      const resultado = await agp().verificar({ etapas: etapas.usos(vaga), contrato: etapas.VAGAS[vaga].contrato, modelo: cfg().get('modelo') || '',
+        atual: { rotulo: etapas.rotulo(vaga), pasta: etapas.raiz(vaga) }, candidato: { rotulo: op.skill ? `${op.nome}:${op.skill}` : op.nome, pasta } });
+      plug.verif = { ...plug.verif, [vaga]: { estado: 'pronto', candidato: op, resultado } };
+    } catch (e) { plug.verif = { ...plug.verif, [vaga]: { estado: 'erro', candidato: op, erro: e.message } }; }
+    render();
   }
   const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira().join(', '), jiraBoard: boardsJira().join(', '),
     etapasExtras: [].concat(variaveis.ler('etapasExtras')), specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
@@ -271,9 +315,9 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     const atras = await git('rev-list', '--count', 'HEAD..@{u}');
     if (atras.ok && Number(atras.out) > 0) { motivos.push(`${atras.out} novidade(s) no repositório`); aposPull = true; } else aposPull = false;
     const novo = ler(path.join(REPO, 'plugin', 'plugins', 'sdd', '.claude-plugin', 'plugin.json'), {}).version;
-    const inst = listarPlugins().find((p) => p.id === 'sdd@crafting-local');
-    if (!inst?.instalado) motivos.push('plugin sdd não instalado');
-    else if (novo && inst.versao !== novo) motivos.push(`plugin sdd ${inst.versao} → ${novo}`);
+    const inst = versaoInstalada('sdd@crafting-local');
+    if (!inst) motivos.push('plugin sdd não instalado');
+    else if (novo && inst !== novo) motivos.push(`plugin sdd ${inst} → ${novo}`);
     if (['documentos', 'decisoes', 'crafting-testes', 'notificacoes'].some((h) => !fs.existsSync(path.join(os.homedir(), '.claude', 'hooks', `${h}.py`)))) motivos.push('hooks faltando');
     const antes = JSON.stringify(avisoInstalacao);
     avisoInstalacao = motivos.length ? { motivos } : null;
@@ -286,9 +330,9 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     async agente() {
       const v = await exec(maestro.claudeBin(), ['--version']);
       if (!v.ok) return { ok: false, curto: 'Claude não encontrado', texto: 'Instale o Claude Code e faça login (claude no terminal).' };
-      const qa = pluginInstalado('fcx-qa-test-planning@');
-      return { ok: !!sddState(), curto: sddState() ? '' : 'plugin sdd faltando',
-        texto: `${v.out} · plugin sdd ${sddState() ? '✅' : '❌ (claude plugin install sdd@crafting-local)'} · QA (fcx-qa-test-planning) ${qa ? '✅' : '⚠ sem ele o passo 6 segue sem o método de QA'}` };
+      const qa = etapas.raiz('refinamento.metodoQa'), nomeQa = etapas.rotulo('refinamento.metodoQa'), nomeSdd = etapas.rotulo('refinamento.sdd');
+      return { ok: !!sddState(), curto: sddState() ? '' : `${nomeSdd} faltando`,
+        texto: `${v.out} · spec (${nomeSdd}) ${sddState() ? '✅' : '❌ (Configurações → Plugins)'} · plano de testes (${nomeQa}) ${qa ? '✅' : '⚠ sem ele o passo 6 segue sem o método de QA'}` };
     },
     async jira() {
       if (!(await jira.conectado(ctx.secrets))) return { ok: false, conectado: false, curto: 'sem credenciais', texto: 'Escolha a ferramenta e conecte a conta.' };
@@ -362,7 +406,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     cfgAba({ id }) {
       cfgAba = ['cofre', 'comandos', 'plugins', 'variaveis'].includes(id) ? id : 'geral';
       require('../modulos/cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
-      if (cfgAba === 'plugins' && !mkt.checando) mktChecar(false);
+      if (cfgAba === 'plugins' && !agp()) cfgAba = 'geral';
+      if (cfgAba === 'plugins') plugChecar(false);
       if (cfgAba === 'comandos') { require('../modulos/comandos').api?.atualizar(); require('../modulos/emulador').api?.atualizar(); }
       render();
     },
@@ -371,30 +416,79 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       t.show();
       t.sendText(`${aposPull ? 'git pull --ff-only && ' : ''}./instalar.sh; echo; echo "Feche TODAS as janelas do VS Code e abra de novo. (Enter fecha este terminal)"; read; exit`);
     },
-    async mktConectar() {
-      const r = await claude('plugin', 'marketplace', 'add', MKT_FC.url);
-      if (!r.ok) vscode.window.showErrorMessage(`Não consegui conectar ao marketplace: ${r.err}`);
-      mktChecar(true);
+    async mktAdicionar() {
+      const origem = await vscode.window.showInputBox({ title: 'Adicionar marketplace', ignoreFocusOut: true, placeHolder: 'https://…/marketplace.json · /caminho/local · dono/repositorio',
+        prompt: 'URL do marketplace.json, pasta local ou repositório GitHub. Marketplace privado usa a credencial git da máquina.' });
+      if (!origem?.trim()) return;
+      const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Adicionando marketplace…' }, () => agp().adicionarMarketplace(origem.trim()));
+      if (!r.ok) vscode.window.showErrorMessage(`Não consegui adicionar o marketplace: ${r.err.split('\n').pop()}`);
+      plugChecar(false);
     },
-    async pluginAuto() { await salvarCfg('pluginsAuto', cfg().get('pluginsAuto') === false); render(); if (cfg().get('pluginsAuto') !== false) mktChecar(false); },
-    mktRecarregar() { if (!mkt.checando) mktChecar(true); },
+    async mktRemover({ id }) {
+      const usados = Object.keys(etapas.VAGAS).filter((vg) => etapas.escolha(vg).id.endsWith(`@${id}`)).flatMap((vg) => etapas.usos(vg));
+      const ok = await vscode.window.showWarningMessage(`Remover o marketplace ${id}?`, { modal: true,
+        detail: usados.length ? `Plugins dele são usados em: ${usados.join(' · ')}. Eles param de receber atualização.` : 'Os plugins instalados dele param de receber atualização.' }, 'Remover');
+      if (!ok) return;
+      const r = await agp().removerMarketplace(id);
+      if (!r.ok) vscode.window.showErrorMessage(`Não consegui remover ${id}: ${r.err.split('\n').pop()}`);
+      plugChecar(false);
+    },
+    async pluginAuto() { await salvarCfg('pluginsAuto', cfg().get('pluginsAuto') === false); render(); if (cfg().get('pluginsAuto') !== false) plugChecar(false); },
+    mktRecarregar() { plugChecar(true); },
     async pluginAtualizar({ id }) {
-      const r = await claude('plugin', 'update', id);
+      const r = await agp().atualizar(id);
       if (!r.ok) vscode.window.showErrorMessage(`Não consegui atualizar ${id}: ${r.err}`);
       else vscode.window.showInformationMessage(`${id} atualizado. Reabra as conversas para usar a versão nova.`);
-      mktChecar(false);
+      plugChecar(false);
     },
     async pluginAlternar({ id }) {
-      const p = listarPlugins().find((x) => x.id === id);
+      const p = plug.instalados[id];
       if (!p) return;
-      const r = await exec(maestro.claudeBin(), ['plugin', p.ligado ? 'disable' : 'enable', id]);
+      const r = await agp().alternar(id, !p.ligado);
       if (!r.ok) vscode.window.showErrorMessage(`Não consegui ${p.ligado ? 'desligar' : 'ligar'} ${id}: ${r.err}`);
-      render();
+      plugChecar(false);
     },
-    matarExtensao() {
-      const n = maestro.matarTodos();
-      vscode.window.showInformationMessage(n ? `${n} processo${n > 1 ? 's' : ''} do Claude encerrado${n > 1 ? 's' : ''}.` : 'Nenhum processo da extensão rodando.');
-      render();
+    // Editar: lista instalados (cada skill), skills avulsas, plugins da extensão e o catálogo; o escolhido passa pela verificação da IA.
+    async plugEditar({ id: vaga }) {
+      if (!etapas.VAGAS[vaga] || plug.verif[vaga]?.estado === 'verificando') return;
+      const ops = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Buscando plugins e skills…' }, () => agp().opcoes(LOCAIS()));
+      const atual = etapas.escolha(vaga);
+      const GRUPO = { instalado: 'Instalados', skill: 'Skills na máquina', extensao: 'Da extensão', marketplace: 'Nos marketplaces (instala ao usar)' };
+      const itens = Object.keys(GRUPO).flatMap((g) => {
+        const l = ops.filter((o) => o.origem === g);
+        return l.length ? [{ label: GRUPO[g], kind: vscode.QuickPickItemKind.Separator }, ...l.map((o) => ({
+          label: `${mesmaEscolha(o, atual) ? '$(check) ' : ''}${o.skill && o.tipo !== 'skill' ? `${o.nome}:${o.skill}` : o.nome}`,
+          description: g === 'marketplace' ? o.id : o.descricao, detail: g === 'marketplace' ? o.descricao.slice(0, 160) : undefined, op: o }))] : [];
+      });
+      const esc_ = await vscode.window.showQuickPick(itens, { title: `${etapas.usos(vaga).join(' · ')} · usa hoje: ${etapas.rotulo(vaga)}`, placeHolder: 'Escolha o substituto (a IA confere se atende antes de trocar)', matchOnDescription: true, matchOnDetail: true, ignoreFocusOut: true });
+      const op = /** @type {any} */ (esc_)?.op;
+      if (!op || mesmaEscolha(op, atual)) return;
+      plugVerificar(vaga, op);
+    },
+    // Usar o verificado: instala se veio do catálogo, escolhe a skill (plugin com várias) e grava a troca. Vale na próxima execução da etapa.
+    async plugUsar({ id: vaga }) {
+      const x = plug.verif[vaga];
+      if (!x || x.estado !== 'pronto') return;
+      const op = { ...x.candidato };
+      if (op.origem === 'marketplace') {
+        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Instalando ${op.id}…` }, () => agp().instalar(op.id));
+        if (!r.ok) return vscode.window.showErrorMessage(`Não consegui instalar ${op.id}: ${r.err.split('\n').pop()}`);
+      }
+      if (op.tipo === 'plugin' && !op.skill) {
+        const sk = agp().skillsDoPlugin(etapas.instalado(op.id));
+        op.skill = sk.length > 1 ? await vscode.window.showQuickPick(sk, { title: `Qual skill de ${op.nome} usar?`, ignoreFocusOut: true }) : sk[0];
+        if (sk.length > 1 && !op.skill) return;
+      }
+      await salvarVaga(vaga, op);
+      delete plug.verif[vaga];
+      vscode.window.showInformationMessage(`${etapas.rotulo(vaga)} passa a ser usado em: ${etapas.usos(vaga).join(' · ')}. Vale a partir da próxima execução.`);
+      plugChecar(false);
+    },
+    plugDescartar({ id: vaga }) { delete plug.verif[vaga]; render(); },
+    async plugPadrao({ id: vaga }) {
+      const ok = await vscode.window.showWarningMessage(`Voltar para ${etapas.VAGAS[vaga].padrao.nome}?`, { modal: true, detail: `Vale para: ${etapas.usos(vaga).join(' · ')}.` }, 'Voltar ao padrão');
+      if (!ok) return;
+      await salvarVaga(vaga, null); render();
     },
     config() { cfgAba = 'geral'; cfgAberta = true; aoAbrir(); checar(); },
     configFechar() { cfgAberta = false; render(); },
@@ -596,9 +690,9 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado, conexao: { ativo: { id: require('../provedores').provedorAtivo().id, nome: jira.nome }, trocando },
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plug: { ...plug, auto: cfg().get('pluginsAuto') !== false }, agente: agenteAtivo().nome, comPlugins: !!agp(), variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], valores: valoresCfg(), estado: cfgEstado, conexao: { ativo: { id: require('../provedores').provedorAtivo().id, nome: jira.nome }, trocando },
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };
 
-module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, boardsJira, jiraPendencias, pendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };
+module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, boardsJira, jiraPendencias, pendencias, reposAuto, SPECS_PADRAO, sddState, aviso, _teste: { geral, plugins } };
