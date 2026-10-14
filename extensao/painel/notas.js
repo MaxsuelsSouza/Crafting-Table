@@ -9,7 +9,7 @@ const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Editor de notas (aba Docs do ticket): <pasta do ticket ou da conversa>/.notas.html e .notas.json (aparência).
 // HTML em vez de .md: título e listas vêm do editor do próprio navegador (contenteditable).
 // Aparência da nota, copiada do Atelier (makeStickyNoteContent / typography.ts): post-it amarelo, Mono 14.
-const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: FC.digitalSoft, alinhamento: 'left' };
+const ESTILO_PADRAO = { fonte: 'mono', tamanho: 14, corTexto: null, corPapel: FC.bg, alinhamento: 'left' };
 
 // Peças do editor (barras de formatação, busca, papel e o script), também usadas na aba Docs do ticket (componentes/aba-docs.js).
 // O script fala com a extensão por { tipo: 'salvar' | 'estilo' | 'mencionar' | 'colar', sid } e recebe { tipo: 'colado', texto }.
@@ -267,7 +267,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   const DEGRAUS = [11, 12, 14, 16, 18, 24, 32, 40, 56, 72, 96];
   const CORES_TEXTO = [['${FC.text}','Claro'],['${FC.bg}','Escuro'],['${FC.claroMuted}','Cinza'],['${FC.accent}','Verde'],['${FC.green}','Verde claro'],
     ['${FC.digital}','Amarelo']];
-  const CORES_PAPEL = [['${FC.digitalSoft}','Amarelo'],['${FC.bgSoft}','Escuro'],['${FC.text}','Claro'],['${FC.claroBgSoft}','Creme'],['${FC.claroRule}','Cinza'],
+  const CORES_PAPEL = [['${FC.bg}','Preto'],['${FC.digitalSoft}','Amarelo'],['${FC.bgSoft}','Escuro'],['${FC.text}','Claro'],['${FC.claroBgSoft}','Creme'],['${FC.claroRule}','Cinza'],
     ['${FC.accent}','Verde'],['${FC.green}','Verde claro'],['${FC.digital}','Digital']];
   const limitar = (n) => Math.min(200, Math.max(8, Math.round(n)));
   const degrau = (atual, d) => limitar((d === 1 ? DEGRAUS : [...DEGRAUS].reverse()).find((x) => (d === 1 ? x > atual : x < atual)) ?? atual + d);

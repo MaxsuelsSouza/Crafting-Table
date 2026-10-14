@@ -46,6 +46,13 @@ const st = Object.fromEntries(qa.cenarios(d3).cenarios.map((c) => [c.id, c.arqui
 assert.deepStrictEqual(st, { CT01: 'desatualizado', CT03: 'pendente', CT02: 'arquivado' });
 assert.ok(qa.refazer(d3, 'CT01') && qa.cenarios(d3).cenarios[0].status === 'pendente' && qa.cenarios(d3).cenarios[0].execucoes.length === 1);
 assert.ok(!qa.refazer(d3, 'CT02')); // arquivado não volta
+// não executado por decisão do usuário: exige motivo, sai da fila, não bloqueia a publicação, refazer devolve
+assert.ok(!qa.dispensar(d3, 'CT01', '  ') && !qa.dispensar(d3, 'CT02', 'x'));
+assert.ok(qa.dispensar(d3, 'CT03', 'fora do escopo', 'excluir'));
+{ const c = qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03'); assert.ok(c.status === 'dispensado' && c.dispensa.motivo === 'fora do escopo' && c.dispensa.em && c.dispensa.tipo === 'excluir'); assert.ok(!qa.RESULTADOS.includes(c.status)); }
+assert.ok(!qa.cenarios(d3).cenarios.some((c) => c.id === 'CT03' && ['pendente', 'desatualizado'].includes(c.status)));
+assert.ok(qa.podePublicar([{ status: 'passou' }, { status: 'dispensado' }]) && !qa.podePublicar([{ status: 'dispensado' }]));
+assert.ok(qa.refazer(d3, 'CT03') && qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03').status === 'pendente' && !qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03').dispensa);
 assert.ok(!qa.html(d3).includes('Cenários · plano')); // sem aprovação, a lista não aparece
 
 // Ao vivo: mais recente em cima, agrupado por etapa (título no topo do bloco).
@@ -260,7 +267,8 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.ok(fs.readFileSync(path.join(d6, qa.LOG_AMB), 'utf8').includes('dotnet: erro ao subir a API'));
   const r6 = qa.resumoErroAmbiente(d6);
   assert.ok(r6.titulo.includes('api') && r6.detalhe.includes('porta 5111 fechada') && r6.analise === 'Causa: RabbitMQ fora do ar.');
-  assert.ok(!qa.html(d6).includes('Ambiente')); // ambiente só no rodapé
+  assert.ok(!qa.html(d6).includes('<b>Ambiente')); // ambiente só no rodapé (a caixa de etapas lista o nome, sem cartão)
+  assert.ok(qa.html(d6).includes('Etapas do QA'));
   // Sem Comandos nas Configurações, o log registra a tentativa e cai no script da skill.
   assert.ok(/Nenhum comando cadastrado/.test(fs.readFileSync(path.join(d6, qa.LOG_AMB), 'utf8')));
   assert.deepStrictEqual(qa.cenarios(d6).cenarios.map((c) => c.status), ['pendente', 'pendente']); // nada executou
@@ -297,5 +305,17 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   assert.ok(tudo.includes('Recolher') && tudo.includes('>a<') && tudo.includes('linha 44') && tudo.includes('expandido'));
   viv.alternarExpandido(d9);
   assert.ok(!viv.expandido(d9));
+  assert.ok(qa.podePublicar([{ status: 'passou' }, { status: 'falhou', arquivado: true }]) && !qa.podePublicar([{ status: 'passou' }, { status: 'falhou' }]) && !qa.podePublicar([{ status: 'passou' }, { status: 'pendente' }]) && !qa.podePublicar([]));
   console.log('ok execução');
 })();
+// Decisões do usuário no QA -> .decisoes.json (aba Decisões)
+{
+  const dd = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-dec-'));
+  qa.registrarDecisao(dd, 'Usuário aprovou o planejamento', { ticket: 'WMS-1' });
+  qa.registrarDecisao(dd, 'Usuário pausou os testes', { ticket: 'WMS-1', motivo: 'x' });
+  const l = JSON.parse(fs.readFileSync(path.join(dd, '.decisoes.json'), 'utf8'));
+  assert.strictEqual(l.length, 2);
+  assert.ok(l[0].titulo === 'Usuário aprovou o planejamento' && l[0].origem === 'usuario' && l[0].resumo.startsWith('WMS-1') && l[0].data && l[1].detalhes.motivo === 'x');
+  assert.ok(require('../componentes/aba-decisoes').corpoAba({ decisoes: l.slice().reverse() }).includes('Usuário pausou os testes'));
+  console.log('ok decisões');
+}

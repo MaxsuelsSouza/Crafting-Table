@@ -36,11 +36,18 @@ function registrarDecisao(dir, l) {
 // O histórico da sessão (~/.claude/projects/<cwd>/<sid>.jsonl) é procurado em qualquer projeto: o claude -p grava no do seu cwd.
 function anexarConversa(dir, sid, titulo) {
   try {
-    if (!sid || !require('../infra/tickets').vincularPorPasta(sid, dir)) return false;
+    if (!sid) return false;
+    const ticket = require('../infra/tickets').vincularPorPasta(sid, dir);
+    if (!ticket) { // fora de pasta de ticket (Mapear com IA etc.): a aba Conversas lê esta lista (modulos/conversas.js listar)
+      const lista = path.join(require('../infra/area-ia').RAIZ, 'avulsas.txt');
+      fs.mkdirSync(path.dirname(lista), { recursive: true });
+      const ja = fs.existsSync(lista) && fs.readFileSync(lista, 'utf8').split('\n').includes(sid);
+      if (!ja) fs.appendFileSync(lista, sid + '\n');
+    }
     if (titulo) {
       const raiz = path.join(require('os').homedir(), '.claude', 'projects'), chave = require('../infra/tickets').abaDaPasta(dir)?.chave;
       const arq = fs.readdirSync(raiz).map((p) => path.join(raiz, p, `${sid}.jsonl`)).find((f) => fs.existsSync(f));
-      if (arq) fs.appendFileSync(arq, (fs.readFileSync(arq, 'utf8').endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: `${chave} · ${titulo}` }) + '\n');
+      if (arq) fs.appendFileSync(arq, (fs.readFileSync(arq, 'utf8').endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: chave ? `${chave} · ${titulo}` : titulo }) + '\n');
     }
     return true;
   } catch { return false; }

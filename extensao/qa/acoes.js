@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const qa = require('./qa');
+const canaisLog = new Map(); // arquivo de log -> OutputChannel
 const maestro = require('../painel/maestro');
 const { areaIA } = require('../infra/area-ia');
 const aoVivo = require('../componentes/ao-vivo');
@@ -99,16 +100,31 @@ const botaoPlay = (dir, b) => (qa.rodando(dir)
   : `<button class="ct-ico ct-play" ${b('qaPlay')} title="Executar QA: planejamento, ambiente, massa e cenários pendentes (Ao vivo em Evidências)">${IC.play}</button>`);
 
 // Caixa do ambiente no rodapé (depois de Comandos). Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise.
+// Nada rodando: sem emulador e sem nenhum Comando (API, Metro) ligado.
+const nadaRodando = () => { try { return !require('../modulos/emulador').emuladorRodando() && !(require('../modulos/comandos').api?.lista() || []).some((c) => c.rodando); } catch { return false; } };
 const caixaAmbiente = (dir, acao) => {
   const amb = qa.statusAmbiente(dir);
   return !amb ? '' : amb.tipo === 'preparando'
     ? `<button class="ct-amb" ${acao}="qaAmbLog" title="Preparando API, Metro, emulador e app: clique para ver o log ao vivo"><span class="ct-luz prep"></span>Preparando ambiente</button>`
     : amb.tipo === 'erro'
       ? `<button class="ct-amb" ${acao}="${amb.analisando ? 'qaAmbLog' : 'qaAmbErro'}" title="${amb.analisando ? 'O Claude está analisando o erro: clique para ver o log ao vivo' : 'Ver o erro e a análise do Claude'}"><span class="ct-luz erro ${amb.nova || amb.analisando ? 'pisca' : ''}"></span>Ambiente parou${amb.analisando ? ' · analisando' : ''}${amb.nova ? '<span class="ct-badge ct-badge-erro">1</span>' : ''}</button>`
-      : `<button class="ct-amb" ${acao}="qaAmbLog" title="Ambiente pronto: clique para ver o log"><span class="ct-luz ok"></span>Ambiente</button>`;
+      : nadaRodando()
+        ? `<button class="ct-amb" ${acao}="qaAmbLog" title="Nada rodando (API, Metro, emulador): clique para ver o log"><span class="ct-luz erro"></span>Ambiente</button>`
+        : `<button class="ct-amb" ${acao}="qaAmbLog" title="Ambiente pronto: clique para ver o log"><span class="ct-luz ok"></span>Ambiente</button>`;
 };
 
 // Contrato: `acoes(servicos)` devolve { nome: handler }; o painel espalha no seu `acoes`. Sem `this`: chamadas entre handlers refazem o objeto.
+// Pedir ajuste / Excluir (card do cenário): pede o motivo, marca "não executado por decisão do usuário" e registra na aba Decisões.
+// Pedir ajuste só marca e guarda o motivo (não aciona o Claude; para ele aplicar a mudança use "Pedir ajuste" do planejamento, qaPlanoMudar).
+async function dispensarCenario(s, id, tipo) {
+  const t = s.ticketAberto();
+  if (!t || typeof id !== 'string') return;
+  const ajuste = tipo === 'ajuste', dir = s.pastaAba(t.id);
+  const motivo = await vscode.window.showInputBox({ title: `${ajuste ? 'Pedir ajuste do' : 'Excluir o'} cenário ${id}`, prompt: 'Motivo (obrigatório): o cenário deixa de ser executado por decisão sua', ignoreFocusOut: true, validateInput: (v) => (v.trim() ? null : 'Informe o motivo') });
+  if (!motivo?.trim() || !qa.dispensar(dir, id, motivo, tipo)) return;
+  aoVivo.registrarDecisao(dir, { texto: `${ajuste ? 'Ajuste pedido' : 'Cenário excluído'}: ${id} não será executado`, detalhe: motivo.trim(), etapa: 'QA' });
+  s.render();
+}
 const acoes = (s) => ({
   // ▶ do QA: abre Evidências (Ao vivo) e confere o planejamento no Jira (qa.js). Sem plano, o cartão bloqueia e oferece criar.
   // ▶ do QA: só procura o planejamento (Ao vivo em Evidências). Executar é o Dar início do cartão.
@@ -116,6 +132,7 @@ const acoes = (s) => ({
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;
     s.pedirSecao(EVID);
+    if (qa.estado(s.pastaAba(t.id)).fase === 'plano_aprovado') return acoes(s).qaIniciar(); // plano já aprovado: ▶ continua/retoma, igual ao botão do cartão
     await qa.verificarPlano(s.pastaAba(t.id), t.chave, filhosDe(s, t));
     s.render();
   },
@@ -123,6 +140,7 @@ const acoes = (s) => ({
   async qaIniciar() {
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;
+    qa.registrarDecisao(s.pastaAba(t.id), qa.estado(s.pastaAba(t.id)).execucao === 'pausado' ? 'Usuário retomou os testes' : 'Usuário iniciou os testes', { ticket: t.chave });
     await qa.executar(s.pastaAba(t.id), depsQa(s, t));
     s.render();
   },
@@ -141,15 +159,20 @@ const acoes = (s) => ({
     if (escolha === 'Log ao vivo') acoes(s).qaAmbLog();
     else if (escolha) acoes(s).qaAmbAnalisar();
   },
-  qaAmbLog() {
+  qaAmbLog() { // canaisLog: um canal e um watch por log
     const t = s.ticketAberto();
     if (!t) return;
     const dir = s.pastaAba(t.id), a = qa.ambiente(dir), cmds = require('../modulos/comandos').api;
     for (const nome of a?.terminais || []) { const b = cmds?.lista().find((x) => x.nome === nome); if (b?.rodando) cmds?.acao({ acao: 'mostrar', id: b.id }); }
-    const nome = `QA ${t.chave} · log do ambiente`;
-    const term = vscode.window.terminals.find((x) => x.name === nome)
-      || vscode.window.createTerminal({ name: nome, shellPath: 'tail', shellArgs: ['-n', '+1', '-F', path.join(dir, qa.LOG_AMB)] });
-    term.show();
+    // Output channel (sem terminal): despeja o .ambiente.log e segue acompanhando o que o preparo gravar.
+    const f = path.join(dir, qa.LOG_AMB);
+    if (canaisLog.has(f)) return canaisLog.get(f).show(true); // já aberto: só mostra (o watch segue gravando)
+    const ch = vscode.window.createOutputChannel(`QA ${t.chave} · log do ambiente`);
+    canaisLog.set(f, ch);
+    let lido = 0;
+    const ler = () => { try { const b = fs.readFileSync(f); if (b.length < lido) lido = 0; ch.append(b.subarray(lido).toString('utf8')); lido = b.length; } catch { /* log ainda não existe */ } };
+    ler(); fs.watchFile(f, { interval: 700 }, ler); // ponytail: o watch vive até a janela fechar; um por clique
+    ch.show(true);
   },
   qaPlanoAbrir() {
     const t = s.ticketAberto(), v = t && qa.versaoAtual(s.pastaAba(t.id));
@@ -159,7 +182,7 @@ const acoes = (s) => ({
     s.render();
   },
   qaPlanoMencionar() { const t = s.ticketAberto(), v = t && qa.versaoAtual(s.pastaAba(t.id)); if (v) require('../infra/claude').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`); },
-  qaPlanoAprovar() { const t = s.ticketAberto(); if (t) { qa.aprovar(s.pastaAba(t.id)); s.render(); } },
+  qaPlanoAprovar() { const t = s.ticketAberto(); if (t) { if (qa.aprovar(s.pastaAba(t.id))) qa.registrarDecisao(s.pastaAba(t.id), 'Usuário aprovou o planejamento', { ticket: t.chave }); s.render(); } },
   // Pedir mudança: o Claude edita o qa-plano.md local e a extensão republica no provedor; ao terminar, a versão nova volta para aprovação.
   async qaPlanoMudar() {
     const t = s.ticketAberto();
@@ -168,6 +191,7 @@ const acoes = (s) => ({
     if (!v) return;
     const pedido = await vscode.window.showInputBox({ title: `Mudança no planejamento ${v.subtarefa} · v${v.v}`, prompt: `O Claude edita o plano, a Crafting Table republica no ${jira.nome} e gera a versão nova para você aprovar`, ignoreFocusOut: true });
     if (!pedido?.trim()) return;
+    qa.registrarDecisao(dir, 'Usuário pediu ajuste no planejamento', { ticket: t.chave, pedido: pedido.trim() });
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, qa.PLANO_LOCAL), qa.mdDaVersao(dir, v)); // a IA edita o arquivo local; a extensão republica
     const ok = await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptMudanca(dir, pedido.trim(), rasc), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`, mudanca: true });
@@ -181,9 +205,11 @@ const acoes = (s) => ({
     const dir = s.pastaAba(t.id), sub = qa.estado(dir).subtarefa, r = qa.cenarios(dir);
     const feitos = r.cenarios.filter((c) => !c.arquivado && qa.RESULTADOS.includes(c.status));
     if (!sub || !feitos.length) return;
+    if (!qa.podePublicar(r.cenarios)) return vscode.window.showWarningMessage('Só é possível publicar quando todos os cenários estiverem com resultado OK (passou).');
     const arqs = feitos.flatMap((c) => qa.arquivosDe(dir, c.execucoes.at(-1)).map((f) => [c.id, f]));
     const ok = await vscode.window.showWarningMessage(`Publicar no ${sub}: comentário com ${feitos.length} cenário(s) e ${arqs.length} evidência(s) anexada(s)?`, { modal: true }, 'Publicar');
     if (ok !== 'Publicar') return;
+    qa.registrarDecisao(dir, `Usuário publicou o resultado no ${sub}`, { ticket: t.chave });
     const ROT = { passou: '✅ Passou', falhou: '❌ Falhou', bloqueado: '⛔ Bloqueado' };
     const md = [`**Resultado do QA · plano v${r.planoVersao}** (Crafting Table)`, '', '| Cenário | Resultado | Observação |', '| --- | --- | --- |',
       ...feitos.map((c) => `| ${c.id} · ${c.titulo.replace(/\|/g, '/')} | ${ROT[c.status]} | ${(c.execucoes.at(-1)?.nota || '').replace(/\|/g, '/')} |`)].join('\n');
@@ -195,6 +221,13 @@ const acoes = (s) => ({
     s.render();
   },
   qaMassaEstado({ id, op }) { const t = s.ticketAberto(); try { if (t && typeof id === 'string') qa.massaEstado(s.pastaAba(t.id), id, op); } catch (e) { vscode.window.showErrorMessage(e.message); } s.render(); },
+  async qaMassaCopiar({ id, key }) {
+    const t = s.ticketAberto(), i = t && qa.massa(s.pastaAba(t.id)).itens.find((x) => x.id === id);
+    if (!i || !(key in (i.dados || {}))) return;
+    const v = i.dados[key];
+    await vscode.env.clipboard.writeText(typeof v === 'object' ? JSON.stringify(v) : String(v));
+    vscode.window.setStatusBarMessage(`${key} copiado`, 2000);
+  },
   qaMassaEditar() {
     const t = s.ticketAberto();
     if (!t) return;
@@ -212,8 +245,12 @@ const acoes = (s) => ({
     if (ok) qa.mudar(dir, { fase: 'criando' });
     s.render();
   },
+  // Pedir ajuste / Excluir (card do cenário): pede o motivo, marca "não executado por decisão do usuário" e registra na aba Decisões.
+  // Pedir ajuste só marca e guarda o motivo (não aciona o Claude; para ele aplicar a mudança use "Pedir ajuste" do planejamento, qaPlanoMudar).
+  qaCenarioAjuste({ id }) { return dispensarCenario(s, id, 'ajuste'); },
+  qaCenarioExcluir({ id }) { return dispensarCenario(s, id, 'excluir'); },
   qaRefazer({ id }) { const t = s.ticketAberto(); if (t && typeof id === 'string') qa.refazer(s.pastaAba(t.id), id); },
-  qaParar() { const t = s.ticketAberto(); if (t) { qa.pausar(s.pastaAba(t.id)); s.render(); } },
+  qaParar() { const t = s.ticketAberto(); if (t) { qa.registrarDecisao(s.pastaAba(t.id), 'Usuário pausou os testes', { ticket: t.chave }); qa.pausar(s.pastaAba(t.id)); s.render(); } },
 });
 
-module.exports = { acoes, botaoPlay, caixaAmbiente };
+module.exports = { acoes, botaoPlay, caixaAmbiente, nadaRodando };

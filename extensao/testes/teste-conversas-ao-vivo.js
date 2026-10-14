@@ -21,7 +21,8 @@ sessao('s2'); sessao('s3');
 anexarConversa(tickets.pasta('WMS-9'), 's2', 'Spec'); anexarConversa(tickets.pasta('WMS-9', 'qa'), 's3');
 assert.deepStrictEqual([tickets.listaDa('s2'), tickets.listaDa('s3')], ['refinamento', 'qa']);
 // fora de pasta de ticket (ou ticket inexistente): nada acontece
-assert.strictEqual(anexarConversa(path.join(home, 'qualquer'), 's9'), false);
-assert.strictEqual(anexarConversa(tickets.pasta('WMS-0', 'qa'), 's9'), false);
+assert.strictEqual(anexarConversa(path.join(home, 'qualquer'), 's9'), true); // avulsa: vai para a lista de conversas sem ticket
+assert.ok(fs.readFileSync(path.join(home, '.cache', 'crafting-table', 'avulsas.txt'), 'utf8').includes('s9'));
+
 assert.strictEqual(anexarConversa(dirInc, ''), false);
 console.log('ok');

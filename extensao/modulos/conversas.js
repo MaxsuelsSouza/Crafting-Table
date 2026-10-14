@@ -51,7 +51,11 @@ function listar() {
   const tk = require('../infra/tickets');
   const doTicket = sessao.foco() && tk.ler(sessao.foco())?.conversas.filter((sid) => tk.listaDa(sid) === sessao.focoLista());
   if (doTicket) nomes = doTicket.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))));
-  else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return []; }
+  else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { nomes = []; }
+  if (!doTicket) { // sessões em segundo plano fora de pasta de ticket (anexarConversa): de qualquer projeto
+    let av = []; try { av = fs.readFileSync(path.join(require('../infra/area-ia').RAIZ, 'avulsas.txt'), 'utf8').split('\n').filter(Boolean); } catch {}
+    nomes = [...new Set([...nomes, ...av.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))))])];
+  }
   return nomes.map((n) => {
     const sid = n.slice(0, -6);
     const arq = historico(sid);
