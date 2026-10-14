@@ -81,7 +81,19 @@ const branchesErradas = (repos) => repos.flatMap((r) => {
   let atual; try { atual = git(r.caminho, ['rev-parse', '--abbrev-ref', 'HEAD']); } catch { atual = '(não é um repositório git)'; }
   return atual === esperada ? [] : [{ ...r, esperada, atual }];
 });
-const TROCAR = 'Trocar para a branch correta e continuar', SEGUIR = 'Continuar assim mesmo';
+// Etapa 3: repositórios já na branch de produção ficam iguais a origin/<branch> (fetch + pull --ff-only). Devolve os problemas ("repo: motivo"); vazio = tudo certo.
+const sincronizarRepos = (repos, anotar = () => {}) => repos.flatMap((r) => {
+  const esperada = BRANCH_DA_CAMADA[r.camada], nome = path.basename(r.caminho);
+  if (!esperada) return [];
+  try {
+    if (git(r.caminho, ['rev-parse', '--abbrev-ref', 'HEAD']) !== esperada) return []; // "Continuar assim mesmo" em outra branch: não mexe
+    git(r.caminho, ['fetch', 'origin', esperada]);
+    if (!Number(git(r.caminho, ['rev-list', '--count', `${esperada}..origin/${esperada}`]))) return [];
+    git(r.caminho, ['pull', '--ff-only', 'origin', esperada]); anotar(`${nome}: pull de origin/${esperada}`);
+    return [];
+  } catch (x) { return [`${nome} (${esperada}): ${String(x.stderr || x.message).trim().split('\n')[0]}`]; }
+});
+const TROCAR = 'Trocar para a branch correta e continuar', SEGUIR = 'Continuar assim mesmo', TENTAR = 'Tentar de novo';
 
 // ── Execução ──
 const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
@@ -101,6 +113,14 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
     if (erradas.length) {
       mudar(dir, { etapa: n, fase: 'pausado', pausa: { motivo: 'branch', pergunta: `Repositório fora da branch correta: ${erradas.map((r) => `${path.basename(r.caminho)} (${r.camada}) está em ${r.atual}, o esperado é ${r.esperada}`).join('; ')}. Em outra branch o código pode mostrar um cenário diferente do incidente.`, opcoes: [TROCAR, SEGUIR] } });
       aoVivo.anotar(dir, { tipo: 'aviso', texto: `Mergulho pausado: ${erradas.map((r) => `${path.basename(r.caminho)} em ${r.atual} (esperado ${r.esperada})`).join(', ')}` });
+      return s.render();
+    }
+  }
+  if (n === 3 && !estado(dir).syncOk) { // e atualizados com a origem (pull) antes de ler o código
+    const falhas = sincronizarRepos(s.reposDe(t), (texto) => aoVivo.anotar(dir, { tipo: 'acao', texto }));
+    if (falhas.length) {
+      mudar(dir, { etapa: n, fase: 'pausado', pausa: { motivo: 'sync', pergunta: `Não consegui atualizar com a origem: ${falhas.join('; ')}. Código desatualizado pode não refletir o que está em produção.`, opcoes: [TENTAR, SEGUIR] } });
+      aoVivo.anotar(dir, { tipo: 'aviso', texto: `Mergulho pausado: ${falhas.join(', ')}` });
       return s.render();
     }
   }
@@ -195,6 +215,12 @@ const responder = (s, t, resposta) => {
     else return; // texto livre não resolve a pausa de branch
     return seguir(s, t);
   }
+  if (e.pausa.motivo === 'sync') {
+    if (resposta === SEGUIR) mudar(dir, { pausa: null, syncOk: true });
+    else if (resposta === TENTAR) mudar(dir, { pausa: null });
+    else return;
+    return seguir(s, t);
+  }
   fs.appendFileSync(path.join(dir, RESPOSTAS), `## Etapa ${e.etapa} · ${e.pausa.pergunta}\n${String(resposta).trim()}\n\n`);
   mudar(dir, { pausa: null });
   return seguir(s, t);
@@ -238,9 +264,9 @@ const corpo = (t, d, dir) => {
       <div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-acao="mergulhoAprovar" ${lido ? '' : 'disabled'} title="${lido ? 'Aprovar esta etapa: o Mergulho segue sozinho' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
         <button data-acao="mergulhoAjuste">Pedir ajuste</button></div></div></div>` : '';
   return `${CSS}<div class="caixa-t">Mergulho<span>${nova ? btn('▶ Iniciar', 'mergulhoIniciar', '', 'bt bt-principal') : ''}</span></div><div class="folha"><div class="mg-etapas">${lista}</div></div>
-  <div class="caixa-t">Há alguma observação adicional deixada pelo PO?<span>opcional</span></div>
-  <div class="folha"><textarea class="mg-obs" data-texto data-obs placeholder="Cole aqui o que o PO comentou fora do ticket (opcional)…" ${vivo ? 'disabled' : ''}>${esc(e.obsPO)}</textarea>
-  </div>${aprovacao}${pausa}
+  ${nova ? `<div class="caixa-t">Há alguma observação adicional deixada pelo PO?<span>opcional</span></div>
+  <div class="folha"><textarea class="mg-obs" data-texto data-obs placeholder="Cole aqui o que o PO comentou fora do ticket (opcional)…">${esc(e.obsPO)}</textarea></div>`
+    : e.obsPO ? `<div class="caixa-t">Observação do PO</div><div class="folha"><div style="white-space:pre-wrap">${esc(e.obsPO)}</div></div>` : ''}${aprovacao}${pausa}
   ${aoVivo.caixa(dir, vivo, 'mergulho', controlesDe(sit)) || '<div class="folha"><div class="vazio-aba">Nada ao vivo ainda.</div></div>'}
   ${fluxo.html(dir, d?.uri)}`;
 };
@@ -308,4 +334,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { corpo, acoes, botaoPlay, _teste: { situacao, branchesErradas, FERRAMENTAS, estado, mudar, anexosFaltando, aposEtapa, responder, prompt, ETAPAS, ESTADO, PAUSA, RESPOSTAS } };
+module.exports = { corpo, acoes, botaoPlay, sincronizarRepos, _teste: { situacao, branchesErradas, FERRAMENTAS, estado, mudar, anexosFaltando, aposEtapa, responder, prompt, ETAPAS, ESTADO, PAUSA, RESPOSTAS } };
