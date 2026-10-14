@@ -7,7 +7,7 @@ const tickets = require('./tickets');
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const pasta = (id) => tickets.pasta(id);
 const pastaDe = (id) => (id === SEM_TICKET ? (sessao.conversaAtual() ? sessao.pasta(sessao.conversaAtual()) : null) : pasta(id));
-// Pasta da aba em que o ticket está aberto (Refinamento = raiz; Implementações e QA = impl/ e qa/, tickets.js): documentos,
+// Pasta da aba em que o ticket está aberto (Refinamento = raiz; Implementações, QA e Incidentes = impl/, qa/ e incidentes/, tickets.js): documentos,
 // notas, decisões e notificações das conversas daquela aba. Refinamento (spec, tarefas, dúvidas, impactos) segue na raiz.
 // id pode vir como CHAVE/aba (nota salva depois de trocar de aba não cai na aba errada).
 const pastaAba = (id) => {

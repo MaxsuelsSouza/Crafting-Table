@@ -9,7 +9,7 @@ const { spawn } = require('child_process');
 // Sem AskUserQuestion (não existe em -p): perguntas passam pelo sdd-state e pela aba.
 // A sessão fica em .ao-vivo.sid para continuar a mesma conversa (--resume) quando precisar.
 const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
-const { anotar } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
+const { anotar, anexarConversa } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
 // Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
 // Confere que o pid ainda é um claude (o executável, não um caminho com "claude" no meio): pid pode ser reaproveitado.
@@ -90,12 +90,31 @@ function linhaFerramenta(f) {
   return acao(`Usando ${f.name}`);
 }
 // Fala do Claude: a primeira frase vira a linha; o texto inteiro fica no detalhe (passar o mouse).
+// Decisões do Claude: toda execução em segundo plano recebe esta instrução; as linhas "DECISÃO: título | motivo" viram linha 'decisao' no Ao vivo,
+// que o componente (ao-vivo.js) também grava na aba Decisões.
+const PEDIDO_DECISAO = '\n\nDecisões: sempre que tomar uma decisão relevante (escolher entre alternativas, interpretar algo ambíguo, assumir uma premissa, desviar do pedido), escreva numa linha própria, no formato: DECISÃO: <título curto> | <o que decidiu, por quê e o que descartou>. Só decisões de verdade, não passos de rotina.';
+const RE_DECISAO = /^\s*[*_`#>\s-]*DECIS[ÃA]O[*_`\s]*:[*_`\s]*(.+?)\s*$/i;
+const decisao = (l) => { const [titulo, ...motivo] = l.split(/\s+[|—]\s+/); return { tipo: 'decisao', texto: titulo.replace(/[*`]/g, '').trim().slice(0, 120), detalhe: (motivo.join(' — ') || titulo).replace(/[*`]/g, '').trim().slice(0, 1500) }; };
+const falas = (t) => {
+  const ls = t.split('\n'), achadas = ls.map((l) => l.match(RE_DECISAO)?.[1]).filter(Boolean);
+  const resto = ls.filter((l) => !RE_DECISAO.test(l)).join('\n').trim();
+  return [...(resto ? [fala(resto)] : []), ...achadas.map(decisao)];
+};
 const fala = (t) => ({ tipo: 'fala', texto: (t.replace(/[*`#>]/g, '').split(/(?<=[.!?:])\s|\n/)[0] || t).trim().slice(0, 180), detalhe: t.slice(0, 2000) });
+
+// MODO DE TESTE (ligado): todo arquivo que o Claude lê (Read) e todo comando que ele tenta rodar (Bash) vira uma decisão na aba Decisões, para conferir a
+// ligação Ao vivo → Decisões sem depender de o modelo escrever "DECISÃO:". Desligue com CRAFTING_DECISOES_TESTE=0 no ambiente do VS Code.
+const DECISOES_DE_TESTE = process.env.CRAFTING_DECISOES_TESTE !== '0';
+const decisaoDeTeste = (c) => {
+  const l = linhaFerramenta(c);
+  if (!l || !DECISOES_DE_TESTE || !['Read', 'Bash'].includes(c.name)) return [l].filter(Boolean);
+  return [{ ...l, tipo: 'decisao', detalhe: String(c.name === 'Read' ? c.input?.file_path : c.input?.command || l.texto).slice(0, 1500) }];
+};
 
 // Evento do stream-json → linhas { tipo, texto, detalhe? } (vazio = ignora).
 function linhas(e) {
-  if (e.type === 'assistant') return (e.message?.content || []).flatMap((c) => (c.type === 'text' && c.text.trim() ? [fala(c.text.trim())]
-    : c.type === 'tool_use' ? [linhaFerramenta(c)].filter(Boolean) : []));
+  if (e.type === 'assistant') return (e.message?.content || []).flatMap((c) => (c.type === 'text' && c.text.trim() ? falas(c.text.trim())
+    : c.type === 'tool_use' ? decisaoDeTeste(c) : []));
   if (e.type === 'system' && e.subtype === 'permission_denied') return [{ tipo: 'aviso', texto: `Bloqueado: ação fora do permitido nesta etapa (${e.tool_name || 'ferramenta'})`, detalhe: curto(e.message) }];
   if (e.type === 'user') return (Array.isArray(e.message?.content) ? e.message.content : [])
     .filter((c) => c.type === 'tool_result' && /hook error/.test(String(c.content)))
@@ -109,9 +128,12 @@ function linhas(e) {
 function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} }) {
   if (rodandoEm(dir)) return false;
   const gravar = (l) => anotar(dir, l);
-  let sid = null;
-  try { sid = continuar ? fs.readFileSync(path.join(dir, SID), 'utf8').trim() : null; } catch {}
-  const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
+  let sid = null, anterior = null;
+  try { anterior = fs.readFileSync(path.join(dir, SID), 'utf8').trim() || null; } catch {}
+  if (anterior) anexarConversa(dir, anterior); // a sessão que terminou antes desta vai para a aba Conversas (idempotente)
+  if (continuar) sid = anterior;
+  let sessaoId = null; // desta execução
+  const args = ['-p', prompt + PEDIDO_DECISAO, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
@@ -125,7 +147,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
     for (const l of partes) {
       let e;
       try { e = JSON.parse(l); } catch { continue; }
-      if (e.type === 'system' && e.subtype === 'init' && e.session_id) fs.writeFileSync(path.join(dir, SID), e.session_id);
+      if (e.type === 'system' && e.subtype === 'init' && e.session_id) { sessaoId = e.session_id; fs.writeFileSync(path.join(dir, SID), e.session_id); }
       linhas(e).forEach(gravar);
     }
   });
@@ -135,6 +157,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
   const soltar = () => { rodando.delete(dir); if (pidDe(dir) === p.pid) fs.rmSync(path.join(dir, PID), { force: true }); };
   p.on('close', (code) => {
     soltar();
+    if (sessaoId) anexarConversa(dir, sessaoId, titulo); // terminou (ou foi pausada): vira conversa da aba, com o título da etapa
     if (code && !falhou) gravar({ tipo: 'erro', texto: `O Claude parou com erro (código ${code})`, detalhe: `código ${code}${erro.trim() ? `: ${curto(erro).slice(0, 200)}` : ''}` });
     aoMudar();
   });
@@ -146,4 +169,4 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
 const matarTodos = () => { const n = rodando.size; for (const p of rodando.values()) p.kill('SIGTERM'); return n; };
 const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, parar, matarTodos, rodando: rodandoEm, vivo, claudeBin, _teste: { linhas, linhaFerramenta, fraseSdd } };
+module.exports = { rodar, parar, matarTodos, rodando: rodandoEm, vivo, claudeBin, _teste: { DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };

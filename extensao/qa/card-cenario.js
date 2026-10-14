@@ -8,15 +8,17 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Para usar numa tela: CSS no <style>, card(c, ctx) no corpo (dentro de <div class="cens">) e script(chave) no <script>.
 // Cliques pelo data-acao/data-painel de sempre: abrir, pastaCenario, copiarCenario (evidencias.js) e qaRefazer (painel.js).
 // Redesenhar quando mudar .cenarios.json ou a pasta de evidências (evidencias.js já vigia). Estado aberto/fechado: vscode.getState()[chave].
-//   ctx: { dir (pasta do QA), amb (ambiente, para o aviso "build anterior"), uri(arquivo) → endereço da webview, arquivos(execução) → caminhos }
+//   ctx: { dir (pasta do QA), amb (ambiente, para o aviso "build anterior"), uri(arquivo) → endereço da webview, arquivos(execução) → caminhos,
+//          acoes?: { abrir, pasta, copiar, refazer } nomes dos data-acao/data-painel (padrão: os do QA; o fluxo dos Incidentes usa os seus), evidenciasEm?: pasta das evidências (padrão: evidencias/<id>) }
 const STATUS = { pendente: 'Pendente', executando: 'Executando', passou: 'Passou', falhou: 'Falhou', bloqueado: 'Bloqueado', desatualizado: 'Plano mudou' };
 const REFAZER = ['passou', 'falhou', 'desatualizado', 'bloqueado'];
 const IMG = /\.(png|jpe?g|gif|webp)$/i;
 const dataBr = (iso) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
-/** @param {any} c @param {{ dir: string, amb?: any, uri: (f: string) => string, arquivos: (x: any) => string[] }} ctx */
-const card = (c, { dir, amb, uri, arquivos }) => {
-  const miniatura = (f) => `<span class="cev" data-acao="abrir" data-nome="${esc(f)}" title="${esc(path.basename(f))}">${IMG.test(f) && uri(f) ? `<img src="${uri(f)}">` : esc(path.extname(f).slice(1).toUpperCase() || 'ARQ')}</span>`;
+/** @param {any} c @param {{ dir: string, amb?: any, uri: (f: string) => string, arquivos: (x: any) => string[], acoes?: { abrir?: string, pasta?: string, copiar?: string, refazer?: string } }} ctx */
+const card = (c, { dir, amb, uri, arquivos, acoes = {} }) => {
+  const A = { abrir: 'abrir', pasta: 'pastaCenario', copiar: 'copiarCenario', refazer: 'qaRefazer', ...acoes };
+  const miniatura = (f) => `<span class="cev" data-acao="${A.abrir}" data-nome="${esc(f)}" title="${esc(path.basename(f))}">${IMG.test(f) && uri(f) ? `<img src="${uri(f)}">` : esc(path.extname(f).slice(1).toUpperCase() || 'ARQ')}</span>`;
   const pasta = path.join(dir, 'evidencias', c.id);
   const execucao = (x) => {
     const arqs = arquivos(x);
@@ -27,11 +29,11 @@ const card = (c, { dir, amb, uri, arquivos }) => {
   return `<details class="cen ${c.arquivado ? 'arq' : ''}" data-cen="${esc(c.id)}"><summary><span class="cid">${esc(c.id)}</span><span class="ctit">${esc(c.titulo || '')}</span>
       <span class="cst ${esc(c.status)}">${c.arquivado ? 'Fora do plano' : esc(STATUS[c.status] || c.status)}</span></summary>
     <div class="cdet">${c.resumo ? `<pre>${esc(c.resumo)}</pre>` : `<pre>${esc((c.texto || '').slice(0, 600))}</pre>`}
-      ${(c.execucoes || []).length ? `<div class="format-bar arquivo"><button class="fb-btn" data-acao="pastaCenario" data-nome="${esc(pasta)}" title="${esc(pasta)}">Abrir pasta</button>
-        <button class="fb-btn" data-acao="copiarCenario" data-nome="${esc(pasta)}">Copiar caminho</button></div>
+      ${(c.execucoes || []).length ? `<div class="format-bar arquivo"><button class="fb-btn" data-acao="${A.pasta}" data-nome="${esc(pasta)}" title="${esc(pasta)}">Abrir pasta</button>
+        <button class="fb-btn" data-acao="${A.copiar}" data-nome="${esc(pasta)}">Copiar caminho</button></div>
         <div class="cex">${c.execucoes.slice().reverse().map(execucao).join('')}</div>`
         : '<div class="cex"><div>Ainda não executado.</div></div>'}
-      ${!c.arquivado && REFAZER.includes(c.status) ? `<button data-painel="qaRefazer" data-id="${esc(c.id)}">↻ Refazer</button>` : ''}</div></details>`;
+      ${!c.arquivado && REFAZER.includes(c.status) ? `<button ${acoes.refazer ? 'data-acao' : 'data-painel'}="${A.refazer}" data-id="${esc(c.id)}">↻ Refazer</button>` : ''}</div></details>`;
 };
 
 // Script da webview: cenários abertos continuam abertos depois do redesenho. Espera `vscode` (acquireVsCodeApi) já definido.

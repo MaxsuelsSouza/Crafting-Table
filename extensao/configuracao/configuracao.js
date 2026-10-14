@@ -58,6 +58,11 @@ const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 const cfg = () => vscode.workspace.getConfiguration('craftingTable');
 const projetoJira = () => cfg().get('jiraProjeto') || (tickets.listar()[0]?.chave || 'WMS').split('-')[0];
 const siteJira = () => (cfg().get('jiraSite') || '').replace(/\/+$/, '') || tickets.listar().find((t) => t.site)?.site || 'https://ferreiracosta.atlassian.net';
+// O que falta em Configurações > Geral > Jira para os vinculados buscarem no Jira: site, projeto, conta (e-mail + token) e o board principal.
+const jiraPendencias = async (secrets) => [
+  !siteJira() && 'site', !projetoJira() && 'projeto',
+  !((await secrets.get('jira.email')) && (await secrets.get('jira.token'))) && 'conta',
+  !(cfg().get('jiraBoard') || '').trim() && 'board principal'].filter(Boolean);
 // Repositórios de código: ao lado do repositório de specs (…/WMS/specs → …/WMS/novo-wms-backend e …/WMS/wms-mobile).
 const reposAuto = (specs) => [['backend', 'novo-wms-backend'], ['mobile', 'wms-mobile']]
   .map(([camada, n]) => ({ caminho: path.join(path.dirname(specs), n), camada })).filter((r) => fs.existsSync(r.caminho));
@@ -481,4 +486,4 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };
 
-module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };
+module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, jiraPendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };

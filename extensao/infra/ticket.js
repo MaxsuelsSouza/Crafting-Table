@@ -230,12 +230,14 @@ async function eu(secrets, site) {
 
 // Tickets em que você é o responsável (mais recentes primeiro). statusIds: os status de uma coluna do board;
 // sem eles, só os não concluídos.
+// tipos: em vez do responsável, todos os não concluídos desses tipos (Incidentes: "Incident, Incidente"); boardId limita ao board e projeto ao projeto.
 // label: em vez do responsável, os tickets com essa label (QA não se vincula ao ticket, marca com label).
-async function meus(secrets, site, statusIds, label) {
+async function meus(secrets, site, statusIds, label, tipos, boardId, projeto) {
   const filtro = statusIds?.length ? `status in (${statusIds.map((x) => Number(x)).filter(Boolean).join(',')})` : 'statusCategory != Done';
-  const quem = label ? `labels = "${String(label).replace(/["\\]/g, '')}"` : 'assignee = currentUser()';
+  const quem = tipos ? `${projeto ? `project = "${String(projeto).replace(/["\\]/g, '')}" AND ` : ''}issuetype in (${tipos})` : label ? `labels = "${String(label).replace(/["\\]/g, '')}"` : 'assignee = currentUser()';
   const jql = `${quem} AND ${filtro} ORDER BY updated DESC`;
-  const r = await api(secrets, site, `search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype,parent&maxResults=50`);
+  // boardId: só os tickets que o board enxerga (o filtro do board vale junto com o jql).
+  const r = await api(secrets, site, `${boardId ? `/rest/agile/1.0/board/${boardId}/issue` : 'search/jql'}?jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype,parent&maxResults=${tipos ? 100 : 50}`);
   return (r.issues || []).map((i) => ({ key: i.key, resumo: i.fields.summary, status: i.fields.status?.name, tipo: i.fields.issuetype?.name,
     subtarefa: !!i.fields.issuetype?.subtask, pai: i.fields.parent?.key || null }));
 }
@@ -255,10 +257,14 @@ async function labels(secrets, site, contem) {
 // O board é achado pelo nome dentro do projeto (ex.: "Downstream" no WMS).
 // extras: status que não são coluna do board mas valem como etapa (ex.: "Pronto p/ Dev"); entram antes das colunas,
 // achados pelo nome nos status do projeto (sem diferença de maiúsculas e espaços).
-async function etapas(secrets, site, projeto, nomeBoard, extras = []) {
+async function boardPorNome(secrets, site, projeto, nomeBoard) {
   const r = await api(secrets, site, `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(projeto)}&maxResults=100`);
   const board = (r.values || []).find((b) => b.name.toLowerCase().includes(nomeBoard.toLowerCase()));
   if (!board) throw new Error(`Board "${nomeBoard}" não encontrado no projeto ${projeto}`);
+  return board;
+}
+async function etapas(secrets, site, projeto, nomeBoard, extras = []) {
+  const board = await boardPorNome(secrets, site, projeto, nomeBoard);
   const cfg = await api(secrets, site, `/rest/agile/1.0/board/${board.id}/configuration`);
   const colunas = (cfg.columnConfig?.columns || []).map((c) => ({ nome: c.name, ids: (c.statuses || []).map((x) => x.id) })).filter((c) => c.ids.length);
   if (!extras.length) return colunas;
@@ -371,5 +377,5 @@ const folhaTicket = (t) => `
     </details>
   </div>`;
 
-exports.jira = { lerLink, buscar, api, anexar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, labels, etapas, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
+exports.jira = { lerLink, buscar, api, anexar, comentar, pessoas, criarSubtarefa, atualizarDescricao, comentarios, eu, meus, labels, etapas, boardPorNome, projetoInfo, boards, statusDoProjeto, credenciais, folhaTicket, corStatus, estiloDetalhe };
 exports._teste = { lerLink, esc, mdParaAdf, adfTexto };

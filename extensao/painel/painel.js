@@ -48,6 +48,8 @@ function corpoAba(t, aba, d) {
   if (aba === 'analise') return analise.corpoAba(d);
   if (aba === 'tarefas') return tarefas.telaTarefas(t, d.tarefas, d.impactos);
   if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
+  if (aba === 'mergulho') return require('../incidentes/mergulho').corpo(t, d, pastaAba(t.id));
+  if (aba === 'evidenciasInc') return require('../incidentes/evidencias').corpo(t, d, pastaAba(t.id));
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
   if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
@@ -102,6 +104,7 @@ exports.provider = (ctx) => {
     const dir = pastaDe(t.id), dirAba = pastaAba(t.id);
     const d = {
       dir, lado, abertos: spec.abertos,
+      uri: (f) => view.webview.asWebviewUri(vscode.Uri.file(f)).toString(), // miniaturas e vídeo da aba Evidências dos Incidentes
       docs: t.id === SEM_TICKET ? abaDocs.docsDe(dir) : abaDocs.docsDoTicket(servicos, t),
       handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
       tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
@@ -114,6 +117,7 @@ exports.provider = (ctx) => {
       origens: dir ? ler(path.join(dir, ORIGEM), {}) : {},
       baixando: abaDocs.baixando
     };
+    if (['evidenciasInc', 'mergulho'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
     view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
       ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
     avisarMoldura();
@@ -153,7 +157,7 @@ exports.provider = (ctx) => {
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,

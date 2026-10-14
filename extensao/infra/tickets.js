@@ -6,7 +6,7 @@ const path = require('path');
 // Um ticket = pasta ~/.claude/tickets/<CHAVE>/ com .ticket.json e tudo das conversas vinculadas
 // (documentos na raiz, .notas.html, evidencias/, .decisoes.json — mesmo layout da pasta de uma conversa).
 // Vínculo conversa → ticket: .conversas/<sid> contém a chave (ou chave/aba). Sem vínculo, a conversa usa ~/.claude/documentos/<sid>.
-// Abas: o mesmo ticket pode estar em Refinamento (raiz da pasta), Implementações (impl/) e QA (qa/).
+// Abas: o mesmo ticket pode estar em Refinamento (raiz da pasta), Implementações (impl/), QA (qa/) e Incidentes (incidentes/).
 // Cada aba tem a sua subpasta (conversas, documentos, notas, decisões, evidências), para uma não poluir a análise da outra.
 // Sem dependência do vscode: também roda em bin/migrar-tickets.js.
 const RAIZ = path.join(os.homedir(), '.claude', 'tickets');
@@ -15,7 +15,7 @@ const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
 const IMPL = require('../implementacoes/implementacoes').ID;
-const SUBPASTAS = [IMPL, 'qa'];
+const SUBPASTAS = [IMPL, 'qa', require('../incidentes/incidentes').ID];
 const pasta = (chave, lista) => path.join(RAIZ, chave, SUBPASTAS.includes(lista) ? lista : '');
 // Módulo Refinamento (antes "tickets"): dados gravados com o nome antigo continuam valendo.
 const REFINAMENTO = 'refinamento';
@@ -55,6 +55,20 @@ function vincular(sid, chave, lista) {
   if (!t.conversas.includes(sid)) gravar({ ...t, conversas: [...t.conversas, sid] });
 }
 
+// Pasta de uma aba do ticket (<RAIZ>/<CHAVE>[/impl|qa|incidentes]) → { chave, lista }; null se não for pasta de ticket.
+function abaDaPasta(dir) {
+  const [chave, sub, ...fora] = path.relative(RAIZ, dir).split(path.sep);
+  if (!chave || chave.startsWith('.') || chave.startsWith('_') || chave === '..' || fora.length || !ler(chave)) return null;
+  return { chave, lista: SUBPASTAS.includes(sub) ? sub : REFINAMENTO };
+}
+// Sessão do Claude em segundo plano de uma pasta de ticket → conversa da aba (aba Conversas). Sem efeito fora de pasta de ticket.
+function vincularPorPasta(sid, dir) {
+  const a = abaDaPasta(dir);
+  if (!a || !sid) return false;
+  vincular(sid, a.chave, a.lista);
+  return true;
+}
+
 // Excluir = tirar da lista: a pasta vai para _arquivados/ e as conversas voltam a ser avulsas. Nada é apagado.
 function arquivar(chave) {
   const t = ler(chave);
@@ -64,4 +78,4 @@ function arquivar(chave) {
   fs.renameSync(pasta(chave), path.join(ARQUIVADOS, `${chave}-${Date.now()}`));
 }
 
-module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, arquivar };
+module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, abaDaPasta, vincularPorPasta, arquivar };

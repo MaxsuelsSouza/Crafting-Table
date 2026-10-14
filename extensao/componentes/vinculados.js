@@ -8,7 +8,8 @@ const pill = require('./pill');
 // Para usar numa tela: CSS (e pill.CSS) no <style>, caixa(v, lista, o) no corpo e script() no <script>. Na busca do Jira,
 // filtrar(itens, o.status) deixa só os status do módulo. Cliques por data-acao: meuVer, meuPuxar, meuRemover, meusAtualizar,
 // meusMostrar; os seletores mandam labelQA e meusFiltro (lista.js). Redesenhe quando a busca do Jira voltar.
-//   v: { itens, etapas, filtro, label, labels, ocultos, erro, aviso, carregando, semCredencial }
+//   v: { itens, etapas, filtro, label, labels, ocultos, erro, aviso, carregando, semCredencial, pendencias }
+//      pendencias: o que falta em Configurações > Geral > Jira (site, projeto, conta, board principal): a caixa não busca e avisa.
 //   o: { titulo, seletor?: 'etapa' | 'label', status?: ['Em andamento|In progress', ...] }
 //      status: o primeiro nome de cada item aparece no texto; os outros (depois de |) são o mesmo status com outro nome.
 
@@ -52,7 +53,8 @@ function caixa(v, lista, o) {
   const itens = (v.itens || []).filter((i) => !naLista.has(i.key) && !ocultos.has(i.key));
   const escondidos = (v.itens || []).filter((i) => ocultos.has(i.key)).length;
   const porLabel = o.seletor === 'label';
-  const corpo = v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
+  const corpo = v.pendencias ? `<div class="meus-vazio">Configure o Jira para ver os tickets: falta ${esc(v.pendencias.join(', '))}. <button class="link" data-acao="config">Abrir configurações</button></div>`
+    : v.semCredencial ? '<div class="meus-vazio">Conecte ao Jira para ver os tickets vinculados a você. <button class="link" data-acao="meusAtualizar">Conectar</button></div>'
     : v.erro ? `<div class="meus-vazio erro">${esc(v.erro)}</div>`
     : !v.itens ? '<div class="meus-vazio">Carregando do Jira…</div>'
     : porLabel && !v.label ? '<div class="meus-vazio">Escolha a label de QA no seletor acima.</div>'

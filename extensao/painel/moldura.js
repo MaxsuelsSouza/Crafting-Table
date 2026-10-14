@@ -34,6 +34,7 @@ const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticke
 const ABAS = {
   refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
   impl: [DOCS, TICKET, DECISOES],
+  incidentes: [DOCS, { id: 'mergulho', nome: 'Mergulho' }, { id: 'evidenciasInc', nome: 'Evidências' }, TICKET, DECISOES],
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
   semTicket: [DOCS, DECISOES]
 };
@@ -77,7 +78,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   return `<header class="ct-cab"><div class="ct-linha">
       <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span> · ${esc(t.titulo || '')}`}</span>
-      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : ''}
+      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no Jira">${IC.jira}</button>`}
     </div>
@@ -123,6 +124,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .dtitulo { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .decisao[open] .dtitulo { white-space: normal; }
   .origem { flex: none; font-size: 9.5px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
+  .o-claude { color: var(--ia); border-color: color-mix(in srgb, var(--ia) 40%, transparent); }
   .o-pergunta { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .dresumo { margin: 2px 6px 10px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); font-size: 12px; line-height: 1.55; }
   .dresumo p { margin: 0 0 6px; }
@@ -158,7 +160,7 @@ const bannerInstalacao = () => (configuracao.aviso() ? `<div style="padding:8px 
   <button data-acao="atualizarExtensao" style="height:24px;padding:0 10px;border-radius:6px;background:var(--bg);color:var(--text);font-size:11.5px">Atualizar agora</button></div>` : '');
 function pagina(nonce, corpo, nota) {
   return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; media-src https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>body { font-family: var(--fc-font); margin: 0; } button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; } [hidden] { display: none !important; }</style>
 ${nota ? notas.CSS_NOTAS : ''}</head><body>${bannerInstalacao()}${corpo}
 ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota.estilo)}</script>` : ''}
@@ -169,8 +171,10 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     const el = e.target.closest('[data-acao]');
     if (!el) return;
     e.stopPropagation();
-    enviar({ acao: el.dataset.acao, id: el.dataset.id, op: el.dataset.op, key: el.dataset.key });
+    enviar({ acao: el.dataset.acao, id: el.dataset.id, op: el.dataset.op, key: el.dataset.key, texto: el.closest('.folha')?.querySelector('textarea[data-texto]')?.value });
   });
+  // Mergulho (incidentes): a observação do PO grava ao sair do campo.
+  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs]')) enviar({ acao: 'mergulhoObs', texto: e.target.value }); });
 
   // Decisões abertas continuam abertas depois do redesenho.
   const abertas = new Set((vscode.getState() || {}).decisoes || []);
@@ -190,6 +194,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
 
   // A página é redesenhada a cada linha nova do Ao vivo: a caixa e o corpo voltam para onde estavam.
   ${aoVivo.script('vivo')}
+  ${require('../incidentes/fluxo').script()}
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;

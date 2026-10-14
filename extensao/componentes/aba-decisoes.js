@@ -6,7 +6,7 @@ const { quando } = require('./formato');
 const corpoAba = (d) => `<div class="folha">${d.decisoes.length ? `<div class="hist">${d.decisoes.map((x) => `
     <details class="decisao" data-dec="${esc(x.id)}">
       <summary><span class="quando">${esc(quando(x.data))}</span><span class="dtitulo">${esc(x.titulo)}</span>
-        <span class="origem o-${esc(x.origem)}">${x.origem === 'pergunta' ? 'Pergunta' : 'Chat'}</span></summary>
+        <span class="origem o-${esc(x.origem)}">${{ pergunta: 'Pergunta', claude: 'Claude' }[x.origem] || 'Chat'}</span></summary>
       <div class="dresumo"><p>${esc(x.resumo || '')}</p>
         ${x.origem === 'pergunta' && x.detalhes ? `<div class="dtrecho"><b>Opções:</b> ${(x.detalhes.opcoes || []).map((o) => o === x.detalhes.escolha ? `<b class="esc">${esc(o)}</b>` : esc(o)).join(' · ')}${x.detalhes.notas ? `<br><b>Observação:</b> ${esc(x.detalhes.notas)}` : ''}</div>` : ''}
         ${x.origem === 'chat' && x.detalhes?.mensagem ? `<div class="dtrecho"><b>Mensagem:</b> “${esc(x.detalhes.mensagem.slice(0, 500))}”</div>` : ''}

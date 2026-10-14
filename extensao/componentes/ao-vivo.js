@@ -1,10 +1,17 @@
 // @ts-check
 const fs = require('fs');
 const path = require('path');
+const { IC } = require('./icones');
 
 // Componente "Ao vivo": a caixa que mostra, em pilha (mais recente em cima), o que o Claude em segundo plano e os passos
-// da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js) e nas Evidências do QA (qa.js).
+// da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js), nas Evidências do QA (qa.js) e no Mergulho dos Incidentes (painel.js).
 // O log fica em <pasta>/.ao-vivo.jsonl ({ em, tipo, texto, detalhe? }); a caixa expandida é marcada por .ao-vivo.expandido.
+// Decisões do Claude (padrão do componente): linha tipo 'decisao' { texto: título, detalhe: motivo } também entra na aba Decisões da mesma pasta
+// (.decisoes.json, origem 'claude'). O maestro converte as linhas "DECISÃO: título | motivo" do Claude nesse tipo (painel/maestro.js).
+// Conversas (padrão do componente): cada sessão do Claude que termina é anexada à aba Conversas do ticket/módulo da pasta (anexarConversa,
+// chamada pelo maestro ao fim de cada execução e antes de iniciar a próxima).
+// Pausar/retomar (padrão do componente): controle(rodando, { pausar, retomar }) → ⏸ enquanto o Claude trabalha, ▶ quando parado (ou nada, se o módulo
+// não passar o comando). A caixa mostra o botão ao lado do estado; o cabeçalho do ticket usa o mesmo controle, então os dois nunca discordam.
 // Para usar numa tela: CSS no <style>, caixa(dir, rodando, alvo) no corpo, script(chave) no <script> e redesenhar
 // quando um dos ARQUIVOS mudar na pasta. O botão Ver tudo/Recolher manda data-painel="vivoExpandir" (painel.js).
 const ARQ = '.ao-vivo.jsonl', EXPANDIDO = '.ao-vivo.expandido';
@@ -14,6 +21,30 @@ const RECENTES = 40; // linhas na caixa recolhida
 // Linha nova. Fila por pasta: uma linha a cada meio segundo, para dar tempo de ler (o Claude e o ▶ escrevem em rajada).
 // Fila acima de 20 linhas acelera para não ficar minutos atrasada.
 const INTERVALO = 500, INTERVALO_FILA_LONGA = 100;
+// Decisão do Claude → histórico da aba Decisões (mesmo arquivo e formato do hooks/decisoes.py). Escrita atômica; falha não derruba o Ao vivo.
+function registrarDecisao(dir, l) {
+  try {
+    const arq = path.join(dir, '.decisoes.json');
+    let lista = []; try { lista = JSON.parse(fs.readFileSync(arq, 'utf8')); } catch {}
+    if (!Array.isArray(lista)) lista = [];
+    lista.push({ id: require('crypto').randomBytes(6).toString('hex'), data: new Date().toISOString(), origem: 'claude', titulo: String(l.texto).slice(0, 90), resumo: String(l.detalhe || l.texto), detalhes: { etapa: l.etapa || '' } });
+    fs.writeFileSync(`${arq}.tmp`, JSON.stringify(lista, null, 1));
+    fs.renameSync(`${arq}.tmp`, arq);
+  } catch {}
+}
+// Sessão do Claude (claude -p) → conversa do ticket na aba Conversas, com o título da etapa. Idempotente; fora de pasta de ticket não faz nada.
+// O histórico da sessão (~/.claude/projects/<cwd>/<sid>.jsonl) é procurado em qualquer projeto: o claude -p grava no do seu cwd.
+function anexarConversa(dir, sid, titulo) {
+  try {
+    if (!sid || !require('../infra/tickets').vincularPorPasta(sid, dir)) return false;
+    if (titulo) {
+      const raiz = path.join(require('os').homedir(), '.claude', 'projects'), chave = require('../infra/tickets').abaDaPasta(dir)?.chave;
+      const arq = fs.readdirSync(raiz).map((p) => path.join(raiz, p, `${sid}.jsonl`)).find((f) => fs.existsSync(f));
+      if (arq) fs.appendFileSync(arq, (fs.readFileSync(arq, 'utf8').endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: `${chave} · ${titulo}` }) + '\n');
+    }
+    return true;
+  } catch { return false; }
+}
 const filas = new Map(); // pasta -> { linhas, ultimo, timer }
 function anotar(dir, l) {
   const f = filas.get(dir) || { linhas: [], ultimo: 0, timer: null };
@@ -28,7 +59,9 @@ function escoar(dir, f) {
     f.timer = null;
     try {
       fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(path.join(dir, ARQ), JSON.stringify({ em: new Date().toISOString(), ...f.linhas.shift() }) + '\n');
+      const l = f.linhas.shift();
+      fs.appendFileSync(path.join(dir, ARQ), JSON.stringify({ em: new Date().toISOString(), ...l }) + '\n');
+      if (l.tipo === 'decisao') registrarDecisao(dir, l);
     } catch {}
     f.ultimo = Date.now();
     escoar(dir, f);
@@ -44,19 +77,24 @@ const alternarExpandido = (dir) => (expandido(dir) ? fs.rmSync(path.join(dir, EX
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 // Tipos antigos (antes da padronização) caem no equivalente novo.
 const TIPO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
-const ICONE = { fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
+const ICONE = { decisao: '⚖', fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
 const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 // Mais recente em cima: blocos por etapa (a etapa mais nova primeiro), o título da etapa no topo do bloco e as linhas dele da mais nova para a mais antiga.
 const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO[x.tipo] || x.tipo) === 'etapa' || !g.length ? g.push([x]) : g.at(-1).push(x), g), [])
   .reverse().flatMap(([cab, ...resto]) => ((TIPO[cab.tipo] || cab.tipo) === 'etapa' ? [cab, ...resto.reverse()] : [...resto.reverse(), cab]));
 
-// Caixa pronta para a tela: últimas 40 linhas (ou tudo, se expandida) e o botão Ver tudo/Recolher (alvo: 'qa' | 'spec').
-const caixa = (dir, rodando, alvo) => {
+// Caixa pronta para a tela: últimas 40 linhas (ou tudo, se expandida), o botão Ver tudo/Recolher (alvo: 'qa' | 'spec' | 'mergulho') e o ⏸/▶ (controles).
+// c: { pausar?: data-acao do ⏸, retomar?: data-acao do ▶, dicaPausar?, dicaRetomar? }; b(acao) monta o atributo (padrão data-acao; o cabeçalho passa o seu).
+const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (!c ? '' : rodando
+  ? (c.pausar ? `<button class="ct-ico ct-pausa" ${b(c.pausar)} title="${esc(c.dicaPausar || 'Pausar: o Claude para e a etapa recomeça ao retomar')}">${IC.pausa}</button>` : '')
+  : (c.retomar ? `<button class="ct-ico ct-play" ${b(c.retomar)} title="${esc(c.dicaRetomar || 'Retomar de onde parou')}">${IC.play}</button>` : ''));
+
+const caixa = (dir, rodando, alvo, controles) => {
   const exp = expandido(dir), total = ler(dir).length, l = linhas(dir, exp ? Infinity : RECENTES);
   if (!l.length) return '';
   const botao = alvo && (exp || total > l.length) ? `<button class="vivo-exp" data-painel="vivoExpandir" data-id="${esc(alvo)}"
     title="${exp ? `Voltar às últimas ${RECENTES} linhas` : 'Mostrar o log inteiro, do primeiro ao mais recente'}">${exp ? 'Recolher' : `Ver tudo (${total})`}</button>` : '';
-  return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}</span></div>
+  return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}${controle(rodando, controles)}</span></div>
   <div class="folha ao-vivo ${exp ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
     const tipo = TIPO[x.tipo] || x.tipo;
     return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
@@ -78,6 +116,7 @@ const script = (chave = 'vivo') => `{
 const CSS = `
   .ao-vivo { max-height: 260px; overflow: auto; font-size: 11.5px; line-height: 1.45; padding: 8px 10px; }
   .ao-vivo.expandido { max-height: 70vh; }
+  .caixa-t .ct-ico { width: 20px; height: 20px; margin-left: 6px; vertical-align: middle; } .caixa-t .ct-ico svg { width: 12px; height: 12px; }
   .vivo-exp { margin-left: 8px; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: var(--r-md); background: none; color: var(--text);
     font: inherit; font-size: 10.5px; cursor: pointer; }
   .vivo-exp:hover { background: var(--surface-2); }
@@ -90,6 +129,7 @@ const CSS = `
   .v-etapa:first-child { margin-top: 0; }
   .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
   .v-fala .vt { font-style: italic; }
+  .v-decisao .vi { color: var(--accent); } .v-decisao .vt { font-weight: 600; }
   .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
   .v-fim .vi { color: var(--ok); }
   .vivo-bola { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--ia); animation: pulsa 1.2s infinite; }
@@ -100,10 +140,10 @@ const CSS = `
 const acoes = (s) => ({
   vivoExpandir({ id }) {
     const t = s.ticketAberto();
-    if (!t || !['qa', 'spec'].includes(id)) return;
-    alternarExpandido(id === 'qa' ? s.pastaAba(t.id) : s.pasta(t.chave));
+    if (!t || !['qa', 'spec', 'mergulho'].includes(id)) return;
+    alternarExpandido(id === 'spec' ? s.pasta(t.chave) : s.pastaAba(t.id));
     s.render();
   }
 });
 
-module.exports = { acoes, anotar, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };
+module.exports = { acoes, anotar, controle, anexarConversa, registrarDecisao, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };

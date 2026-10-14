@@ -8,6 +8,7 @@ const { esc } = require('../infra/ticket')._teste;
 const { pagina, ESTILO_NOTAS } = require('./comandos').ui;
 const { icone } = require('../componentes/botao');
 const sessao = require('../infra/sessao');
+const transcricao = require('../componentes/transcricao');
 
 // Conversas do Claude Code deste projeto e tudo o que cada uma deixou na máquina.
 // O Claude guarda o histórico em ~/.claude/projects/<cwd com não-alfanuméricos trocados por ->/<id>.jsonl.
@@ -150,9 +151,15 @@ const tela = (lista, atual, sel = null) => {
   }).join('')}</ul></div>`;
 };
 
+// Transcrição de uma conversa só para leitura (componentes/transcricao.js): cabeçalho com voltar e atualizar.
+const telaLeitura = (sid) => `${estiloConversas}<style>${transcricao.CSS}</style>
+  <div class="topo"><span class="rotulo" data-acao="fechar" style="cursor:pointer" title="Voltar para a lista de conversas">← Conversas</span><span class="titulo"></span>
+    <span class="extra">somente leitura <button class="fb-btn" data-acao="recarregar" title="Atualizar">↻</button></span></div>
+  <div class="folha">${transcricao.html(historico(sid))}</div>`;
+
 exports.provider = () => {
-  let view, sel = null; // sel: Set de ids no modo seleção; null fora dele
-  const render = () => view && (view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), tela(listar(), sessao.conversaAtual(), sel)));
+  let view, sel = null, lendo = null; // sel: Set de ids no modo seleção; lendo: conversa aberta na transcrição (somente leitura)
+  const render = () => view && (view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), lendo ? telaLeitura(lendo) : tela(listar(), sessao.conversaAtual(), sel)));
   const apagar = async (ids) => {
     for (const id of ids) {
       if (id === sessao.conversaAtual()) continue; // a conversa aberta continua escrevendo nesses arquivos
@@ -162,7 +169,13 @@ exports.provider = () => {
 
   const acoes = {
     // Mesmo comando interno usado pela lista de sessões do Claude (args: id da sessão).
-    abrir: ({ id }) => vscode.commands.executeCommand('claude-vscode.editor.open', id),
+    abrir: ({ id }) => {
+      // Etapa em segundo plano (claude -p): não abre no chat do Claude (vira chat vazio); mostra a transcrição aqui mesmo, só para ler.
+      if (transcricao.ehSegundoPlano(historico(id))) { lendo = id; return render(); }
+      return vscode.commands.executeCommand('claude-vscode.editor.open', id);
+    },
+    fechar() { lendo = null; render(); },
+    recarregar() { render(); },
     async excluir({ id }) {
       if (id === sessao.conversaAtual()) return; // a conversa aberta continua escrevendo nesses arquivos
       const c = listar().find((x) => x.sid === id);
@@ -245,7 +258,7 @@ const ultimaConversa = (t) => require('../infra/claude').ultimaConversa(t, sessa
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
 const reconciliar = (s) => {
-  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes');
+  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
   let mudou = false;
   for (const t of tickets.listar()) {
     if (!t.pedidoEm) continue;
@@ -254,7 +267,7 @@ const reconciliar = (s) => {
       tickets.vincular(sid, t.chave, t.pedidoLista);
       const { pedidoEm, pedidoLista, ...resto } = tickets.ler(t.chave);
       tickets.gravar(resto);
-      titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA' }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
+      titularConversa(sid, `${t.chave}${{ [implementacoes.ID]: ` · ${implementacoes.ETAPA}`, qa: ' · QA', [incidentes.ID]: ` · ${incidentes.ETAPA}` }[pedidoLista] || ''} · ${t.titulo || ''}`.trim());
       mudou = true;
     } else if (Date.now() - t.pedidoEm > 24 * 3600e3) { const { pedidoEm, pedidoLista, ...resto } = t; tickets.gravar(resto); }
   }
@@ -262,11 +275,11 @@ const reconciliar = (s) => {
 };
 
 const pedido = (s, t) => {
-  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes');
+  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
   return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
     + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${sessao.focoLista() === 'qa' ? 'QA (testes)' : implementacoes.ETAPA}\n${t.link}\n`
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
       + `Anexos do Jira em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
@@ -291,4 +304,4 @@ const acoes = (s) => ({
 
 exports.reconciliar = reconciliar;
 exports.acoes = acoes;
-exports._teste = { listar, rastros, titulo, projeto, historico };
+exports._teste = { listar, rastros, titulo, projeto, historico, telaLeitura };
