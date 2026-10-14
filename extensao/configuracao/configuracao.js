@@ -12,10 +12,11 @@ const { botao } = require('../componentes/botao');
 const menuAbas = require('../componentes/menu-abas');
 const cardConfig = require('./card-config');
 const { card, cardTeste, selo, linha, dica, acoes } = cardConfig;
+const conexao = require('./conexao');
 
 // Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre e um card por seção), com os cliques e os testes de cada seção.
 // Usado pelo painel.js: criar(ctx, ganchos) devolve { corpo, acoes, aberta, aba, checar }; o painel põe corpo() na página, espalha `acoes`
-// nas suas e chama render quando algo mudar. CSS no <style>. Cliques por data-acao: config, configFechar, cfgAba, cfgEditar, cfgTestar,
+// nas suas e chama render quando algo mudar. CSS no <style>. Cliques por data-acao: config, configFechar, cfgAba, cfgEditar, cfgTestar, provedor*,
 // cfgRepo*, cfgBanco*, cfgTeams*, pluginAlternar, matarExtensao, atualizarExtensao. Cofre e Comandos são telas de outros módulos, com os
 // cliques prefixados (cofre:, comandos:, emulador:). Redesenhe quando mudar aba, valor salvo, resultado de um teste, comandos/terminais ou cofre.
 // Também guarda o que o painel lê das settings craftingTable.* (cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO), os plugins
@@ -82,6 +83,25 @@ const aviso = () => avisoInstalacao;
 const ABAS = [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, { id: 'plugins', nome: 'Plugins' }, { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
 const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
 
+// Card "Ferramenta de gestão de trabalho". Sem conexão: lista dos provedores (os sem adaptador ficam "em breve", desabilitados).
+// Conectado: provedor, conta, site e os botões Trocar ferramenta / Sair da conta / Mapear com IA. Os campos antigos (site, projeto…) ficam na aba Variáveis.
+// v.conexao = { ativo?: { id, nome }, trocando?: boolean, provedores?: lista de conexao.listaProvedores() }; o estado vem de v.estado.jira (CHECAR.jira).
+const TITULO_FERRAMENTA = 'Ferramenta de gestão de trabalho';
+const ferramenta = (v) => {
+  const x = (v.estado || {}).jira, c = v.conexao || {};
+  const lista = () => `<div class="cfg-provs">${(c.provedores || conexao.listaProvedores()).map((p) => `<button class="cfg-prov${p.disponivel ? '' : ' cfg-prov-off'}"${p.disponivel ? ` data-acao="provedorEscolher" data-id="${esc(p.id)}"` : ' disabled'} title="${p.disponivel ? `Conectar ao ${esc(p.nome)}` : 'Em breve'}">
+      <span class="cfg-prov-ic">${esc(p.sigla)}</span><span>${esc(p.nome)}</span>${p.disponivel ? '' : '<small>em breve</small>'}</button>`).join('')}</div>`;
+  if (!x) return card({ titulo: TITULO_FERRAMENTA, selo: selo(undefined) });
+  if (x.conectado === false || c.trocando) {
+    return card({ titulo: TITULO_FERRAMENTA, acao: c.trocando ? botao('Cancelar', { variante: 'contorno', acao: 'provedorTrocar' }) : '',
+      corpo: dica(c.trocando ? 'Escolha a ferramenta. Ao conectar, a conta atual é substituída.' : 'Nenhuma ferramenta conectada. Escolha a ferramenta onde ficam os tickets do time.') + lista() });
+  }
+  return cardTeste('jira', TITULO_FERRAMENTA, x, linha('Ferramenta', esc((c.ativo || {}).nome || 'Jira')) + linha('Conta', esc(x.conta || '')) + linha('Site', esc(v.valores.jiraSite))
+    + dica('Projeto, board, etapas e as demais variáveis ficam na aba Variáveis.')
+    + acoes(botao('Trocar ferramenta', { variante: 'contorno', acao: 'provedorTrocar' }) + botao('Sair da conta', { variante: 'contorno', acao: 'provedorSair' })
+      + botao('Mapear com IA', { variante: 'principal', acao: 'provedorMapear', titulo: 'A IA lê só os metadados da conta (nunca o token) e sugere as variáveis' })));
+};
+
 const geral = (v) => {
   const e = v.estado || {}, val = v.valores, aviso = v.avisoInstalacao;
   const repos = val.repositorios.length ? val.repositorios : v.reposAuto;
@@ -96,8 +116,7 @@ const geral = (v) => {
     cardTeste('agente', 'Agente de IA', e.agente, linha('Agente', 'Claude Code <span class="cfg-dim">(outros agentes em breve)</span>')
       + linha('Modelo', esc(val.modelo || 'padrão do Claude Code'), 'modelo') + linha('Esforço', esc(val.esforco || 'padrão do Claude Code'), 'esforco')
       + dica('Valem para as etapas do refinamento em segundo plano. A conversa aberta pelo botão do Claude segue o ~/.claude/settings.json.')),
-    cardTeste('jira', 'Jira', e.jira, linha('Site', esc(val.jiraSite), 'jiraSite') + linha('Projeto', esc(val.jiraProjeto), 'jiraProjeto')
-      + linha('Conta', esc(e.jira?.conta || ''), 'jiraConta')),
+    ferramenta(v),
     cardTeste('board', 'Board e etapas', e.board, linha('Board principal', esc(val.jiraBoard), 'jiraBoard')
       + linha('Etapas extras', esc(val.etapasExtras.join(', ')), 'etapasExtras')
       + (e.board?.colunas ? linha('Etapas no filtro', esc(e.board.colunas.join(' → '))) : '')),
@@ -180,13 +199,18 @@ const CSS = `
   .cfg-cam { padding: 0 5px; border-radius: var(--r-sm); font-size: 10px; background: var(--surface-2); }
   .cfg-add { margin-top: 6px; }
   .cfg-var { word-break: break-word; }
+  .cfg-provs { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
+  .cfg-prov { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface-2); color: inherit; font: inherit; cursor: pointer; text-align: left; }
+  .cfg-prov:hover:not(:disabled) { border-color: var(--accent); }
+  .cfg-prov-off { opacity: .5; cursor: not-allowed; } .cfg-prov small { margin-left: auto; font-size: 9.5px; color: var(--text-dim); }
+  .cfg-prov-ic { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--surface); border: 1px solid var(--border); }
 `;
 
 
 // Controle da tela: estado (aberta, aba, resultado dos testes) e os cliques. Um por painel.
 const criar = (ctx, { render, aoAbrir, voltar }) => {
   variaveis.vincular(ctx.globalState);
-  let cfgAberta = false, cfgEstado = {}, cfgAba = 'geral', aposPull = false;
+  let cfgAberta = false, trocando = false, cfgEstado = {}, cfgAba = 'geral', aposPull = false;
   // Marketplace FC: conectado? e, com o catálogo recarregado, o commit da origem de cada plugin instalado difere do instalado (git ls-remote, sem pedir senha)?
   let mkt = { conectado: null, checando: false, nova: {}, erro: '' };
   const envGit = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: 'ssh -o BatchMode=yes' };
@@ -256,11 +280,12 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         texto: `${v.out} · plugin sdd ${sddState() ? '✅' : '❌ (claude plugin install sdd@crafting-local)'} · QA (fcx-qa-test-planning) ${qa ? '✅' : '⚠ sem ele o passo 6 segue sem o método de QA'}` };
     },
     async jira() {
-      if (!(await jira.conectado(ctx.secrets))) return { ok: false, curto: 'sem credenciais', texto: 'Clique em Editar na Conta para informar e-mail e API token.' };
+      if (!(await jira.conectado(ctx.secrets))) return { ok: false, conectado: false, curto: 'sem credenciais', texto: 'Escolha a ferramenta e conecte a conta.' };
       try {
-        const [eu, p] = await Promise.all([jira.eu(ctx.secrets, siteJira()), jira.projetoInfo(ctx.secrets, siteJira(), projetoJira())]);
-        return { ok: true, conta: eu.nome, texto: `Conectado como ${eu.nome} · projeto ${p.chave} (${p.nome})` };
-      } catch (e) { return { ok: false, curto: 'falhou', texto: e.message }; }
+        const eu = await jira.eu(ctx.secrets, siteJira());
+        const p = projetoJira() ? await jira.projetoInfo(ctx.secrets, siteJira(), projetoJira()).catch(() => null) : null;
+        return { ok: true, conectado: true, conta: eu.nome, texto: `Conectado como ${eu.nome}${p ? ` · projeto ${p.chave} (${p.nome})` : ' · projeto ainda não definido (aba Variáveis)'}` };
+      } catch (e) { return { ok: false, conectado: true, curto: 'falhou', texto: e.message }; }
     },
     async board() {
       try {
@@ -396,6 +421,25 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['jira', 'board']);
       render();
     },
+    // Conexão com a ferramenta de gestão de trabalho.
+    provedorTrocar() { trocando = !trocando; render(); },
+    async provedorEscolher({ id }) {
+      const antes = await jira.conectado(ctx.secrets).catch(() => false);
+      const eu = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Conectando…' }, () => conexao.conectar(ctx, id));
+      trocando = false;
+      checar(['jira', 'board']);
+      if (!eu) return;
+      const r = await vscode.window.showInformationMessage(`Conectado como ${eu.nome}. Quer que a IA mapeie as variáveis (projeto, board, etapas…) a partir da conta?`, 'Mapear com IA', 'Depois');
+      if (r === 'Mapear com IA') await acoes.provedorMapear();
+      else if (antes) render();
+    },
+    async provedorSair() {
+      const ok = await vscode.window.showWarningMessage(`Sair da conta do ${jira.nome}?`, { modal: true, detail: 'Apaga e-mail e token guardados. As variáveis continuam.' }, 'Sair');
+      if (!ok) return;
+      await jira.sairConta(ctx.secrets);
+      checar(['jira', 'board']);
+    },
+    async provedorMapear() { await conexao.mapear(ctx, { aoTerminar: () => { checar(['jira', 'board']); render(); } }); },
     async cfgEditar({ id }) {
       const site = siteJira(), proj = projetoJira();
       if (id === 'jiraSite') {
@@ -532,7 +576,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado,
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plugins: cfgAba === 'plugins' ? listarPlugins(mkt.nova) : [], mkt, variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], pluginsAuto: cfg().get('pluginsAuto') !== false, valores: valoresCfg(), estado: cfgEstado, conexao: { ativo: { id: require('../provedores').provedorAtivo().id, nome: jira.nome }, trocando },
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };

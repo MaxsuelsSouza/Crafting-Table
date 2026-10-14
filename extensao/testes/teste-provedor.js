@@ -9,7 +9,7 @@ const { mdParaAdf, adfTexto, adfMd } = jira._teste;
 
 // Contrato: o adaptador do Jira cumpre tudo; a fachada (ticket.js) delega cada operação e diz o nome do provedor ativo.
 assert.deepStrictEqual(faltando(jira), []);
-assert.deepStrictEqual(faltando({ id: 'x', nome: 'X', capacidades: {}, lerLink() {} }), OPERACOES.filter((o) => o !== 'lerLink'));
+assert.deepStrictEqual(faltando({ id: 'x', nome: 'X', capacidades: {}, lerLink() {} }), ['camposCredencial', ...OPERACOES.filter((o) => o !== 'lerLink')]);
 const fachada = require('../infra/ticket').jira;
 assert.ok(OPERACOES.every((o) => typeof fachada[o] === 'function'));
 assert.strictEqual(fachada.nome, 'Jira');

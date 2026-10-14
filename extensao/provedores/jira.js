@@ -1,5 +1,6 @@
 // @ts-check
 const vscode = require('vscode');
+const credenciaisLib = require('./credenciais');
 
 // Adaptador do Jira (Cloud): REST v3, Agile 1.0, JQL e ADF. Cumpre provedores/contrato.js; o resto da extensão não vê
 // JQL nem ADF: texto entra e sai em Markdown.
@@ -15,19 +16,20 @@ function lerLink(link) {
 // Chave do Jira dentro de um texto (nome de branch: feature/WMS-13429-x → WMS-13429); null se não houver.
 const chaveDaBranch = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
 
+// O que pedir para conectar: site (vira a variável "site"), e-mail e API token (segredos jira.email e jira.token).
+const camposCredencial = [
+  { id: 'site', rotulo: 'Site do Jira', segredo: false, variavel: 'site', exemplo: 'https://<org>.atlassian.net' },
+  { id: 'email', rotulo: 'E-mail da conta Jira', segredo: true },
+  { id: 'token', rotulo: 'API token do Jira (id.atlassian.com/manage-profile/security/api-tokens)', segredo: true }
+];
+
+// Cabeçalho Basic; se faltar e-mail ou token, pede (só os segredos: o site é pedido ao conectar).
 async function credenciais(secrets) {
-  let email = await secrets.get('jira.email');
-  let token = await secrets.get('jira.token');
+  let { email, token } = await credenciaisLib.lerSegredos(jira, secrets);
   if (!email || !token) {
-    email = await vscode.window.showInputBox({ prompt: 'E-mail da conta Jira', ignoreFocusOut: true });
-    if (!email) return null;
-    token = await vscode.window.showInputBox({
-      prompt: 'API token do Jira (id.atlassian.com/manage-profile/security/api-tokens)',
-      password: true, ignoreFocusOut: true
-    });
-    if (!token) return null;
-    await secrets.store('jira.email', email);
-    await secrets.store('jira.token', token);
+    const v = await credenciaisLib.pedir(jira, secrets);
+    if (!v) return null;
+    ({ email, token } = v);
   }
   return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
 }
@@ -85,10 +87,10 @@ async function buscar(secrets, { key, site }) {
 const linkDo = (site, key) => `${site}/browse/${key}`;
 
 // Há conta guardada (sem pedir nada); sairConta esquece, e a próxima chamada pede de novo.
-const conectado = async (secrets) => !!((await secrets.get('jira.email')) && (await secrets.get('jira.token')));
+const conectado = (secrets) => credenciaisLib.completas(jira, secrets);
 async function sairConta(secrets) {
-  await secrets.delete('jira.email');
-  await secrets.delete('jira.token');
+  await credenciaisLib.esquecer(jira, secrets);
+  for (const k of Object.keys(eus)) delete eus[k];
 }
 
 // Texto → documento ADF do Jira (um parágrafo por linha).
@@ -355,6 +357,29 @@ async function statusDoProjeto(secrets, site, projeto) {
   return [...nomes].sort((a, b) => a.localeCompare(b));
 }
 
+// Descoberta para o mapeamento por IA: só metadados da conta, com limites (projetos, boards com colunas, status, tipos de item, labels).
+// O projeto atual e os projetos da lista entram primeiro; nada de conteúdo de ticket nem de credencial.
+const LIMITES = { projetos: 50, projetosDetalhados: 3, boards: 10, status: 150, labels: 200 };
+async function descobrir(secrets, site, projetoAtual = '') {
+  const ps = await api(secrets, site, `project/search?maxResults=${LIMITES.projetos}&orderBy=key`).catch(() => ({ values: [] }));
+  const projetos = (ps.values || []).map((p) => ({ chave: p.key, nome: p.name }));
+  if (projetoAtual && !projetos.some((p) => p.chave === projetoAtual)) projetos.unshift({ chave: projetoAtual, nome: projetoAtual });
+  const detalhar = [...projetos].sort((a, b) => (b.chave === projetoAtual) - (a.chave === projetoAtual)).slice(0, LIMITES.projetosDetalhados);
+  const lista = [], status = new Set();
+  for (const p of detalhar) {
+    for (const b of (await boards(secrets, site, p.chave).catch(() => [])).slice(0, LIMITES.boards - lista.length)) {
+      const cfg = await api(secrets, site, `/rest/agile/1.0/board/${b.id}/configuration`).catch(() => null);
+      const etapas = (cfg?.columnConfig?.columns || []).map((c) => ({ nome: c.name, ids: (c.statuses || []).map((x) => String(x.id)) })).filter((c) => c.ids.length);
+      lista.push({ id: b.id, nome: b.nome, tipo: b.tipo, projeto: p.chave, etapas });
+    }
+    (await statusDoProjeto(secrets, site, p.chave).catch(() => [])).forEach((n) => status.add(n));
+  }
+  const tipos = await api(secrets, site, 'issuetype').catch(() => []);
+  const tiposItem = [...new Map((Array.isArray(tipos) ? tipos : []).map((t) => [t.name, { nome: t.name, subtarefa: !!t.subtask }])).values()];
+  const labs = await labels(secrets, site, '').catch(() => []);
+  return { site, projetos, boards: lista, status: [...status].sort((a, b) => a.localeCompare(b)).slice(0, LIMITES.status), tiposItem, labels: labs.slice(0, LIMITES.labels) };
+}
+
 // Subtarefa no ticket pai: tipo de subtarefa do projeto, você como responsável (opcional) e estimativa original.
 // A estimativa vai num segundo passo: muitas telas de criação não têm o campo de tempo.
 async function criarSubtarefa(secrets, { key, site }, { resumo, descricao, estimativa, atribuirAMim }) {
@@ -374,9 +399,9 @@ async function criarSubtarefa(secrets, { key, site }, { resumo, descricao, estim
 
 /** @type {import('./contrato').Provedor} */
 const jira = {
-  id: 'jira', nome: 'Jira',
+  id: 'jira', nome: 'Jira', camposCredencial,
   capacidades: { subtarefas: true, anexos: true, comentarios: true, mencoes: true, labels: true, board: true, estimativa: true },
   lerLink, chaveDaBranch, linkDo, credenciais, conectado, sairConta, buscar, filhos, comentar, comentarios, anexar, baixarAnexo, pessoas, eu, meus, labels,
-  etapas, boardPorNome, boards, projetoInfo, statusDoProjeto, criarSubtarefa, atualizarDescricao
+  etapas, boardPorNome, boards, projetoInfo, statusDoProjeto, descobrir, criarSubtarefa, atualizarDescricao
 };
 module.exports = { ...jira, _teste: { mdParaAdf, adfTexto, adfMd } };

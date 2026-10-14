@@ -13,4 +13,4 @@ function provedorAtivo() {
 // Nome para os rótulos da tela ("Ver no Jira").
 const nomeProvedor = () => provedorAtivo().nome;
 
-module.exports = { provedorAtivo, nomeProvedor, ids: Object.keys(ADAPTADORES) };
+module.exports = { provedorAtivo, nomeProvedor, ADAPTADORES, ids: Object.keys(ADAPTADORES) };
