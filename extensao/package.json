@@ -1,7 +1,7 @@
 {
   "name": "crafting-table",
   "displayName": "Crafting Table",
-  "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets do Jira, documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
+  "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets da sua ferramenta de gestão (Jira e outras), documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
   "icon": "icons/crafting-table.png",
   "publisher": "local",
   "version": "0.1.0",
@@ -170,7 +170,7 @@
           "type": "string",
           "enum": ["jira"],
           "default": "jira",
-          "description": "Ferramenta de gestão de trabalho onde ficam os tickets (provedores/). Hoje: Jira."
+          "description": "Ferramenta de gestão de trabalho onde ficam os tickets (provedores/)."
         },
         "craftingTable.jiraSite": {
           "type": "string",

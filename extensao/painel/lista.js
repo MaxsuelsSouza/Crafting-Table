@@ -9,7 +9,7 @@ const vinculados = require('../componentes/vinculados'); // caixa de vinculados 
 const implementacoes = require('../implementacoes/implementacoes');
 const incidentes = require('../incidentes/incidentes');
 const menuModulos = require('../componentes/menu-modulos');
-const { siteJira, projetoJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
+const { siteJira, projetoJira, boardsJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
 const variaveis = require('../provedores/variaveis');
 
 // Lista de tickets (Refinamento, Implementações ou QA) e a caixa "Vinculados a você" de cada uma. Estado de módulo (singleton:
@@ -70,14 +70,14 @@ const carregarMeus = async (s, forcar) => {
   meusPor[k] = { ...(meus || {}), carregando: true, semCredencial: false };
   s.render();
   const filtro = fixo ? '' : s.globalState.get('meusFiltro') || '';
-  const projeto = projetoJira();
+  const projeto = projetoJira(); // um ou vários
   try {
-    // Etapas = colunas do board principal (buscadas uma vez); a escolhida vira os status dela na busca.
+    // Etapas = colunas dos boards escolhidos (buscadas uma vez; colunas de mesmo nome se juntam); a escolhida vira os status dela na busca.
     let avisoBoard = '';
-    if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, String(variaveis.ler('boardPrincipal')), [].concat(variaveis.ler('etapasExtras'))).catch((e) => { avisoBoard = e.message; return null; });
+    if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, boardsJira(), [].concat(variaveis.ler('etapasExtras'))).catch((e) => { avisoBoard = e.message; return null; });
     const coluna = (etapasJira || []).find((c) => c.nome === filtro);
     if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
-    const boardId = k === incidentes.ID ? (await jira.boardPorNome(s.secrets, siteJira(), projeto, String(variaveis.ler('boardPrincipal')))).id : undefined; // Incidentes: só o board das configurações
+    const boardId = k === incidentes.ID ? (await jira.boardsPorNome(s.secrets, siteJira(), projeto, boardsJira())).map((b) => b.id) : undefined; // Incidentes: só os boards das configurações
     let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: k === incidentes.ID ? String(variaveis.ler('tipoIncidente')) : '', boardId, projeto });
     itens = vinculados.filtrar(itens, vinculadosDe(k).status);
     meusPor[k] = { itens, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: s.globalState.get('meusOcultos') || [], em: Date.now() };

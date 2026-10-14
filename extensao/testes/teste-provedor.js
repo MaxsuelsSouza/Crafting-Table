@@ -52,4 +52,30 @@ console.log('ok adf');
   await jira.sairConta(secrets);
   assert.ok(!(await jira.conectado(secrets)));
   console.log('ok filhos');
+
+  // Vários projetos e boards: boards de cada projeto, colunas de mesmo nome juntas, JQL com project in (…), tickets de vários boards sem repetir.
+  guardados['jira.email'] = 'a@b.c'; guardados['jira.token'] = 't';
+  const urls = [];
+  const resposta = (u) => {
+    if (u.includes('/rest/agile/1.0/board?projectKeyOrId=A')) return { values: [{ id: 1, name: 'Time A', type: 'kanban' }] };
+    if (u.includes('/rest/agile/1.0/board?projectKeyOrId=B')) return { values: [{ id: 2, name: 'Time B', type: 'scrum' }] };
+    if (u.includes('/board/1/configuration')) return { columnConfig: { columns: [{ name: 'A fazer', statuses: [{ id: '10' }] }, { name: 'Em teste', statuses: [{ id: '11' }] }] } };
+    if (u.includes('/board/2/configuration')) return { columnConfig: { columns: [{ name: 'A fazer', statuses: [{ id: '20' }] }, { name: 'Feito', statuses: [{ id: '21' }] }] } };
+    if (u.includes('/board/1/issue')) return { issues: [{ key: 'A-1', fields: { summary: 'a', updated: '2' } }, { key: 'X-9', fields: { summary: 'x', updated: '1' } }] };
+    if (u.includes('/board/2/issue')) return { issues: [{ key: 'B-1', fields: { summary: 'b', updated: '3' } }, { key: 'X-9', fields: { summary: 'x', updated: '1' } }] };
+    return { issues: [] };
+  };
+  globalThis.fetch = /** @type {any} */ (async (url) => { urls.push(decodeURIComponent(String(url))); return { ok: true, text: async () => JSON.stringify(resposta(String(url))) }; });
+  const site = 'https://x.atlassian.net';
+  assert.deepStrictEqual((await jira.boards(secrets, site, ['A', 'B'])).map((b) => b.nome), ['Time A', 'Time B']);
+  const cols = await jira.etapas(secrets, site, ['A', 'B'], ['Time A', 'Time B']);
+  assert.deepStrictEqual(cols, [{ nome: 'A fazer', ids: ['10', '20'] }, { nome: 'Em teste', ids: ['11'] }, { nome: 'Feito', ids: ['21'] }]);
+  const ids = (await jira.boardsPorNome(secrets, site, ['A', 'B'], ['Time B', 'Time A'])).map((b) => b.id);
+  assert.deepStrictEqual(ids, [2, 1]);
+  const itens = await jira.meus(secrets, site, { tipos: 'Incident', boardId: ids, projeto: ['A', 'B'] });
+  assert.deepStrictEqual(itens.map((i) => i.key), ['B-1', 'A-1', 'X-9']); // sem repetir, mais recentes primeiro
+  assert.ok(urls.some((u) => u.includes('project in ("A","B") AND issuetype in (Incident)')));
+  await jira.meus(secrets, site, { tipos: 'Incident', projeto: 'A' });
+  assert.ok(urls.at(-1).includes('search/jql') && urls.at(-1).includes('project in ("A")'));
+  console.log('ok varios projetos e boards');
 })().catch((e) => { console.error(e); process.exit(1); });

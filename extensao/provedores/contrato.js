@@ -42,6 +42,7 @@
  * @property {(secrets: any, site: string, projeto: string, nomeBoard: string, extras?: string[]) => Promise<Etapa[]>} etapas  colunas do board
  * @property {(secrets: any, site: string, projeto: string, nomeBoard: string) => Promise<{ id: number | string, name: string }>} boardPorNome
  * @property {(secrets: any, site: string, projeto: string) => Promise<{ id: number | string, nome: string, tipo?: string }[]>} boards
+ * @property {(secrets: any, site: string, projeto: string | string[], nomes: string | string[]) => Promise<{ id: number, nome: string }[]>} boardsPorNome  boards escolhidos (vários nomes, em um ou vários projetos)
  * @property {(secrets: any, site: string) => Promise<{ chave: string, nome: string }[]>} projetos  projetos visíveis para a conta (para escolher a variável Projeto)
  * @property {(secrets: any, site: string, chave: string) => Promise<{ chave: string, nome: string }>} projetoInfo
  * @property {(secrets: any, site: string, projeto: string) => Promise<string[]>} statusDoProjeto
@@ -52,7 +53,7 @@
 
 // As operações, na ordem acima: a fachada (infra/ticket.js) delega cada uma ao provedor ativo e o teste confere o adaptador.
 const OPERACOES = ['lerLink', 'chaveDaBranch', 'linkDo', 'credenciais', 'conectado', 'sairConta', 'buscar', 'filhos', 'comentar', 'comentarios', 'anexar', 'baixarAnexo',
-  'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boards', 'projetos', 'projetoInfo', 'statusDoProjeto', 'descobrir', 'criarSubtarefa', 'atualizarDescricao'];
+  'pessoas', 'eu', 'meus', 'labels', 'etapas', 'boardPorNome', 'boardsPorNome', 'boards', 'projetos', 'projetoInfo', 'statusDoProjeto', 'descobrir', 'criarSubtarefa', 'atualizarDescricao'];
 
 // O que falta no adaptador para cumprir o contrato (vazio: cumpre).
 const faltando = (p) => [...['id', 'nome', 'capacidades'].filter((k) => !p[k]), ...(Array.isArray(p.camposCredencial) && p.camposCredencial.length ? [] : ['camposCredencial']), ...OPERACOES.filter((k) => typeof p[k] !== 'function')];

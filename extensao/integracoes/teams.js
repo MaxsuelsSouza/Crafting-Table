@@ -30,7 +30,7 @@ const JANELA = 60e3; // linhas do mesmo ticket e tipo dentro disso viram uma men
 const SOSSEGO = 20e3; // o grupo só sai depois de ficar esse tempo sem linha nova (a rajada acabou)
 const MAX_FALHAS = 3;
 const ENVIADO = '.teams.enviado'; // ISO da última linha já enviada
-const TITULO = { sdd: 'Spec', pergunta: 'Perguntas', jira: 'Jira' };
+const TITULO = { sdd: 'Spec', pergunta: 'Perguntas', jira: 'Ticket' };
 
 const ler = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
 const ms = (iso) => Date.parse(iso) || 0; // o hook (Python) e o sdd-state (JS) escrevem ISO em formatos diferentes

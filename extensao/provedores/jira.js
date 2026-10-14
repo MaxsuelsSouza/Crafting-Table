@@ -285,17 +285,26 @@ async function eu(secrets, site) {
   return eus[site];
 }
 
+// Projetos e boards podem ser um ou vários (a pessoa trabalha em mais de um): texto ou lista, vazios fora.
+const varios = (x) => [].concat(x ?? []).map((v) => String(v).trim()).filter(Boolean);
+const aspas = (x) => `"${String(x).replace(/["\\]/g, '')}"`;
+
 // Tickets em que você é o responsável (mais recentes primeiro). filtro.statusIds: os status de uma coluna do board;
 // sem eles, só os não concluídos.
-// tipos: em vez do responsável, todos os não concluídos desses tipos (Incidentes: "Incident, Incidente"); boardId limita ao board e projeto ao projeto.
+// tipos: em vez do responsável, todos os não concluídos desses tipos (Incidentes: "Incident, Incidente"); boardId limita ao(s) board(s) e projeto ao(s) projeto(s).
 // label: em vez do responsável, os tickets com essa label (QA não se vincula ao ticket, marca com label).
 async function meus(secrets, site, { statusIds, label, tipos, boardId, projeto } = {}) {
   const filtro = statusIds?.length ? `status in (${statusIds.map((x) => Number(x)).filter(Boolean).join(',')})` : 'statusCategory != Done';
-  const quem = tipos ? `${projeto ? `project = "${String(projeto).replace(/["\\]/g, '')}" AND ` : ''}issuetype in (${tipos})` : label ? `labels = "${String(label).replace(/["\\]/g, '')}"` : 'assignee = currentUser()';
+  const ps = varios(projeto);
+  const quem = tipos ? `${ps.length ? `project in (${ps.map(aspas).join(',')}) AND ` : ''}issuetype in (${tipos})` : label ? `labels = ${aspas(label)}` : 'assignee = currentUser()';
   const jql = `${quem} AND ${filtro} ORDER BY updated DESC`;
-  // boardId: só os tickets que o board enxerga (o filtro do board vale junto com o jql).
-  const r = await api(secrets, site, `${boardId ? `/rest/agile/1.0/board/${boardId}/issue` : 'search/jql'}?jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype,parent&maxResults=${tipos ? 100 : 50}`);
-  return (r.issues || []).map((i) => ({ key: i.key, resumo: i.fields.summary, status: i.fields.status?.name, tipo: i.fields.issuetype?.name,
+  const campos = `jql=${encodeURIComponent(jql)}&fields=summary,status,issuetype,parent,updated&maxResults=${tipos ? 100 : 50}`;
+  // boardId: só os tickets que o(s) board(s) enxerga(m) (o filtro do board vale junto com o jql); vários boards somam, sem repetir.
+  const bs = [].concat(boardId ?? []).filter(Boolean);
+  const issues = bs.length ? (await Promise.all(bs.map((b) => api(secrets, site, `/rest/agile/1.0/board/${b}/issue?${campos}`)))).flatMap((r) => r.issues || [])
+    : (await api(secrets, site, `search/jql?${campos}`)).issues || [];
+  const unicos = [...new Map(issues.map((i) => [i.key, i])).values()].sort((a, b) => String(b.fields.updated || '').localeCompare(String(a.fields.updated || '')));
+  return unicos.map((i) => ({ key: i.key, resumo: i.fields.summary, status: i.fields.status?.name, tipo: i.fields.issuetype?.name,
     subtarefa: !!i.fields.issuetype?.subtask, pai: i.fields.parent?.key || null }));
 }
 
@@ -314,20 +323,34 @@ async function labels(secrets, site, contem) {
 // O board é achado pelo nome dentro do projeto (ex.: "Downstream" no WMS).
 // extras: status que não são coluna do board mas valem como etapa (ex.: "Pronto p/ Dev"); entram antes das colunas,
 // achados pelo nome nos status do projeto (sem diferença de maiúsculas e espaços).
+// Projetos e boards podem ser vários: boardPorNome devolve o primeiro board com o nome em algum dos projetos.
 async function boardPorNome(secrets, site, projeto, nomeBoard) {
-  const r = await api(secrets, site, `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(projeto)}&maxResults=100`);
-  const board = (r.values || []).find((b) => b.name.toLowerCase().includes(nomeBoard.toLowerCase()));
-  if (!board) throw new Error(`Board "${nomeBoard}" não encontrado no projeto ${projeto}`);
+  const lista = await boards(secrets, site, projeto);
+  const board = lista.find((b) => b.nome.toLowerCase() === String(nomeBoard).toLowerCase()) || lista.find((b) => b.nome.toLowerCase().includes(String(nomeBoard).toLowerCase()));
+  if (!board) throw new Error(`Board "${nomeBoard}" não encontrado em ${varios(projeto).join(', ')}`);
   return board;
 }
+// Ids dos boards escolhidos (vários nomes), na ordem dos nomes.
+async function boardsPorNome(secrets, site, projeto, nomes) {
+  return Promise.all(varios(nomes).map((n) => boardPorNome(secrets, site, projeto, n)));
+}
+// Vários boards: colunas com o mesmo nome viram uma etapa só (os status se somam), na ordem em que aparecem.
 async function etapas(secrets, site, projeto, nomeBoard, extras = []) {
-  const board = await boardPorNome(secrets, site, projeto, nomeBoard);
-  const cfg = await api(secrets, site, `/rest/agile/1.0/board/${board.id}/configuration`);
-  const colunas = (cfg.columnConfig?.columns || []).map((c) => ({ nome: c.name, ids: (c.statuses || []).map((x) => x.id) })).filter((c) => c.ids.length);
+  const porNome = new Map();
+  for (const board of await boardsPorNome(secrets, site, projeto, nomeBoard)) {
+    const cfg = await api(secrets, site, `/rest/agile/1.0/board/${board.id}/configuration`);
+    for (const c of cfg.columnConfig?.columns || []) {
+      const ids = (c.statuses || []).map((x) => x.id);
+      if (!ids.length) continue;
+      const e = porNome.get(c.name.toLowerCase()) || porNome.set(c.name.toLowerCase(), { nome: c.name, ids: [] }).get(c.name.toLowerCase());
+      e.ids = [...new Set([...e.ids, ...ids])];
+    }
+  }
+  const colunas = [...porNome.values()];
   if (!extras.length) return colunas;
   const norm = (x) => String(x).toLowerCase().replace(/\s+/g, '');
   const status = new Map();
-  for (const tipo of await api(secrets, site, `project/${projeto}/statuses`)) for (const st of tipo.statuses || []) status.set(norm(st.name), st.id);
+  for (const p of varios(projeto)) for (const tipo of await api(secrets, site, `project/${encodeURIComponent(p)}/statuses`)) for (const st of tipo.statuses || []) status.set(norm(st.name), st.id);
   const achados = extras.filter((e) => status.has(norm(e)) && !colunas.some((c) => norm(c.nome) === norm(e))).map((e) => ({ nome: e, ids: [status.get(norm(e))] }));
   return [...achados, ...colunas];
 }
@@ -348,12 +371,16 @@ async function projetoInfo(secrets, site, chave) {
   return { chave: p.key, nome: p.name };
 }
 async function boards(secrets, site, projeto) {
-  const r = await api(secrets, site, `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(projeto)}&maxResults=100`);
-  return (r.values || []).map((b) => ({ id: b.id, nome: b.name, tipo: b.type }));
+  const todos = [];
+  for (const p of varios(projeto)) {
+    const r = await api(secrets, site, `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(p)}&maxResults=100`);
+    todos.push(...(r.values || []).map((b) => ({ id: b.id, nome: b.name, tipo: b.type, projeto: p })));
+  }
+  return [...new Map(todos.map((b) => [b.id, b])).values()];
 }
 async function statusDoProjeto(secrets, site, projeto) {
   const nomes = new Set();
-  for (const tipo of await api(secrets, site, `project/${encodeURIComponent(projeto)}/statuses`)) for (const st of tipo.statuses || []) nomes.add(st.name);
+  for (const p of varios(projeto)) for (const tipo of await api(secrets, site, `project/${encodeURIComponent(p)}/statuses`)) for (const st of tipo.statuses || []) nomes.add(st.name);
   return [...nomes].sort((a, b) => a.localeCompare(b));
 }
 
@@ -363,15 +390,17 @@ async function projetos(secrets, site) {
   const r = await api(secrets, site, 'project/search?maxResults=100&orderBy=key');
   return (r.values || []).map((p) => ({ chave: p.key, nome: p.name }));
 }
-const LIMITES = { projetos: 50, projetosDetalhados: 3, boards: 10, status: 150, labels: 200 };
+const LIMITES = { projetos: 50, projetosDetalhados: 3, boards: 20, status: 150, labels: 200 };
+// projetoAtual: os projetos escolhidos (um ou vários); só eles são detalhados (boards, etapas, status), o resto da conta não interessa.
 async function descobrir(secrets, site, projetoAtual = '') {
+  const escolhidos = varios(projetoAtual);
   const ps = await api(secrets, site, `project/search?maxResults=${LIMITES.projetos}&orderBy=key`).catch(() => ({ values: [] }));
   const projetos = (ps.values || []).map((p) => ({ chave: p.key, nome: p.name }));
-  if (projetoAtual && !projetos.some((p) => p.chave === projetoAtual)) projetos.unshift({ chave: projetoAtual, nome: projetoAtual });
-  const detalhar = [...projetos].sort((a, b) => (b.chave === projetoAtual) - (a.chave === projetoAtual)).slice(0, LIMITES.projetosDetalhados);
+  for (const c of escolhidos) if (!projetos.some((p) => p.chave === c)) projetos.unshift({ chave: c, nome: c });
+  const detalhar = escolhidos.length ? projetos.filter((p) => escolhidos.includes(p.chave)) : projetos.slice(0, LIMITES.projetosDetalhados);
   const lista = [], status = new Set();
   for (const p of detalhar) {
-    for (const b of (await boards(secrets, site, p.chave).catch(() => [])).slice(0, LIMITES.boards - lista.length)) {
+    for (const b of (await boards(secrets, site, p.chave).catch(() => [])).slice(0, Math.max(0, LIMITES.boards - lista.length))) {
       const cfg = await api(secrets, site, `/rest/agile/1.0/board/${b.id}/configuration`).catch(() => null);
       const etapas = (cfg?.columnConfig?.columns || []).map((c) => ({ nome: c.name, ids: (c.statuses || []).map((x) => String(x.id)) })).filter((c) => c.ids.length);
       lista.push({ id: b.id, nome: b.nome, tipo: b.tipo, projeto: p.chave, etapas });
@@ -406,6 +435,6 @@ const jira = {
   id: 'jira', nome: 'Jira', camposCredencial,
   capacidades: { subtarefas: true, anexos: true, comentarios: true, mencoes: true, labels: true, board: true, estimativa: true },
   lerLink, chaveDaBranch, linkDo, credenciais, conectado, sairConta, buscar, filhos, comentar, comentarios, anexar, baixarAnexo, pessoas, eu, meus, labels,
-  etapas, boardPorNome, boards, projetos, projetoInfo, statusDoProjeto, descobrir, criarSubtarefa, atualizarDescricao
+  etapas, boardPorNome, boardsPorNome, boards, projetos, projetoInfo, statusDoProjeto, descobrir, criarSubtarefa, atualizarDescricao
 };
 module.exports = { ...jira, _teste: { mdParaAdf, adfTexto, adfMd } };

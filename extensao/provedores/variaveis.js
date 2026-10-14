@@ -15,20 +15,21 @@ const vscode = require('vscode');
 const definicoes = [
   { chave: 'site', rotulo: 'Site', tipo: 'texto', usadaEm: 'todas as chamadas à ferramenta e os links dos tickets',
     descricao: 'Endereço da ferramenta da organização (no Jira: https://<org>.atlassian.net). Preenchido ao conectar a conta.' },
-  { chave: 'projeto', rotulo: 'Projeto', tipo: 'texto', escolha: 'projetos', usadaEm: 'lista de tickets vinculados, boards e etapas',
-    descricao: 'Chave do projeto onde ficam os tickets deste time (ex.: WMS).' },
-  { chave: 'boardPrincipal', rotulo: 'Board principal', tipo: 'texto', escolha: 'boards', usadaEm: 'filtro por etapa dos vinculados e lista de Incidentes',
-    descricao: 'Nome do board do time; as colunas dele viram as etapas do filtro dos vinculados.' },
+  // projeto e boardPrincipal são listas (a pessoa pode estar em mais de um); um valor antigo em texto vira lista de um item.
+  { chave: 'projeto', rotulo: 'Projetos', tipo: 'lista', escolha: 'projetos', usadaEm: 'lista de tickets vinculados, boards e etapas',
+    descricao: 'Chaves dos projetos onde ficam os tickets em que você trabalha (ex.: WMS). Pode ser mais de um.' },
+  { chave: 'boardPrincipal', rotulo: 'Boards', tipo: 'lista', escolha: 'boards', usadaEm: 'filtro por etapa dos vinculados e lista de Incidentes',
+    descricao: 'Boards em que você trabalha; as colunas deles viram as etapas do filtro dos vinculados (colunas de mesmo nome se juntam). Pode ser mais de um.' },
   { chave: 'etapasExtras', rotulo: 'Etapas extras', tipo: 'lista', escolha: 'status', usadaEm: 'filtro por etapa dos vinculados',
     descricao: 'Status que não são coluna do board mas também valem como etapa no filtro.' },
   { chave: 'tipoIncidente', rotulo: 'Tipo de incidente', tipo: 'texto', usadaEm: 'lista de tickets do módulo Incidentes',
-    descricao: 'Nome exato do tipo de item que é um incidente na ferramenta (um nome inexistente dá erro na busca).' },
+    descricao: 'A caixa de vinculados do módulo Incidentes mostra os tickets deste tipo de item (ex.: Incident). Sem ela, a caixa não busca nada.' },
   { chave: 'etapasQA', rotulo: 'Etapas de QA', tipo: 'lista', escolha: 'status', usadaEm: 'lista de tickets do módulo QA',
-    descricao: 'Status em que um ticket está pronto para o QA testar. Um nome alternativo do mesmo status se escreve com "|" (ex.: Pronto para QA|Pronto p/ QA).' },
+    descricao: 'A caixa de vinculados do módulo QA mostra só os tickets nestas etapas: os que estão prontos para o QA testar. Nome alternativo do mesmo status com "|" (ex.: Pronto para QA|Pronto p/ QA).' },
   { chave: 'labelQA', rotulo: 'Label de QA', tipo: 'texto', escolha: 'labels', usadaEm: 'lista de tickets do módulo QA',
-    descricao: 'Label que marca os tickets de responsabilidade do QA.' },
+    descricao: 'Junto com as Etapas de QA: só entram na caixa do QA os tickets com esta label (é como o time marca o que é do QA).' },
   { chave: 'etapasImplementacao', rotulo: 'Etapas de implementação', tipo: 'lista', escolha: 'status', usadaEm: 'lista de tickets do módulo Implementações',
-    descricao: 'Status em que um ticket está disponível para implementar (ex.: Buffer, Não iniciado, Em andamento|In progress).' }
+    descricao: 'A caixa de vinculados do módulo Implementações mostra só os tickets nestas etapas: os disponíveis para desenvolver (ex.: Buffer, Não iniciado, Em andamento|In progress).' }
 ];
 
 const def = (chave) => definicoes.find((d) => d.chave === chave);

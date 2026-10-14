@@ -13,7 +13,7 @@ const { notificar } = require('../painel/notificacoes');
 const { dirSpec, ondeSalvar, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
 
 // ORQUESTRADOR do refinamento: o Maestro dirigido pela extensão. Monta cada execução do Claude em segundo plano (etapa),
-// decide a próxima (seguir, filas de triagem/impacto/tarefas) e vigia comentários novos no Jira. O painel só chama a interface
+// decide a próxima (seguir, filas de triagem/impacto/tarefas) e vigia comentários novos na ferramenta de tickets. O painel só chama a interface
 // exportada; o estado mutável (alterando, respondidas, vigiando) mora aqui. `s` = servicos do painel (iniciar() recebe).
 const pasta = (id) => tickets.pasta(id);
 /** @type {any} */
@@ -118,7 +118,7 @@ const filaTriagem = (t) => {
   const { duvidas, perguntas } = abertasDe(t);
   c.status = 'triando';
   s.gravar(t.chave, IMPACTOS, l);
-  etapa(ticketDe(t.chave), `[triagem] Comentário novo no ticket ${t.chave}: resposta, mudança ou ruído? Siga a seção "Triagem de comentário novo do Jira" da skill sdd.\n`
+  etapa(ticketDe(t.chave), `[triagem] Comentário novo no ticket ${t.chave}: resposta, mudança ou ruído? Siga a seção "Triagem de comentário novo do ticket" da skill sdd.\n`
     + `Dúvidas enviadas sem resposta:\n${duvidas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma)'}\n`
     + `Perguntas abertas do Claude:\n${perguntas.map((q) => `- ${q.id}: ${q.pergunta}${q.opcoes?.length ? ` (opções: ${q.opcoes.join(' / ')})` : ''}`).join('\n') || '(nenhuma)'}\n`
     + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Triando comentário de ${c.autor}`);
@@ -131,7 +131,7 @@ const filaImpactos = (t) => {
   i.status = 'analisando';
   try { mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), `a${i.id}`); i.snapAnalise = true; } catch {}
   s.gravar(t.chave, IMPACTOS, l);
-  etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do Jira" da skill sdd: SÓ ANÁLISE, não edite a spec nem os cards.\n`
+  etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do ticket" da skill sdd: SÓ ANÁLISE, não edite a spec nem os cards.\n`
     + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`);
 };
 // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
@@ -179,7 +179,7 @@ const qaCaminhos = () => {
   const qa = pluginInstalado('fcx-qa-test-planning@');
   if (!qa) return ' Plugin fcx-qa-test-planning não instalado: siga as regras do passo 6 da skill sdd sem ele.';
   return ` Método de QA: ${path.join(qa, 'skills', 'jira-qa-planner', 'SKILL.md')} (Passos 3, 6 e 7) e ${path.join(qa, 'skills', 'jira-qa-planner', 'reference', 'test-plan-templates.md')};`
-    + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado). Não use twg nem Jira: o card [QA] é criado no Jira pela extensão.`;
+    + ` estimativa: ${path.join(qa, 'skills', 'test-estimation', 'reference', 'modelo-estimativa.md')} (modo detalhado). Não use twg nem a ferramenta de tickets: o card [QA] é criado pela extensão.`;
 };
 // O que o refinamento espera de você agora (null = nada: o Claude pode seguir).
 const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') ? 'perguntas'

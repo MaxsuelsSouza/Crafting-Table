@@ -58,7 +58,9 @@ const SPECS_PADRAO = path.join(os.homedir(), 'specs');
 // Settings craftingTable.*; vazio cai nos valores de antes (primeiro ticket da lista).
 const cfg = () => vscode.workspace.getConfiguration('craftingTable');
 // Site e projeto vêm das variáveis do provedor (Configurações > Variáveis); sem elas, '' (pendência), nunca um valor da empresa.
-const projetoJira = () => String(variaveis.ler('projeto') || '');
+// Projetos e boards são listas (a pessoa pode trabalhar em mais de um).
+const projetoJira = () => [].concat(variaveis.ler('projeto') || []);
+const boardsJira = () => [].concat(variaveis.ler('boardPrincipal') || []);
 const siteJira = () => String(variaveis.ler('site') || '');
 // Variável que cada módulo exige além das comuns (modo = id do módulo da lista).
 const EXIGE = { qa: ['etapasQA'], impl: ['etapasImplementacao'], incidentes: ['tipoIncidente'] };
@@ -66,9 +68,9 @@ const ROTULO_VAR = Object.fromEntries(variaveis.definicoes.map((d) => [d.chave, 
 // O que falta configurar para os vinculados buscarem no provedor: site, projeto, conta (e-mail + token), board principal e as
 // variáveis do módulo (modo). Cada item vira o aviso de configuração na caixa.
 const pendencias = async (secrets, modo = '') => [
-  !siteJira() && 'site', !projetoJira() && 'projeto',
+  !siteJira() && 'site', !projetoJira().length && 'projeto',
   !(await jira.conectado(secrets)) && 'conta',
-  !variaveis.ler('boardPrincipal') && 'board principal',
+  !boardsJira().length && 'board',
   ...(EXIGE[modo] || []).filter((c) => !variaveis.ler(c).length).map((c) => ROTULO_VAR[c])].filter(Boolean);
 const jiraPendencias = pendencias; // nome antigo
 // Repositórios de código: ao lado do repositório de specs (…/WMS/specs → …/WMS/novo-wms-backend e …/WMS/wms-mobile).
@@ -102,7 +104,8 @@ const ferramenta = (v) => {
     + (b?.colunas ? linha('Etapas no filtro', esc(b.colunas.join(' → '))) : b && !b.ok && val.jiraBoard ? linha('Etapas no filtro', `<span class="cfg-mal">${esc(b.texto || '')}</span>`) : '')
     + dica('Projeto, etapas de cada módulo e as demais variáveis ficam na aba Variáveis.')
     + acoes(botao('Trocar ferramenta', { variante: 'contorno', acao: 'provedorTrocar' }) + botao('Sair da conta', { variante: 'contorno', acao: 'provedorSair' })
-      + botao('Mapear com IA', { variante: 'principal', acao: 'provedorMapear', titulo: 'A IA lê só os metadados da conta (nunca o token) e sugere as variáveis' })));
+      + botao('Mapear com IA', { variante: 'principal', acao: 'provedorMapear', desligado: !val.jiraProjeto,
+        titulo: val.jiraProjeto ? 'A IA lê só os metadados dos projetos escolhidos (nunca o token) e sugere boards, etapas e labels' : 'Escolha os projetos primeiro' })));
 };
 
 const geral = (v) => {
@@ -254,7 +257,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     }
     return '';
   }
-  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira(), jiraBoard: String(variaveis.ler('boardPrincipal') || ''),
+  const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira().join(', '), jiraBoard: boardsJira().join(', '),
     etapasExtras: [].concat(variaveis.ler('etapasExtras')), specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
     bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
@@ -291,13 +294,14 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       if (!(await jira.conectado(ctx.secrets))) return { ok: false, conectado: false, curto: 'sem credenciais', texto: 'Escolha a ferramenta e conecte a conta.' };
       try {
         const eu = await jira.eu(ctx.secrets, siteJira());
-        const p = projetoJira() ? await jira.projetoInfo(ctx.secrets, siteJira(), projetoJira()).catch(() => null) : null;
-        return { ok: true, conectado: true, conta: eu.nome, texto: `Conectado como ${eu.nome}${p ? ` · projeto ${p.chave} (${p.nome})` : ' · projeto ainda não definido (aba Variáveis)'}` };
+        const ps = (await Promise.all(projetoJira().map((c) => jira.projetoInfo(ctx.secrets, siteJira(), c).catch(() => null)))).filter(Boolean);
+        const p = ps.length ? { chave: ps.map((x) => x.chave).join(', '), nome: ps.map((x) => x.nome).join(', ') } : null;
+        return { ok: true, conectado: true, conta: eu.nome, texto: `Conectado como ${eu.nome}${p ? ` · ${p.chave.includes(',') ? 'projetos' : 'projeto'} ${p.chave}` : ' · projeto ainda não escolhido'}` };
       } catch (e) { return { ok: false, conectado: true, curto: 'falhou', texto: e.message }; }
     },
     async board() {
       try {
-        const cols = await jira.etapas(ctx.secrets, siteJira(), projetoJira(), String(variaveis.ler('boardPrincipal') || ''), [].concat(variaveis.ler('etapasExtras')));
+        const cols = await jira.etapas(ctx.secrets, siteJira(), projetoJira(), boardsJira(), [].concat(variaveis.ler('etapasExtras')));
         return { ok: true, colunas: cols.map((c) => c.nome), texto: `${cols.length} etapas no filtro dos vinculados` };
       } catch (e) { return { ok: false, curto: 'falhou', texto: e.message }; }
     },
@@ -400,11 +404,11 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       const d = variaveis.definicoes.find((x) => x.chave === id);
       if (!d) return;
       if (!(await jira.conectado(ctx.secrets))) return vscode.window.showWarningMessage('Conecte a ferramenta na aba Geral antes de editar as variáveis.');
-      if ((d.escolha === 'boards' || d.escolha === 'status') && !projetoJira()) {
+      if ((d.escolha === 'boards' || d.escolha === 'status') && !projetoJira().length) {
         const r = await vscode.window.showInformationMessage(`${d.rotulo} depende do Projeto, que ainda não foi escolhido.`, 'Escolher projeto');
         if (r !== 'Escolher projeto') return;
         await acoes.varEditar({ id: 'projeto' });
-        if (!projetoJira()) return;
+        if (!projetoJira().length) return;
       }
       const atual = variaveis.ler(id), site = siteJira(), proj = projetoJira();
       const digitar = async () => {
@@ -414,18 +418,23 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       };
       let novo;
       try {
+        // Projetos e boards: escolha múltipla (a pessoa pode trabalhar em mais de um).
+        const marcados = new Set([].concat(atual));
         if (d.escolha === 'projetos' && site) {
-          const p = await vscode.window.showQuickPick((await jira.projetos(ctx.secrets, site)).map((x) => ({ label: x.chave, description: x.nome })), { title: d.rotulo, placeHolder: d.descricao });
-          novo = p?.label;
-        } else if (d.escolha === 'boards' && site && proj) {
-          const p = await vscode.window.showQuickPick((await jira.boards(ctx.secrets, site, proj)).map((b) => ({ label: b.nome, description: b.tipo })), { title: d.rotulo, placeHolder: d.descricao });
-          novo = p?.label;
+          const p = await vscode.window.showQuickPick((await jira.projetos(ctx.secrets, site)).map((x) => ({ label: x.chave, description: x.nome, picked: marcados.has(x.chave) })),
+            { canPickMany: true, title: d.rotulo, placeHolder: d.descricao });
+          novo = p?.map((x) => x.label);
+        } else if (d.escolha === 'boards' && site && proj.length) {
+          const lista = await jira.boards(ctx.secrets, site, proj);
+          const p = await vscode.window.showQuickPick([...new Map(lista.map((b) => [b.nome, b])).values()].map((b) => ({ label: b.nome, description: `${b.projeto || ''} · ${b.tipo}`, picked: marcados.has(b.nome) })),
+            { canPickMany: true, title: d.rotulo, placeHolder: d.descricao });
+          novo = p?.map((x) => x.label);
         } else if (d.escolha === 'labels' && site) {
           const p = await vscode.window.showQuickPick((await jira.labels(ctx.secrets, site, '')).map((l) => ({ label: l })), { title: d.rotulo, placeHolder: d.descricao });
           novo = p?.label;
-        } else if (d.escolha === 'status' && site && proj) {
+        } else if (d.escolha === 'status' && site && proj.length) {
           const DIGITAR = 'Digitar à mão…';
-          const nomes = await jira.statusDoProjeto(ctx.secrets, site, proj), marcados = new Set([].concat(atual));
+          const nomes = await jira.statusDoProjeto(ctx.secrets, site, proj);
           const itens = [...[...marcados].filter((n) => !nomes.includes(n)), ...nomes].map((n) => ({ label: n, picked: marcados.has(n) })).concat([{ label: DIGITAR, picked: false }]);
           const p = await vscode.window.showQuickPick(itens, { canPickMany: true, title: d.rotulo, placeHolder: d.descricao });
           novo = !p ? undefined : p.some((x) => x.label === DIGITAR) ? await digitar() : p.map((x) => x.label);
@@ -447,9 +456,15 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       trocando = false;
       checar(['jira', 'board']);
       if (!eu) return;
-      const r = await vscode.window.showInformationMessage(`Conectado como ${eu.nome}. Quer que a IA mapeie as variáveis (projeto, board, etapas…) a partir da conta?`, 'Mapear com IA', 'Depois');
+      // Primeiro os projetos (a pessoa escolhe); só com eles o mapeamento por IA tem o que mapear.
+      if (!projetoJira().length) {
+        const p = await vscode.window.showInformationMessage(`Conectado como ${eu.nome}. Escolha os projetos em que você trabalha.`, 'Escolher projetos', 'Depois');
+        if (p === 'Escolher projetos') await acoes.varEditar({ id: 'projeto' });
+      }
+      if (!projetoJira().length) return antes ? render() : undefined;
+      const r = await vscode.window.showInformationMessage('Quer que a IA mapeie boards, etapas e labels dos projetos escolhidos?', 'Mapear com IA', 'Depois');
       if (r === 'Mapear com IA') await acoes.provedorMapear();
-      else if (antes) render();
+      else render();
     },
     async provedorSair() {
       const ok = await vscode.window.showWarningMessage(`Sair da conta do ${jira.nome}?`, { modal: true,
@@ -463,7 +478,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
     async cfgEditar({ id }) {
       const site = siteJira(), proj = projetoJira();
       if (id === 'jiraSite') {
-        const v = await vscode.window.showInputBox({ title: 'Site do Jira', value: site, prompt: 'https://<org>.atlassian.net', ignoreFocusOut: true,
+        const v = await vscode.window.showInputBox({ title: `Site do ${jira.nome}`, value: site, prompt: 'https://<org>.atlassian.net', ignoreFocusOut: true,
           validateInput: (x) => (/^https:\/\/[\w-]+\.atlassian\.net\/?$/.test(x.trim()) ? null : 'Use https://<org>.atlassian.net') });
         if (v) { await variaveis.gravar('site', v.trim().replace(/\/+$/, '')); checar(['jira', 'board']); }
       } else if (id === 'jiraProjeto' || id === 'jiraBoard' || id === 'etapasExtras') {
@@ -586,4 +601,4 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };
 
-module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, jiraPendencias, pendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };
+module.exports = { criar, tela, CSS, cfg, siteJira, projetoJira, boardsJira, jiraPendencias, pendencias, reposAuto, SPECS_PADRAO, pluginInstalado, sddState, aviso, _teste: { geral, plugins } };

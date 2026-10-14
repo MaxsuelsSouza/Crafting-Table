@@ -110,6 +110,10 @@ function lerSaida(pasta, descoberta, definicoes) {
   return validarSaida(json, descoberta, definicoes);
 }
 
+// O que a IA mapeia: tudo menos site e projetos, que a pessoa escolhe (o mapeamento parte deles).
+const NAO_MAPEAVEIS = ['site', 'projeto'];
+const MAPEAVEIS = (defs) => defs.filter((d) => !NAO_MAPEAVEIS.includes(d.chave));
+
 // ── Efeitos (VS Code) ──
 const TEMPO_MAX = 5 * 60 * 1000;
 
@@ -120,15 +124,17 @@ async function mapear(ctx, { aoTerminar = () => {} } = {}) {
   const provedor = provedorAtivo(), pasta = pastaMapeamento();
   const site = String(variaveis.ler('site') || '');
   if (!site || !(await provedor.conectado(ctx.secrets))) return vscode.window.showWarningMessage(`Conecte ao ${provedor.nome} antes de mapear.`);
+  // Só depois dos projetos: a IA mapeia boards, etapas e labels DELES (sem projeto, as sugestões não servem para nada).
+  if (![].concat(variaveis.ler('projeto') || []).length) return vscode.window.showWarningMessage('Escolha os projetos antes de mapear com IA.');
   if (maestro.rodando(pasta)) return vscode.window.showInformationMessage('O mapeamento já está rodando.');
   const resultado = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Mapeando o ${provedor.nome} com IA`, cancellable: true }, async (progresso, cancelar) => {
     try {
       progresso.report({ message: 'lendo os metadados da conta…' });
-      const descoberta = await provedor.descobrir(ctx.secrets, site, String(variaveis.ler('projeto') || ''));
+      const descoberta = await provedor.descobrir(ctx.secrets, site, [].concat(variaveis.ler('projeto') || []));
       fs.mkdirSync(pasta, { recursive: true });
       fs.rmSync(path.join(pasta, 'saida.json'), { force: true });
       const atuais = Object.fromEntries(variaveis.todas().map((v) => [v.chave, v.valor]));
-      fs.writeFileSync(path.join(pasta, 'entrada.json'), JSON.stringify(montarEntrada(provedor.id, descoberta, variaveis.definicoes, atuais), null, 2));
+      fs.writeFileSync(path.join(pasta, 'entrada.json'), JSON.stringify(montarEntrada(provedor.id, descoberta, MAPEAVEIS(variaveis.definicoes), atuais), null, 2));
       progresso.report({ message: 'a IA está mapeando as variáveis…' });
       const modelo = vscode.workspace.getConfiguration('craftingTable').get('modelo');
       await new Promise((ok, falha) => {
@@ -141,7 +147,7 @@ async function mapear(ctx, { aoTerminar = () => {} } = {}) {
           aoMudar: () => { if (!maestro.rodando(pasta)) terminar(); } });
         if (!comecou) terminar(new Error('Já há um mapeamento rodando'));
       });
-      return { descoberta, ...lerSaida(pasta, descoberta, variaveis.definicoes) };
+      return { descoberta, ...lerSaida(pasta, descoberta, MAPEAVEIS(variaveis.definicoes)) };
     } catch (e) { return { erro: e.message }; }
   });
   if (resultado.erro) return vscode.window.showErrorMessage(`Mapeamento não concluído: ${resultado.erro}`);
@@ -174,4 +180,4 @@ async function conectar(ctx, id) {
   }
 }
 
-module.exports = { CATALOGO, listaProvedores, pastaMapeamento, conectar, mapear, _teste: { listaProvedores, montarEntrada, montarPrompt, validarSaida, filtrarValores, valoresPermitidos, semSegredos, lerSaida } };
+module.exports = { CATALOGO, listaProvedores, pastaMapeamento, conectar, mapear, _teste: { MAPEAVEIS, listaProvedores, montarEntrada, montarPrompt, validarSaida, filtrarValores, valoresPermitidos, semSegredos, lerSaida } };

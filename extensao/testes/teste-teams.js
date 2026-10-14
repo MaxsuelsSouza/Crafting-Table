@@ -40,7 +40,7 @@ const titulo = (p) => p.corpo.attachments[0].content.body[0].text;
     linha(40, 'jira', 'subtarefa WMS-960 [QA] criada')]);
   await ciclo(ctx, T0 + 45e3); assert.strictEqual(posts.length, 0, 'rajada ainda rolando');
   await ciclo(ctx, T0 + 70e3);
-  assert.deepStrictEqual(posts.map(titulo), ['WMS-1 · Mudança pedida · ALTO', 'WMS-1 · Perguntas', 'WMS-1 · Jira']);
+  assert.deepStrictEqual(posts.map(titulo), ['WMS-1 · Mudança pedida · ALTO', 'WMS-1 · Perguntas', 'WMS-1 · Ticket']);
   const imp = posts[0].corpo.attachments[0].content;
   assert.strictEqual(imp.body[0].color, 'Attention');
   assert.deepStrictEqual(imp.body[2].facts, [{ title: 'Spec', value: 'passo 1 afetado' }, { title: 'Revisar', value: 't01' }]);

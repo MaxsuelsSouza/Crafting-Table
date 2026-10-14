@@ -19,11 +19,11 @@
 //   impacto   registrar <id comentário> --nivel nenhum|baixo|medio|alto --resumo R [--passo N] [--cards t01,qa] --opcoes JSON   (.impactos.json)
 //             só mede (não altera a spec); com impacto fica aguardando a decisão do humano; iniciar/aprovar recusam enquanto isso.
 //   impacto   aplicado <id comentário> --resumo R   fim do [aplicar]: a mudança escolhida pelo humano foi aplicada na spec
-//   card      revisar tNN|qa --motivo M [--descricao …]   card já no Jira: texto novo para o humano aplicar
+//   card      revisar tNN|qa --motivo M [--descricao …]   card já na ferramenta de tickets: texto novo para o humano aplicar
 //   duvida    add --texto T [--contexto C] --ref R              grava em <ref>/.duvidas.json (aba Dúvidas do ticket)
 //   duvida    iniciar/aprovar recusam com dúvida sem resposta (só fecham pela aba Dúvidas).
 //   comentario classificar <id> --tipo resposta|mudanca|ruido --motivo M [--duvida Dnn | --pergunta Qnn] --ref R
-//             triagem do comentário novo do Jira (etapa 0): só sugere a resposta (o humano confirma); mudança segue para o impacto.
+//             triagem do comentário novo do ticket (etapa 0): só sugere a resposta (o humano confirma); mudança segue para o impacto.
 //   tarefa    tNN --status pendente|em_andamento|feita [--commit SHA] --ref R
 //   aprovar   N --ref R --por NOME [--editorial]   SÓ PELA EXTENSÃO (hook do plugin bloqueia o Claude)
 //   aguardar  N --ref R [--intervalo 2] [--horas 12]      espera o humano aprovar/pedir ajuste (rodar em segundo plano)
@@ -176,7 +176,7 @@ const barrarDuvidas = (acao) => {
 // Mudança vinda de comentário que ainda espera decisão do humano (caixa vermelha na aba Spec) segura a spec.
 const barrarMudancas = (acao) => {
   const ab = lerJson(path.join(refDir(), '.impactos.json'), []).filter((i) => i.status === 'aguardando_decisao');
-  if (ab.length) falhar(`${acao} bloqueado: ${ab.length} mudança(s) pedida(s) em comentário do Jira aguardando decisão (${ab.map((i) => `${i.autor || 'alguém'}: ${String(i.resumo).slice(0, 60)}`).join(' | ')}). Só o humano decide, na aba Spec; espere.`, 4);
+  if (ab.length) falhar(`${acao} bloqueado: ${ab.length} mudança(s) pedida(s) em comentário do ticket aguardando decisão (${ab.map((i) => `${i.autor || 'alguém'}: ${String(i.resumo).slice(0, 60)}`).join(' | ')}). Só o humano decide, na aba Spec; espere.`, 4);
 };
 
 const passoN = () => {
@@ -185,20 +185,20 @@ const passoN = () => {
   return n;
 };
 
-// Card já aprovado (subtarefa já no Jira) que uma mudança atingiu: o Claude propõe o texto novo; quem aplica no
-// Jira é o humano, pela aba Tarefas. card revisar tNN|qa --motivo M [--titulo --descricao --pronto --estimativa --resumo] --ref R
+// Card já aprovado (subtarefa já na ferramenta de tickets) que uma mudança atingiu: o Claude propõe o texto novo; quem aplica na
+// ferramenta de tickets é o humano, pela aba Tarefas. card revisar tNN|qa --motivo M [--titulo --descricao --pronto --estimativa --resumo] --ref R
 function revisarCard(id) {
   const arq = path.join(refDir(), '.tarefas.json');
   const l = lerJson(arq, []);
   const c = l.find((x) => x.id === id) || falhar(`card ${id} não existe`);
-  if (c.status !== 'aprovada') falhar(`${id} está ${c.status}: use card editar (revisar é para card já aprovado/no Jira)`);
+  if (c.status !== 'aprovada') falhar(`${id} está ${c.status}: use card editar (revisar é para card já aprovado/na ferramenta de tickets)`);
   if (!opt.motivo) falhar('--motivo obrigatório (qual mudança e de onde veio)');
   const campos = {};
   for (const k of ['titulo', 'descricao', 'pronto', 'estimativa', 'resumo']) if (opt[k] !== undefined && opt[k] !== true) campos[k] = String(opt[k]);
   if (id !== 'qa' && !Object.keys(campos).length) falhar('informe o que muda (--descricao, --titulo, --pronto…)');
   c.revisao = { campos, motivo: String(opt.motivo), comentario: opt.comentario ? String(opt.comentario) : null, em: agora() };
   (c.historico ||= []).push({ em: agora(), evento: 'revisao', texto: `Revisão proposta: ${String(opt.motivo).slice(0, 160)}` });
-  gravarJson(arq, l); console.log(`${id}: revisão proposta (aplicar no Jira pela aba Tarefas)`);
+  gravarJson(arq, l); console.log(`${id}: revisão proposta (aplicar na ferramenta de tickets pela aba Tarefas)`);
 }
 
 // ── comandos ──
@@ -338,7 +338,7 @@ const comandos = {
   },
   // Dúvida para levar ao time (aba Dúvidas da Crafting Table): mora na pasta do ticket, não depende da spec.
   // Cards das tarefas (aba Tarefas da Crafting Table): <ref>/.tarefas.json. O Claude cria e edita o conteúdo;
-  // aprovar/reprovar (e criar a subtarefa no Jira) é só do humano, pela aba.
+  // aprovar/reprovar (e criar a subtarefa na ferramenta de tickets) é só do humano, pela aba.
   card() {
     const sub = pos[0], id = pos[1];
     if (sub === 'revisar') return revisarCard(id);
@@ -365,7 +365,7 @@ const comandos = {
     l.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
     gravarJson(arq, l); console.log(`${id}: ${c.status}`);
   },
-  // Impacto de um comentário do Jira (o vigia da Crafting Table cria a entrada; o Claude registra a análise).
+  // Impacto de um comentário do ticket (o vigia da Crafting Table cria a entrada; o Claude registra a análise).
   //   impacto registrar <id do comentário> --nivel nenhum|baixo|medio|alto --resumo R [--passo N] [--cards t01,qa] --ref R
   impacto() {
     const cid = pos[1], arq = path.join(refDir(), '.impactos.json'), l = lerJson(arq, []);
@@ -401,7 +401,7 @@ const comandos = {
     l.push({ id, texto: String(opt.texto), contexto: opt.contexto ? String(opt.contexto) : '', em: agora(), enviadaEm: null, resposta: null, sugestao: null });
     gravarJson(arq, l); notificar('duvida', `Dúvida ${id} registrada: ${l.at(-1).texto.slice(0, 120)}`); console.log(id);
   },
-  // Triagem de um comentário novo do Jira (etapa 0): resposta de dúvida/pergunta, mudança de escopo ou ruído.
+  // Triagem de um comentário novo do ticket (etapa 0): resposta de dúvida/pergunta, mudança de escopo ou ruído.
   // Só classifica e sugere: quem confirma a resposta é o humano (aba Dúvidas / pergunta); mudança segue para a análise de impacto.
   comentario() {
     const cid = pos[1], tipo = opt.tipo;

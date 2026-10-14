@@ -49,15 +49,15 @@ responde por botões. Nessas execuções:
   as regras do backend.", "Vou comparar o plano com a constituição." Sem markdown, sem caminho de arquivo, sem jargão
   de ferramenta. Ao terminar a execução, uma frase dizendo o que ficou pronto e o que o humano faz agora.
 
-## Mudança vinda de comentário do Jira (mensagem com `[impacto]`) — **só análise**
+## Mudança vinda de comentário do ticket (mensagem com `[impacto]`) — **só análise**
 
 O vigia da Crafting Table viu um comentário novo de outra pessoa (PO, QA, dev) no ticket que a triagem classificou como
 mudança (ou que não havia o que triar) e te passa id, autor, data, link e texto. Seu trabalho: medir o impacto e
 **propor opções**. **Não edite spec, plano, tarefas, testes nem cards, e não rode `check`**: nada muda até o humano
-escolher na caixa vermelha da aba Spec. Você também não escreve no Jira.
+escolher na caixa vermelha da aba Spec. Você também não escreve na ferramenta de tickets.
 
 1. Compare o comentário com `spec.md` (RFs, critérios, fora de escopo, clarificações), `plan.md`, `tasks.md`,
-   `testes.md` e os cards (os aprovados têm a chave do Jira).
+   `testes.md` e os cards (os aprovados têm a chave do ticket).
 2. **Nível**: `nenhum` (conversa, status, agradecimento) · `baixo` (ajuste pontual sem mudar RF: texto, exemplo,
    nome) · `medio` (muda um RF, critério de aceite, campo ou contrato) · `alto` (muda escopo, regra central ou
    fluxo; inclui/remove RF; troca camada).
@@ -80,14 +80,14 @@ instrução da opção). A extensão já guardou um snapshot para desfazer. Agor
    tasks.md/testes.md se só tarefa/teste), com nota datada: `> Mudança de <data> — comentário de <autor> (<link>):
    <o que mudou>`. Rode `sdd-state check`: o passo editado volta para revisão e os seguintes ficam desatualizados.
    **Não** reconcilie os passos seguintes agora (isso acontece quando o humano reaprovar).
-2. Cards atingidos: ainda pendentes → `card editar`; **já aprovados (no Jira)** → `card revisar tNN --ref <pasta>
+2. Cards atingidos: ainda pendentes → `card editar`; **já aprovados (na ferramenta de tickets)** → `card revisar tNN --ref <pasta>
    --motivo '<a mudança> (comentário de <autor>)' --comentario <link> --descricao '<descrição nova completa>'`
    (e `--titulo`/`--pronto`/`--estimativa` se mudarem). Card `qa` aprovado → ajuste `testes.md` e
    `card revisar qa --motivo … --comentario <link>`.
 3. Feche: `sdd-state impacto aplicado <id> --ref <pasta> --resumo '<o que mudou, quais passos voltaram, quais subtarefas revisar>'`
    e termine com essa frase.
 
-## Triagem de comentário novo do Jira (mensagem com `[triagem]`)
+## Triagem de comentário novo do ticket (mensagem com `[triagem]`)
 
 A mensagem traz um comentário novo (id, autor, link, texto), as dúvidas `Dnn` já enviadas ao ticket sem resposta e as
 perguntas `Qnn` ainda abertas. **Só leitura**: não edite spec, plano, tarefas nem cards. Seu trabalho é dizer o que o
@@ -214,7 +214,7 @@ Unidades pequenas, ordenadas e verificáveis, uma por linha de checklist:
 Cada tarefa cabe em **um commit**. Ordem topológica, sem ciclo. Todo RF coberto por ao menos uma tarefa;
 toda tarefa aponta um RF (senão é órfã).
 
-**Ticket da Crafting Table**: cada tarefa também vira um **card** (vira subtarefa no Jira quando o humano aprova):
+**Ticket da Crafting Table**: cada tarefa também vira um **card** (vira subtarefa na ferramenta de tickets quando o humano aprova):
 `sdd-state card add tNN --ref <pasta> --titulo '<objetivo curto, até 80 caracteres>' --descricao '<o que fazer, onde
 (arquivos/módulos), regras da spec que se aplicam; texto corrido em português>' --rf RF01,RF02 --depende t01
 --pronto '<critério verificável>' --camada backend|mobile --estimativa <sugestão: 30m, 2h, 1d>`.
@@ -237,15 +237,15 @@ A aprovação só abre com **zero bloqueantes abertos**.
 
 Só com o passo 5 aprovado. **Não se implementa código aqui**: o refinamento é distribuído e quem pegar cada
 subtarefa implementa a partir da spec. Este passo entrega o **plano de testes** da atividade inteira, que vira a
-subtarefa `[QA]` no Jira quando o humano aprovar o card na aba Tarefas.
+subtarefa `[QA]` na ferramenta de tickets quando o humano aprovar o card na aba Tarefas.
 
 **Método:** o do plugin **`fcx-qa-test-planning:jira-qa-planner`** — leia o `SKILL.md` dele (Passos 3, 6 e 7) e
 `reference/test-plan-templates.md` nos caminhos que a mensagem do maestro informa. **Não** execute os passos de
-Jira/twg dele (2, 4, 5, 8): quem fala com o Jira é a extensão.
+ferramenta de tickets/twg dele (2, 4, 5, 8): quem fala com a ferramenta de tickets é a extensão.
 
 **Insumo é todo o refinamento**, não só a história: `spec.md` (RFs e Dado/Quando/Então), `plan.md` (endpoints,
 contratos, dados), `mapa-backend.md`/`mapa-mobile.md` (chamadores → regressão), os cards de dev aprovados
-(arquivo de cards da pasta do ticket: subtarefas com a chave do Jira) e as dúvidas em aberto (viram riscos).
+(arquivo de cards da pasta do ticket: subtarefas com a chave do ticket) e as dúvidas em aberto (viram riscos).
 
 1. **Modelo** (Passo 6 do jira-qa-planner): fluxo/tela/regra → Template A; endpoint/API/contrato → Template B;
    os dois → Template A com a seção de API do B.
@@ -255,7 +255,7 @@ contratos, dados), `mapa-backend.md`/`mapa-mobile.md` (chamadores → regressão
    chamadores do mapeamento. Item sem base na spec: `⚠️ (inferido)`. O arquivo **se sustenta sozinho**: ele é a
    descrição da subtarefa [QA] (quem testa não vê a spec).
 3. **Estimativa** (modo detalhado do `fcx-qa-test-planning:test-estimation`, `reference/modelo-estimativa.md`):
-   horas de teste a partir dos CTs, no formato do Jira (ex.: `6h`).
+   horas de teste a partir dos CTs, no formato de horas (ex.: `6h`).
 4. **Card [QA]**: `sdd-state card add qa --ref <pasta> --titulo '<nome>' --arquivo <spec>/testes.md --estimativa <h>
    --resumo '<2 linhas: nº de CTs, RFs cobertos, camadas>'`. Nome pelo tipo do ticket (Passo 3 do jira-qa-planner):
    História → `[QA] Planejamento dos Casos de Testes`; outros → `[QA] Teste de Qualidade`.

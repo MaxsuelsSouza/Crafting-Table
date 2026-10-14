@@ -16,7 +16,7 @@ const GRAVAR = path.join(__dirname, 'mergulho-gravar');
 const FLUXO = path.join(__dirname, 'mergulho-fluxo');
 const ESCRITA = ` ESCRITA: Write/Edit são bloqueados na pasta do incidente; grave por ${GRAVAR} NOME <<'FIM' … FIM (só o nome do arquivo, texto pela entrada padrão) ou ${GRAVAR} evidencias/NOME.png --de /tmp/arquivo.png.`;
 const REGRAS = 'Modo não interativo: não pergunte, registre e siga. Proibido: INSERT/UPDATE/DELETE/DDL no banco, alterar qualquer registro da Massa Real, '
-  + 'publicar no Jira, commit e push. Consultas ao banco só de leitura.' + ESCRITA;
+  + 'publicar na ferramenta de tickets, commit e push. Consultas ao banco só de leitura.' + ESCRITA;
 
 const lerTxt = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
 const lerJson = (f, pad) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return pad; } };

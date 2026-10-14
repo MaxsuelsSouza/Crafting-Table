@@ -282,7 +282,7 @@ const pedido = (s, t) => {
     : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
-      + `Anexos do Jira em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
+      + `Anexos do ticket em ${s.pasta(t.chave)}. Não use as outras pastas nem conversas do ticket.\n`);
 };
 // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
 const abrirConversa = async (s, t, texto) => {
