@@ -45,8 +45,8 @@ const VAGAS = {
   },
   'qa.execucao': {
     padrao: { tipo: 'skill', id: 'testes-funcionais', nome: 'testes-funcionais', caminho: path.join(SKILLS, 'testes-funcionais') }, como: 'SKILL.md lido como método',
-    contrato: 'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, registra e segue. '
-      + 'O Claude registra pelo qa-state da extensão (massa add, evidencia CTnn, cenario CTnn concluir --status passou|falhou|bloqueado). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
+    contrato: 'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, pausa pelo qa-state (pausa) e aguarda o humano; nunca pula cenário nem segue sem resposta. '
+      + 'O Claude registra pelo qa-state da extensão (massa add, evidencia CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; precondicao --status ok|falhou antes da suíte: health check e login). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
   },
   'impl.mapa': {
     padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db, mapa-git e mapa-conferir (--plugin-dir)',
@@ -89,6 +89,7 @@ const MODULOS = [
     { nome: 'Planejamento', vaga: null, obs: 'método embutido na extensão' },
     { nome: 'Cenários', vaga: null },
     { nome: 'Ambiente', vaga: 'qa.ambiente' },
+    { nome: 'Pré-condição (health check e login)', vaga: 'qa.execucao', obs: 'roda antes da suíte, fora da lista de cenários' },
     { nome: 'Massa de dados', vaga: 'qa.execucao' },
     { nome: 'Execução de cada cenário', vaga: 'qa.execucao' },
     { nome: 'Publicar', vaga: null }] },
