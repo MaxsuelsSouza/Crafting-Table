@@ -16,6 +16,19 @@ const BRIEFING = '.briefing.md', JSON_ = 'dossie.json', MD = 'dossie.md', LIMIAR
 const existe = (f) => { try { return fs.statSync(f).size > 0; } catch { return false; } };
 const subpasta = (t, lista) => tickets.pasta(t.chave, lista);
 
+/**
+ * O que o ticket traz além do título: descrição + comentários (caracteres) e o documento anexado. Usado pelo dossiê e pela entrada do
+ * Refinamento (refinamento/spec.js): ticket que só tem título vira pergunta ao dev, nunca invenção.
+ * @param {any} t ticket local (chave, documento?)  @param {any} [j] ticket normalizado (jira.buscar / documento.buscarSync)
+ */
+function sobreTicket(t, j) {
+  const texto = html2txt(j?.descricao) + (j?.comentarios || []).map((c) => html2txt(c.corpo)).join('\n');
+  const doc = t.documento?.arquivo ? path.join(tickets.pasta(t.chave), t.documento.arquivo) : null;
+  const temDoc = !!doc && fs.existsSync(doc);
+  const caracteres = texto.trim().length;
+  return { caracteres, doc, temDoc, suficiente: caracteres >= LIMIAR_TEXTO || temDoc };
+}
+
 /** Maior nível entre as fontes de um eixo. */
 const nivelDe = (itens) => itens.reduce((m, i) => (rank(i.confianca) > rank(m) ? i.confianca : m), 'ausente');
 
@@ -35,13 +48,11 @@ function montar(t, o = {}) {
   const marca = (id, v) => { fontes[id] = v; };
 
   // Ticket: descrição, comentários e documento anexado
-  const texto = html2txt(o.j?.descricao) + (o.j?.comentarios || []).map((c) => html2txt(c.corpo)).join('\n');
-  const doc = t.documento?.arquivo ? path.join(tickets.pasta(t.chave), t.documento.arquivo) : null;
-  const temDoc = !!doc && fs.existsSync(doc);
-  marca('ticket', { texto: texto.trim().length, documento: temDoc, comentarios: (o.j?.comentarios || []).length });
-  if (texto.trim().length >= LIMIAR_TEXTO || temDoc) {
+  const { caracteres, doc, temDoc, suficiente } = sobreTicket(t, o.j);
+  marca('ticket', { texto: caracteres, documento: temDoc, comentarios: (o.j?.comentarios || []).length });
+  if (suficiente) {
     eixos.alvo.push({ fonte: 'ticket', rotulo: temDoc ? 'Documento do ticket' : 'Descrição e comentários do ticket', confianca: 'bruto',
-      detalhe: temDoc ? path.basename(doc) : `${texto.trim().length} caracteres`, ...(temDoc ? { arquivo: doc } : {}) });
+      detalhe: temDoc ? path.basename(doc) : `${caracteres} caracteres`, ...(temDoc ? { arquivo: doc } : {}) });
   } else lacunas.push('O ticket não tem descrição nem documento suficientes: só o título.');
 
   // Briefing do dev (explicado de boca)
@@ -132,4 +143,4 @@ function gravar(dir, d) {
 }
 const lerGravado = (dir) => ler(path.join(dir, JSON_), null);
 
-module.exports = { montar, paraMarkdown, gravar, lerGravado, nivelDe, NIVEIS, ROTULO_MODO, BRIEFING, JSON_, MD, _teste: { rank } };
+module.exports = { montar, sobreTicket, paraMarkdown, gravar, lerGravado, nivelDe, NIVEIS, ROTULO_MODO, BRIEFING, JSON_, MD, _teste: { rank } };

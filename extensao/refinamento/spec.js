@@ -8,7 +8,8 @@ const { nomeProvedor: nomeAtivo } = require('../provedores');
 const nomeProvedor = (t) => (t && (t.provedor === 'documento' || String(t.site || '').startsWith('documento:')) ? 'documento' : nomeAtivo());
 const tickets = require('../infra/tickets');
 const jira = require('../infra/ticket').jira;
-const { arquivoPasso, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
+const { arquivoPasso, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, refinoDe, gravarRefino, BRIEFING } = require('./locais');
+const { sobreTicket } = require('../implementacoes/dossie');
 const { IC } = require('../componentes/icones');
 const { quando } = require('../componentes/formato');
 const maestro = require('../painel/maestro');
@@ -22,6 +23,9 @@ const { SPECS_PADRAO, sddState } = require('../configuracao/configuracao');
 // Aba Spec do refinamento: os passos do SDD, o cartão Agora, a pilha de perguntas (script "Pilha de perguntas" em pagina()),
 // o modo refinamento (▶ ⏸ Dar início) e as ações.
 const pasta = (id) => tickets.pasta(id);
+const briefingFeito = (t) => require('./locais').briefingDe(pasta(t.chave)) !== '';
+// Descrição ou documento do ticket bastam? j = ticket do provedor; sem ele (ainda não buscou, erro de rede) não dá para medir e não bloqueia.
+const suficiente = (t, j) => !j || j.erro || sobreTicket(t, j).suficiente;
 const abertos = new Set(); // passos cujo arquivo o humano abriu nesta sessão (ticket:passo:hash)
 const mencionar = (texto) => require('../infra/claude').mencionar(texto);
 const copiaAprovada = (r, n) => path.join(pasta(r.id), 'aprovados', `${n}-${path.basename(arquivoPasso(r, n))}`); // gravada pelo sdd-state aprovar
@@ -36,7 +40,9 @@ function botaoRefino(t, b) {
   if (modo === 'aguardando_inicio') return t.specPronta
     ? `<button class="ct-dar" ${b('darInicio')} title="O Claude criou a spec: clique para ele começar os passos">Dar início</button>`
     : '<button class="ct-dar" disabled title="O Claude está criando a spec">Preparando…</button>';
-  if (modo === 'rodando') return `<button class="ct-ico ct-pausa" ${b('pausar')} title="Pausar refinamento: o Claude termina a etapa atual e espera">${IC.pausa}</button>`;
+  // "rodando" sem o Claude e sem ninguém esperando você é uma execução interrompida: o ▶ continua (mesmo comportamento da esteira).
+  if (modo === 'rodando' && orq.situacao(t).parado) return `<button class="ct-ico ct-play" ${b('retomar')} title="O Claude não está rodando: continuar o refinamento de onde parou">${IC.play}</button>`;
+  if (modo === 'rodando') return `<button class="ct-ico ct-pausa" ${b('pausar')} title="Pausar refinamento: o Claude para agora e a etapa recomeça ao retomar">${IC.pausa}</button>`;
   if (modo === 'pausado') return `<button class="ct-ico ct-play" ${b('retomar')} title="Retomar refinamento">${IC.play}</button>`;
   return `<button class="ct-ico ct-play" ${b('refinar')} title="${t.spec?.dir ? 'Continuar refinamento (spec)' : 'Iniciar refinamento (spec)'}">${IC.play}</button>`;
 }
@@ -45,15 +51,26 @@ function pillRefino(t) {
   const [texto, dica] = modo === 'aguardando_inicio'
     ? (t.specPronta ? ['Spec pronta', 'Modo refinamento: o Claude criou a spec. Clique em Dar início para ele começar os passos.']
       : ['Preparando spec', 'Modo refinamento: o Claude está criando a spec no repositório de specs.'])
+    : modo === 'rodando' && orq.situacao(t).parado ? ['Parado', 'O refinamento está ligado, mas o Claude não está rodando (execução interrompida). ▶ no topo continua de onde parou.']
     : modo === 'rodando' ? ['Refinando', 'Modo refinamento: o Claude trabalha nos passos da spec e segue sozinho a cada aprovação. ⏸ no topo pausa.']
-      : ['Refinamento pausado', 'Modo refinamento pausado: o Claude termina a etapa atual e espera. ▶ no topo retoma.'];
+      : ['Refinamento pausado', 'Modo refinamento pausado: o Claude parou e a etapa recomeça ao retomar. ▶ no topo retoma.'];
   return pill.pill(texto, { cor: modo === 'pausado' ? 'pausada' : 'ia', dica, grande: true });
 }
-const modo = (chave, estado) => {
-  const t = tickets.ler(chave);
-  const refinamento = { ...t.refinamento, estado };
-  tickets.gravar({ ...t, refinamento });
-  return refinamento;
+const modo = (chave, estado) => orq.mudarEstado(chave, estado);
+// ⏸/▶ da caixa Ao vivo (os mesmos comandos do cabeçalho: os dois nunca discordam).
+const controlesDe = (t) => ({ pausar: 'pausar', dicaPausar: 'Pausar o refinamento: o Claude para agora e a etapa recomeça ao retomar',
+  retomar: ['pausado'].includes(t.refinamento?.estado) || orq.situacao(t).parado ? 'retomar' : null, dicaRetomar: 'Continuar o refinamento de onde parou' });
+// Ticket que só tem título não vai para a IA: o dev responde aqui e a resposta vira a fonte verbal do passo 1 (.briefing-refinamento.md).
+const PERGUNTAS_BRIEFING = ['O que precisa mudar ou ser criado, e por quê (qual problema isso resolve)?', 'Quem usa e como saber que ficou certo (resultado esperado)?', 'O que fica de fora, restrições ou sistemas envolvidos que você já conhece?'];
+const caixaPausa = (t, dir) => {
+  const pausa = refinoDe(dir).pausa;
+  if (!pausa) return '';
+  if (pausa.motivo === 'briefing') return `<div class="caixa-t">O ticket precisa de mais informação<span>o refinamento só começa depois da sua explicação</span></div>
+    <div class="folha"><div class="atexto">${esc(pausa.pergunta)}</div><ol>${(pausa.perguntas || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ol>
+      <textarea data-texto style="width:100%;min-height:110px;box-sizing:border-box" placeholder="Responda com suas palavras: vira a fonte verbal do passo 1."></textarea>
+      <div class="aacoes"><button class="primario" data-acao="refinoBriefing">Enviar e iniciar o refinamento</button></div></div>`;
+  return `<div class="agora"><div class="atitulo">${esc(pausa.pergunta)}</div><div class="atexto">${esc(pausa.detalhe || '')}</div>
+    <div class="aacoes"><button class="primario" data-acao="retomar">▶ Continuar</button></div></div>`;
 };
 
 function telaConstituicao(r, est, abertos, impactos = []) {
@@ -153,7 +170,7 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
 }
 
 // Corpo da aba Spec: cartão Agora, caixas de mudança, Ao vivo e a constituição.
-const corpoAba = (t, d) => `${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${mudancas.caixaDecisao(d.impactos)}${mudancas.caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec')}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
+const corpoAba = (t, d) => `${caixaPausa(t, d.dir)}${emRefino(t) || d.estado ? cartaoAgora(t, d.estado, d.vivoRodando, d.tarefas, d.impactos) : ''}${mudancas.caixaDecisao(d.impactos)}${mudancas.caixaMudancas(d.impactos)}${aoVivo.caixa(d.dir, d.vivoRodando, 'spec', emRefino(t) ? controlesDe(t) : undefined)}<div class="folha">${t.spec?.dir ? telaConstituicao(t, d.estado, d.abertos, d.impactos)
     : `<div class="vazio-aba">A spec ainda não foi iniciada.<br>Clique em <b>▶</b> no topo: o Claude cria <code>${esc(t.chave)}-…/</code> no repositório de specs e começa pelo passo 0.</div>`}</div>`;
 
 const acoes = (s) => ({
@@ -169,22 +186,50 @@ const acoes = (s) => ({
       if (!uri) return;
       repo = uri[0].fsPath;
     }
+    // Ticket só com título: pergunta ao dev antes de gastar uma execução (nunca invenção). Já explicou? segue com o briefing.
+    let j;
+    try { j = jira.ehDocumento(t) ? require('../provedores/documento').buscarSync({ key: t.chave }) : s.cacheJira?.[t.chave]; } catch { /* sem dados: não bloqueia */ }
+    if (!briefingFeito(t) && !suficiente(t, j)) {
+      gravarRefino(pasta(t.chave), { pausa: { motivo: 'briefing', pergunta: 'O ticket só tem o título: não há o que refinar sem saber o que se quer. Responda para o Claude começar.', perguntas: PERGUNTAS_BRIEFING } });
+      s.mudarAba('spec');
+      s.render();
+      return;
+    }
     modo(t.chave, 'aguardando_inicio');
     tickets.gravar({ ...tickets.ler(t.chave), refinamento: { ...tickets.ler(t.chave).refinamento, iniciadoPor: os.userInfo().username } });
     s.mudarAba('spec'); // o refinamento acontece na aba Spec
     s.atualizarJira(t.chave); // anexos do ticket aparecem em Docs para baixar
     // Maestro (prova): o Claude roda em segundo plano e a caixa Ao vivo da aba Spec mostra o que ele faz.
-    orq.etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}${tickets.ler(t.chave)?.titulo && jira.ehDocumento(t) ? `\nTítulo do ticket (use em sdd-state init --titulo, é o slug da pasta da spec): ${tickets.ler(t.chave).titulo}` : ''}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo, 'Criando a spec do ticket');
+    orq.etapa(t, `/sdd:iniciar ${pasta(t.chave)} ${repo}${tickets.ler(t.chave)?.titulo && jira.ehDocumento(t) ? `\nTítulo do ticket (use em sdd-state init --titulo, é o slug da pasta da spec): ${tickets.ler(t.chave).titulo}` : ''}\nTicket aguardando início: só crie a spec (init + status) e termine dizendo para clicar em Dar início.`, false, repo, 'Criando a spec do ticket', undefined, true);
     s.render();
   },
+  // Resposta do dev ao ticket pobre: vira o briefing do refinamento e a spec começa.
+  refinoBriefing({ texto }) {
+    const t = s.ticketAberto();
+    const r = String(texto || '').trim();
+    if (!t) return;
+    if (r.length < 20) return vscode.window.showWarningMessage('Explique um pouco mais (o que precisa mudar e como saber que ficou certo).');
+    fs.mkdirSync(pasta(t.chave), { recursive: true });
+    fs.appendFileSync(path.join(pasta(t.chave), BRIEFING), `${r}\n\n`);
+    gravarRefino(pasta(t.chave), { pausa: null });
+    return acoes(s).refinar();
+  },
   darInicio() { return acoes(s).retomar(); },
-  pausar() { modo(s.aberto, 'pausado'); s.render(); },
+  // Pausar de verdade: estado primeiro (as filas e o fim da etapa leem), depois cancela a rodada e para o Claude.
+  pausar() {
+    const t = s.ticketAberto();
+    if (!t) return;
+    modo(t.chave, 'pausado');
+    orq.interromper(t);
+    s.render();
+  },
   // Dar início / ▶ Retomar / Continuar: modo rodando e, se nada espera por você, o Claude começa a próxima etapa.
   retomar() {
     const t = s.ticketAberto();
     if (!t) return;
+    gravarRefino(pasta(t.chave), { pausa: null, correcao: null }); // retomar zera a pausa da conferência e as correções gastas
     modo(t.chave, 'rodando');
-    if (!orq.seguir(t)) s.render();
+    if (!orq.seguir(ticketDe(t.chave) || t)) { orq.retomarFilas(ticketDe(t.chave) || t); s.render(); }
   },
   specAbrir({ id }) {
     const r = s.ticketAberto(), n = Number(id), est = estadoSpec(r);

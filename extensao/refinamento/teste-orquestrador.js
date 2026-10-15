@@ -42,7 +42,7 @@ assert.doesNotMatch(orq.promptAjuste(tk, 3, 'y'), /Não há memória/);
 orq.aplicarRespostas(tk, 3, ['Q1 → sim']);
 assert.strictEqual(chamadas[1].continuar, false);
 assert.match(chamadas[1].prompt, /Q1 → sim/); assert.match(chamadas[1].prompt, /\.memoria-passo-3\.md/);
-assert.match(orq.promptRespostas(tk, 3, ['a']), /grave \(Write\) em .*\.memoria-passo-3\.md/);
+assert.match(orq.promptRespostas(tk, 3, ['a']), /grave com .*refinamento-gravar \.memoria-passo-3\.md/);
 
 // Passo 3 em subetapas: 3.1 só mapeia (sem plan.md/concluir); 3.2 só roda com os mapas em disco, lê os mapas e conclui; estado no ticket.
 const ch3 = 'ORQ-3', dir3 = tickets.pasta(ch3), spec3 = path.join(dir3, 'repo', 'spec-y');
@@ -56,7 +56,7 @@ const sub = () => tickets.ler(ch3).refinamento.sub3;
 chamadas.length = 0;
 assert.strictEqual(orq.seguir(t3), true);
 assert.match(chamadas[0].prompt, /SUBETAPA 3\.1/); assert.match(chamadas[0].prompt, /NÃO escreva o plan\.md e NÃO rode concluir/);
-assert.doesNotMatch(chamadas[0].prompt, /grave \(Write\)/, 'o mapeamento não escreve a memória do passo');
+assert.doesNotMatch(chamadas[0].prompt, /grave com .*\.memoria-passo-3\.md/, 'o mapeamento não escreve a memória do passo');
 assert.strictEqual(chamadas[0].continuar, false);
 assert.strictEqual(sub().mapa, 'rodando');
 assert.deepStrictEqual(orq.subetapas3(t3, passos[3], true).map((x) => x.estado), ['rodando', 'pendente']);

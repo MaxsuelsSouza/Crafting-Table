@@ -13,7 +13,8 @@ const { cfg, reposAuto, SPECS_PADRAO, sddState } = require('../configuracao/conf
 const vagas = require('../agentes/etapas');
 const { notificar } = require('../painel/notificacoes');
 const { anotar } = require('../componentes/ao-vivo');
-const { dirSpec, ondeSalvar, arquivoPasso, HANDOFF, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec } = require('./locais');
+const controle = require('../incidentes/controle');
+const { dirSpec, ondeSalvar, arquivoPasso, HANDOFF, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, refinoDe, gravarRefino, briefingDe, BRIEFING } = require('./locais');
 
 // ORQUESTRADOR do refinamento: o Maestro dirigido pela extensão. Monta cada execução do Claude em segundo plano (etapa),
 // decide a próxima (seguir, filas de triagem/impacto/tarefas) e vigia comentários novos na ferramenta de tickets. O painel só chama a interface
@@ -28,9 +29,14 @@ const binsSdd = () => [sddState(), path.join(os.homedir(), '.claude', 'plugins-l
 // Plugins de cada etapa (Configurações > Plugins, agentes/etapas.js). Padrão: "mapa" (mapeamento do código do passo 3) e "foco" (texto curto
 // em tudo que o Claude escreve: regras + medição dos .md) moram na extensão e só o maestro carrega (--plugin-dir).
 const MAPA = () => vagas.raiz('refinamento.mapa') || '';
-const FERRAMENTAS = () => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA()}/bin/mapa-git:*)`, `Bash(${MAPA()}/bin/mapa-conferir:*)`,
-  `Bash(${MAPA()}/bin/mapa-db:*)`, 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill',
+// Sem Write/Edit em nenhuma execução: o que o Claude grava passa pelo refinamento-gravar (só .md da spec, constituição e memória do passo).
+// `escreve` false = só lê (início da spec, triagem e impacto de comentário: a análise não pode mexer na spec).
+const GRAVAR = path.join(__dirname, 'refinamento-gravar');
+const FERRAMENTAS = (escreve = true) => [...binsSdd().map((b) => `Bash(${b}:*)`), `Bash(${MAPA()}/bin/mapa-git:*)`, `Bash(${MAPA()}/bin/mapa-conferir:*)`,
+  `Bash(${MAPA()}/bin/mapa-db:*)`, ...(escreve ? [`Bash(${GRAVAR}:*)`] : []), 'Read', 'Glob', 'Grep', 'Skill',
   'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)'];
+const ESCRITA = `\nESCRITA: nesta execução não existe Write nem Edit. Para gravar um arquivo da spec ("grave em <pasta da spec>/NOME") use ${GRAVAR} NOME <<'FIM' … FIM `
+  + '(texto pela entrada padrão, só o nome do arquivo, sem pasta; aceita .md da pasta da spec, constitution.md e .memoria-passo-N.md). Para alterar um arquivo, leia, aplique a mudança e grave o conteúdo inteiro de novo.';
 const reposDe = (t) => {
   const lista = (cfg().get('repositorios') || []).filter((r) => r?.caminho && fs.existsSync(r.caminho));
   return lista.length ? lista : reposAuto(t?.spec?.repo || cfg().get('specsDir') || SPECS_PADRAO);
@@ -57,17 +63,26 @@ const blocoDocumento = (t) => {
   return `\nTicket por documento (sem ferramenta de gestão). Contexto do ticket: ${arq}. Documento original: ${doc.arquivo ? path.join(d, doc.arquivo) : '(sem arquivo)'} `
     + '(imagem e PDF: leia com Read; se houver páginas em .documento-paginas/, leia as imagens). Trate este contexto como o ticket: o passo 1 usa como insumo; não use ferramenta de tickets.';
 };
-const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois) => {
+// O que o dev explicou quando o ticket só tinha título (aba Spec): fonte verbal, de confiança menor que a spec aprovada.
+const blocoBriefing = (t) => (briefingDe(pasta(t.chave))
+  ? `\nExplicação do dev (fonte verbal; o ticket sozinho não bastava): ${path.join(pasta(t.chave), BRIEFING)}. Leia antes do passo 1, trate como insumo e marque o que só vem dela.` : '');
+// leitura = true: sem o gravador (início, triagem, impacto). A rodada (controle.js) só deixa o `depois` de uma execução valer enquanto
+// ninguém pausou: pausar cancela a rodada e mata o processo, e a etapa recomeça ao retomar.
+const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois, leitura = false) => {
   const repos = reposDe(t);
-  const bd = bancoEnv(t);
+  const bd = { ...bancoEnv(t), REFINAMENTO_DIR: dirSpec(t) || '', REFINAMENTO_RAIZ: t.spec?.repo || '', REFINAMENTO_MEMORIA: areaIA(pasta(t.chave)),
+    REFINAMENTO_TICKET: pasta(t.chave), REFINAMENTO_SDD: sddState() || '', REFINAMENTO_FOCO: vagas.raiz('refinamento.foco') ? path.join(vagas.raiz('refinamento.foco'), 'hooks', 'medir.js') : '' };
   fs.mkdirSync(areaIA(pasta(t.chave)), { recursive: true }); // memória do passo: ~/.claude é negada para escrita no claude -p
+  if (maestro.rodando(pasta(t.chave))) return false;
+  const rodada = controle.nova(pasta(t.chave));
   return maestro.rodar(pasta(t.chave), {
-    cwd, continuar, titulo, ferramentas: FERRAMENTAS(), env: bd, aoMudar: () => { if (depois && !maestro.rodando(pasta(t.chave))) depois(); s.render(); depoisDaEtapa(t); },
+    cwd, continuar, titulo, ferramentas: FERRAMENTAS(!leitura), env: bd,
+    aoMudar: () => { if (depois && !maestro.rodando(pasta(t.chave)) && controle.valida(pasta(t.chave), rodada)) depois(); s.render(); depoisDaEtapa(t); },
     // O foco substitui o i-have-adhd global nestas execuções (as regras não entram duas vezes).
     extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
       ...vagas.pluginDirs('refinamento.foco'), ...vagas.pluginDirs('refinamento.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), areaIA(pasta(t.chave)), ...repos.map((r) => r.caminho)],
     prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-      + ondeSalvar(t) + blocoDocumento(t)
+      + ondeSalvar(t) + (leitura ? '' : ESCRITA) + blocoDocumento(t) + blocoBriefing(t)
       + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
       + ` · plugin mapa: ${MAPA()} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
       + vagas.aviso('refinamento.sdd') + vagas.aviso('refinamento.mapa')
@@ -100,12 +115,14 @@ const avisarImpactos = (t) => {
   const l = impactosDe(pasta(t.chave));
   let mudou = false;
   const spec = dirSpec(ticketDe(t.chave) || t);
+  const parou = pausado(t.chave); // ⏸ matou a execução: triagem e análise voltam para a fila em vez de virar erro
   for (const i of l) {
     const falta = { triando: 'a triagem (sdd-state comentario classificar)', analisando: 'a análise (sdd-state impacto registrar)', aplicando: 'a aplicação (sdd-state impacto aplicado): confira os arquivos ou desfaça' }[i.status];
+    if (falta && parou && i.status !== 'aplicando') { i.status = i.status === 'triando' ? 'triagem' : 'na_fila'; mudou = true; } else
     if (falta) { i.resumo = `O Claude não registrou ${falta} deste comentário.`; i.status = 'erro'; mudou = true; }
     if (i.snapAnalise) { // a análise é só leitura: se a spec mudou, volta ao que era
       const id = `a${i.id}`;
-      if (mudancas.alterou(pasta(t.chave), spec, id) && mudancas.restaurar(pasta(t.chave), spec, id)) {
+      if (mudancas.alterou(pasta(t.chave), spec, id) && mudancas.restaurar(pasta(t.chave), spec, id) && !parou) {
         Object.assign(i, { status: 'erro', resumo: 'A análise alterou a spec (era só para medir): desfeito automaticamente. Peça a análise de novo.' });
       }
       fs.rmSync(path.join(pasta(t.chave), 'snapshots', id), { recursive: true, force: true });
@@ -132,8 +149,9 @@ const abertasDe = (t) => ({
   duvidas: duvidasDe(pasta(t.chave)).filter((x) => x.enviadaEm && !x.resposta),
   perguntas: (estadoSpec(ticketDe(t.chave) || t)?.perguntas || []).filter((q) => q.status === 'aberta')
 });
+const pausado = (chave) => estadoDe(chave) === 'pausado'; // pausado: nada novo começa (triagem, impacto e alteração esperam o ▶)
 const filaTriagem = (t) => {
-  if (maestro.rodando(pasta(t.chave))) return;
+  if (maestro.rodando(pasta(t.chave)) || pausado(t.chave)) return;
   const l = impactosDe(pasta(t.chave)), c = l.find((x) => x.status === 'triagem');
   if (!c) return;
   const { duvidas, perguntas } = abertasDe(t);
@@ -142,18 +160,18 @@ const filaTriagem = (t) => {
   etapa(ticketDe(t.chave), `[triagem] Comentário novo no ticket ${t.chave}: resposta, mudança ou ruído? Siga a seção "Triagem de comentário novo do ticket" da skill sdd.\n`
     + `Dúvidas enviadas sem resposta:\n${duvidas.filter((x) => !(x.descartados || []).includes(c.id)).map((x) => `- ${x.id}: ${x.texto}${x.contexto ? ` (contexto: ${x.contexto})` : ''}`).join('\n') || '(nenhuma)'}\n`
     + `Perguntas abertas do Claude:\n${perguntas.map((q) => `- ${q.id}: ${q.pergunta}${q.opcoes?.length ? ` (opções: ${q.opcoes.join(' / ')})` : ''}`).join('\n') || '(nenhuma)'}\n`
-    + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Triando comentário de ${c.autor}`);
+    + `Comentário id: ${c.id} · autor: ${c.autor} · data: ${c.data} · link: ${c.link}\nTexto:\n${c.texto}`, false, undefined, `Triando comentário de ${c.autor}`, undefined, true);
 };
 // Um comentário por vez, numa execução nova (o Claude lê o refinamento inteiro do disco).
 const filaImpactos = (t) => {
-  if (maestro.rodando(pasta(t.chave)) || !estadoSpec(ticketDe(t.chave) || t)) return;
+  if (maestro.rodando(pasta(t.chave)) || pausado(t.chave) || !estadoSpec(ticketDe(t.chave) || t)) return;
   const l = impactosDe(pasta(t.chave)), i = l.find((x) => x.status === 'na_fila');
   if (!i) return;
   i.status = 'analisando';
   try { mudancas.snapshot(pasta(t.chave), dirSpec(ticketDe(t.chave) || t), `a${i.id}`); i.snapAnalise = true; } catch {}
   s.gravar(t.chave, IMPACTOS, l);
   etapa(ticketDe(t.chave), `[impacto] Comentário novo no ticket ${t.chave}. Siga a seção "Mudança vinda de comentário do ticket" da skill sdd: SÓ ANÁLISE, não edite a spec nem os cards.\n`
-    + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`);
+    + `id: ${i.id} · autor: ${i.autor} · data: ${i.data} · link: ${i.link}\nTexto:\n${i.texto}`, false, undefined, `Analisando comentário de ${i.autor}`, undefined, true);
 };
 // Vigia: comentários de outras pessoas nos tickets com spec. Na primeira vez só marca o que já existe como visto.
 let vigiando = false;
@@ -192,7 +210,7 @@ const vigiarComentarios = async () => {
 };
 // Pedidos de alteração esperando: uma execução só para todos.
 const filaTarefas = (t) => {
-  if (maestro.rodando(pasta(t.chave))) return;
+  if (maestro.rodando(pasta(t.chave)) || pausado(t.chave)) return;
   const l = tarefasDe(pasta(t.chave)), fila = l.filter((c) => c.status === 'em_alteracao' && c.fila);
   if (!fila.length) return;
   fila.forEach((c) => { c.fila = false; alterando.add(c.id); });
@@ -226,7 +244,78 @@ const seguir = (t) => {
     + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : '');
   if (n === 3) return seguirPlano(t, titulo, extra);
   return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${n} (${titulo}).`
-    + (n === 6 ? qaCaminhos() : '') + extra + pedirMemoria(t, n, false), false, undefined, `Passo ${n} · ${titulo}`);
+    + (n === 6 ? qaCaminhos() : '') + extra + pedirMemoria(t, n, false), false, undefined, `Passo ${n} · ${titulo}`, () => conferir(t, n));
+};
+
+// ── Controle: ⏸ de verdade, e a situação que o cabeçalho e a caixa Ao vivo mostram.
+const mudarEstado = (chave, estado) => {
+  const x = tickets.ler(chave);
+  if (!x) return undefined;
+  const refinamento = { ...x.refinamento, estado };
+  tickets.gravar({ ...x, refinamento });
+  return refinamento;
+};
+// Pausar: cancela a rodada e para o Claude agora (quem chama já gravou o estado "pausado"). A etapa recomeça ao retomar, com a memória do passo em disco.
+const interromper = (t) => {
+  const dir = pasta(t.chave || t.id);
+  controle.cancelar(dir);
+  const rodava = maestro.rodando(dir);
+  maestro.parar(dir);
+  anotar(dir, { tipo: 'aviso', texto: rodava ? 'Refinamento pausado por você: o Claude parou. A etapa recomeça ao retomar' : 'Refinamento pausado por você' });
+};
+// "rodando" no ticket só vale com o Claude vivo ou com alguém esperando você (pergunta, revisão, dúvida, decisão); senão está parado e o ▶ continua.
+const aguardandoVoce = (t, est) => !!(esperaHumano(est) || duvidasDe(pasta(t.chave || t.id)).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(pasta(t.chave || t.id))).length);
+const situacao = (t) => {
+  const chave = t.chave || t.id, estado = estadoDe(chave), vivo = maestro.rodando(pasta(chave)), est = estadoSpec(ticketDe(chave) || t);
+  return { estado, rodando: vivo, parado: estado === 'rodando' && !vivo && !!est && est.proximoPasso <= 6 && !aguardandoVoce(t, est) };
+};
+
+// ── Verificação feita pela extensão: depois de cada execução de passo, confere o que ficou em disco. Passo que não concluiu ou
+// artefato que não presta volta ao Claude com o problema (MAX_CORRECOES vezes); esgotou, pausa e a aba Spec mostra o motivo.
+const MAX_CORRECOES = 2, MIN_CARACTERES = 200;
+// Mesmas contagens do sdd-state (contar): o que o passo precisa ter para valer.
+const EXIGE = {
+  1: [/\bRF\d{2,}\b/, 'nenhum requisito (RFnn)'], 2: [/\bRF\d{2,}\b/, 'nenhum requisito (RFnn)'],
+  4: [/\bt\d{2,}\b/, 'nenhuma tarefa (tNN)'], 6: [/\bCT\d{2,}\b/, 'nenhum caso de teste (CTnn)']
+};
+/** @returns {{ tipo: 'concluir'|'artefato', texto: string }|null} */
+const problemaDoPasso = (t, n) => {
+  const p = estadoSpec(t)?.passos?.[n];
+  if (!p) return null;
+  if (!['aguardando_revisao', 'aprovado'].includes(p.status)) return { tipo: 'concluir', texto: `o passo ${n} (${p.titulo}) terminou sem concluir (sdd-state concluir ${n})` };
+  const arq = arquivoPasso(t, n), nome = path.basename(arq);
+  let texto;
+  try { texto = fs.readFileSync(arq, 'utf8'); } catch { return { tipo: 'artefato', texto: `${nome} não existe` }; }
+  if (texto.trim().length < MIN_CARACTERES) return { tipo: 'artefato', texto: `${nome} está vazio ou curto demais (menos de ${MIN_CARACTERES} caracteres)` };
+  if (EXIGE[n] && !EXIGE[n][0].test(texto)) return { tipo: 'artefato', texto: `${nome} tem ${EXIGE[n][1]}` };
+  if (n === 3 && !(/Mapeamento do código/i.test(texto) && /Conformidade com a Constitui/i.test(texto))) return { tipo: 'artefato', texto: `${nome} sem as seções "Mapeamento do código" e "Conformidade com a Constituição"` };
+  return null;
+};
+const promptCorrecao = (t, n, problema, k, titulo = estadoSpec(t)?.passos[n]?.titulo || '') =>
+  `A conferência da extensão encontrou um problema no passo ${n}: ${problema}. Correção ${k} de ${MAX_CORRECOES}.${retomada(t, n, titulo)} e conserte só isso; depois rode concluir ${n}.${pedirMemoria(t, n, true)}`;
+const conferir = (t0, n) => {
+  const t = ticketDe(t0.chave) || t0, dir = pasta(t.chave);
+  const est = estadoSpec(t);
+  if (!est || estadoDe(t.chave) !== 'rodando') return false; // pausado: quem retoma decide
+  const concluiu = ['aguardando_revisao', 'aprovado'].includes(est.passos[n]?.status);
+  // Terminou para perguntar ou esperar resposta: não é falha.
+  if (!concluiu && (est.perguntas.some((q) => q.status === 'aberta') || duvidasDe(dir).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(dir)).length)) return false;
+  const prob = problemaDoPasso(t, n);
+  if (!prob) { if (refinoDe(dir).correcao) gravarRefino(dir, { correcao: null }); return false; }
+  const feitas = refinoDe(dir).correcao?.passo === n ? refinoDe(dir).correcao.tentativas : 0;
+  if (feitas >= MAX_CORRECOES) {
+    gravarRefino(dir, { correcao: null, pausa: { motivo: 'verificacao', passo: n, pergunta: `O passo ${n} não ficou pronto depois de ${MAX_CORRECOES} correções.`, detalhe: prob.texto } });
+    mudarEstado(t.chave, 'pausado');
+    anotar(dir, { tipo: 'erro', texto: `Passo ${n}: ${prob.texto}. Refinamento pausado depois de ${MAX_CORRECOES} correções`, detalhe: 'Abra a aba Spec, veja o que faltou e continue com ▶ ou peça ajuste.' });
+    s.render();
+    return false;
+  }
+  gravarRefino(dir, { correcao: { passo: n, tentativas: feitas + 1, problema: prob.texto } });
+  anotar(dir, { tipo: 'aviso', texto: `Conferência do passo ${n}: ${prob.texto}. Pedindo correção ${feitas + 1} de ${MAX_CORRECOES}` });
+  const roda = () => etapa(t, promptCorrecao(t, n, prob.texto, feitas + 1), false, undefined, `Corrigindo o passo ${n} (${feitas + 1}/${MAX_CORRECOES})`, () => conferir(t, n));
+  if (prob.tipo === 'artefato') sdd(['ajuste', String(n), '--ref', dir, '--motivo', `Conferência da extensão: ${prob.texto}`]).then(roda); // reabre o passo para o concluir de novo
+  else roda();
+  return true;
 };
 
 // ── Passo 3 em duas subetapas, cada uma numa execução nova que só conta com o que a anterior deixou em disco:
@@ -281,13 +370,13 @@ const fimPlano = (t) => {
   const p = estadoSpec(ticketDe(t.chave) || t)?.passos[3];
   const feito = ['aguardando_revisao', 'aprovado'].includes(p?.status), pausado = estadoDe(t.chave) !== 'rodando';
   gravarSub3(t.chave, { plano: feito ? 'concluida' : pausado ? 'pausada' : 'erro' });
-  if (!feito && !pausado) anotar(pasta(t.chave), { tipo: 'erro', texto: 'O plano técnico (3.2) terminou sem concluir o passo 3', detalhe: 'Continue o refinamento ou peça ajuste no passo 3.' });
+  conferir(t, 3); // sem concluir, artefato curto ou sem as seções: correção limitada e, esgotada, pausa com o motivo
 };
 const respondidas = []; // respostas ainda não entregues ao Claude
 
 // ── Memória do passo: cada execução de passo deixa em disco o que a próxima precisa (ajuste e respostas rodam em execução nova, sem --resume).
 const memoriaPasso = (t, n) => path.join(areaIA(pasta(t.chave)), `.memoria-passo-${n}.md`);
-const pedirMemoria = (t, n, ajuste) => ` Ao terminar, grave (Write) em ${memoriaPasso(t, n)} a memória do passo, curta (até 40 linhas): decisões tomadas e por quê, alternativas descartadas, o que ficou pendente e arquivos tocados.`
+const pedirMemoria = (t, n, ajuste) => ` Ao terminar, grave com ${GRAVAR} .memoria-passo-${n}.md (vai para ${memoriaPasso(t, n)}) a memória do passo, curta (até 40 linhas): decisões tomadas e por quê, alternativas descartadas, o que ficou pendente e arquivos tocados.`
   + (ajuste ? ` Esse arquivo já pode existir: ATUALIZE-o acrescentando a seção "Ajuste ${new Date().toISOString().slice(0, 10)}".` : '');
 // Contexto que a conversa antiga daria: passo, artefato, memória (ou como reconstruir sem ela) e o protocolo de retomada.
 const retomada = (t, n, titulo) => {
@@ -302,8 +391,8 @@ const promptAjuste = (t, n, texto, titulo = estadoSpec(t)?.passos[n]?.titulo || 
 const promptRespostas = (t, n, lista, titulo = estadoSpec(t)?.passos[n]?.titulo || '') =>
   `Respostas do humano na aba (também registradas no estado, sdd-state pergunta responder): ${lista.join('; ')}.${retomada(t, n, titulo)} e continue o passo ${n} com elas.${pedirMemoria(t, n, false)}`;
 // Ajuste e respostas: execução nova (continuar=false), tudo o que precisa vai no prompt.
-const ajustar = (t, n, texto) => etapa(t, promptAjuste(t, n, texto), false, undefined, `Ajuste no passo ${n} · ${estadoSpec(t)?.passos[n]?.titulo || ''}`);
-const aplicarRespostas = (t, n, lista) => etapa(t, promptRespostas(t, n, lista), false, undefined, `Aplicando suas respostas · passo ${n}`);
+const ajustar = (t, n, texto) => etapa(t, promptAjuste(t, n, texto), false, undefined, `Ajuste no passo ${n} · ${estadoSpec(t)?.passos[n]?.titulo || ''}`, () => conferir(t, n));
+const aplicarRespostas = (t, n, lista) => etapa(t, promptRespostas(t, n, lista), false, undefined, `Aplicando suas respostas · passo ${n}`, () => conferir(t, n));
 const sdd = (args) => new Promise((ok) => (sddState() ? require('child_process').execFile(sddState(), args, (e, out, err) => {
   if (e) vscode.window.showErrorMessage(String(err || e.message).replace(/^sdd-state: /, ''));
   ok(!e);
@@ -317,4 +406,4 @@ const iniciar = (servicos, ctx) => {
   ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
 };
 
-module.exports = { iniciar, etapa, seguir, subetapas3, mapasDe, memoriaPasso, promptAjuste, promptRespostas, ajustar, aplicarRespostas, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };
+module.exports = { iniciar, etapa, seguir, retomarFilas: (t) => depoisDaEtapa(t), interromper, situacao, mudarEstado, conferir, problemaDoPasso, FERRAMENTAS, MAX_CORRECOES, subetapas3, mapasDe, memoriaPasso, promptAjuste, promptRespostas, ajustar, aplicarRespostas, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };

@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+// refinamento-gravar: o Claude do refinamento (claude -p) grava os arquivos da spec por aqui, sem Write/Edit. Uso:
+//   refinamento-gravar spec.md <<'FIM' … FIM        (texto pela entrada padrão; só o nome do arquivo, nunca um caminho)
+// A extensão passa o destino por ambiente: REFINAMENTO_DIR (pasta da spec), REFINAMENTO_RAIZ (repo de specs, só constitution.md) e
+// REFINAMENTO_MEMORIA (área da IA, só .memoria-passo-N.md). Aceita: constitution.md, .memoria-passo-N.md e qualquer .md simples da
+// pasta da spec (sem subpasta, sem ponto na frente). O estado do sdd, .tarefas/.impactos/.duvidas e qualquer outro tipo são recusados.
+// Depois de gravar: recalcula hashes (sdd-state check, o que o hook PostToolUse do plugin sdd fazia com o Write) e mede o tamanho
+// (plugin foco, REFINAMENTO_FOCO = hooks/medir.js; exit 2 devolve o aviso ao Claude).
+const fs = require('fs');
+const path = require('path');
+const { execFileSync, spawnSync } = require('child_process');
+const env = process.env;
+const [nome] = process.argv.slice(2);
+const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };
+
+const memoria = /^\.memoria-passo-[0-6]\.md$/.test(nome || '');
+const constituicao = nome === 'constitution.md';
+const doc = /^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(nome || '');
+if (!nome || !(memoria || constituicao || doc)) sair(`refinamento-gravar: nome não permitido: ${nome || '(vazio)'} (só o nome de um .md, sem pasta)`);
+const base = memoria ? env.REFINAMENTO_MEMORIA : constituicao ? env.REFINAMENTO_RAIZ : env.REFINAMENTO_DIR;
+if (!base) sair('refinamento-gravar: destino não definido (rode pelo refinamento da Crafting Table)');
+const destino = path.join(base, nome);
+try {
+  fs.mkdirSync(base, { recursive: true });
+  fs.writeFileSync(destino, fs.readFileSync(0));
+} catch (e) { sair(`refinamento-gravar: ${e.message}`); }
+if (env.REFINAMENTO_SDD && env.REFINAMENTO_TICKET && !memoria) {
+  try { execFileSync(env.REFINAMENTO_SDD, ['check', '--ref', env.REFINAMENTO_TICKET], { stdio: 'ignore', timeout: 10000 }); } catch { /* sem spec ainda */ }
+}
+if (env.REFINAMENTO_FOCO && !memoria && fs.existsSync(env.REFINAMENTO_FOCO)) {
+  const r = spawnSync(process.execPath, [env.REFINAMENTO_FOCO], {
+    input: JSON.stringify({ tool_input: { file_path: destino }, session_id: `refinamento-${path.basename(base)}` }), encoding: 'utf8', timeout: 10000 });
+  if (r.status === 2) { console.error(`gravado: ${nome}\n${r.stderr}`); process.exit(2); }
+}
+sair(`gravado: ${nome}`, 0);

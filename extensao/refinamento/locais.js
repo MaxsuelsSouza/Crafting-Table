@@ -60,6 +60,16 @@ const textoDuvida = (x) => `Dúvida levantada no refinamento: ${x.texto}${x.cont
 // Card antigo guardava a chave da subtarefa em `jira`; hoje é `ticket` (lê os dois, a próxima gravação já vai como `ticket`).
 const cardAtual = ({ jira, ...c }) => (jira === undefined ? c : { ...c, ticket: c.ticket ?? jira });
 const tarefasDe = (dir) => { const l = dir ? ler(path.join(dir, TAREFAS), []) : []; return Array.isArray(l) ? l.map(cardAtual) : []; };
+// Estado da própria extensão no refinamento (a IA não grava aqui): { pausa?: { motivo, pergunta, detalhe? }, correcao?: { passo, tentativas } }.
+// pausa.motivo: 'briefing' (ticket só com título: o dev explica) | 'verificacao' (o passo não ficou pronto depois das correções).
+const REFINO = '.refinamento.json';
+const BRIEFING = '.briefing-refinamento.md'; // o que o dev explicou quando o ticket não bastava: fonte verbal do passo 1
+const refinoDe = (dir) => { const v = dir ? ler(path.join(dir, REFINO), {}) : {}; return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; };
+const gravarRefino = (dir, patch) => {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, REFINO), JSON.stringify({ ...refinoDe(dir), ...patch, atualizado: new Date().toISOString() }, null, 2));
+};
+const briefingDe = (dir) => (dir ? lerTexto(path.join(dir, BRIEFING)) || '' : '').trim();
 const IMPACTOS = '.impactos.json'; // comentários do Jira em análise/analisados (vigia de mudanças)
 const impactosDe = (dir) => { const l = dir ? ler(path.join(dir, IMPACTOS), []) : []; return Array.isArray(l) ? l : []; };
 
@@ -75,6 +85,6 @@ const ondeSalvar = (r) => (dirSpec(r)
 
 module.exports = {
   NOMES, HANDOFF, HANDOFF_LEGADO, pasta, dirSpec, arquivoPasso, arqHandoff, docsDaSpec, ondeSalvar,
-  ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida,
+  ler, lerTexto, NOTAS, ORIGEM, TAREFAS, DUVIDAS, IMPACTOS, REFINO, BRIEFING, refinoDe, gravarRefino, briefingDe, decisoesDe, duvidasDe, tarefasDe, impactosDe, textoDuvida,
   ticketDe, estadoSpec, comSpec,
 };
