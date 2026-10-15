@@ -82,8 +82,13 @@ exports.provider = (ctx) => {
   }));
 
   const fechar = () => { observador?.close(); observador = null; };
+  // Notas em foco: redesenhos que vêm de fora (Ao Vivo, arquivos) esperam o editor perder o foco, para não tirar
+  // o cursor de quem digita. Navegação da própria pessoa chama render() direto.
+  let notasEmFoco = false, renderAdiado = false;
+  const renderSuave = () => { if (notasEmFoco) renderAdiado = true; else render(); };
   const render = () => {
     if (!view) return;
+    notasEmFoco = false; renderAdiado = false;
     fechar();
     const nonce = crypto.randomBytes(16).toString('hex');
     let t = aberto === SEM_TICKET ? { id: SEM_TICKET, conversas: [] } : aberto && comSpec(ticketDe(aberto));
@@ -128,7 +133,7 @@ exports.provider = (ctx) => {
     // O Claude grava documentos, handoffs, decisões e o estado da spec por fora: redesenha quando muda
     // (as notas não, para não atropelar a digitação).
     let espera;
-    const depois = (ms) => { clearTimeout(espera); espera = setTimeout(render, ms); };
+    const depois = (ms) => { clearTimeout(espera); espera = setTimeout(renderSuave, ms); };
     const obs = [];
     for (const p of new Set([dir, dirAba])) try { if (p) obs.push(fs.watch(p, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300); })); } catch {}
     if (dirSpec(t) && fs.existsSync(dirSpec(t))) {
@@ -157,7 +162,7 @@ exports.provider = (ctx) => {
   const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
   // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
   const servicos = {
-    render: () => render(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
+    render: () => renderSuave(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
     pasta, pastaAba, gravar, notificar, reposDe: orq.reposDe, orq, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
@@ -216,7 +221,7 @@ exports.provider = (ctx) => {
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('../modulos/' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo === 'foco' ? ((notasEmFoco = !!m.ativo), !m.ativo && renderAdiado && setTimeout(() => !notasEmFoco && renderAdiado && render(), 400)) : m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('../modulos/' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
       view.onDidChangeVisibility(() => { if (view.visible) { conversas.reconciliar(servicos); render(); } });
       conversas.reconciliar(servicos);
       render();
