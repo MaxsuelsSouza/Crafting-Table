@@ -85,11 +85,14 @@ exports.provider = (ctx) => {
   const fechar = () => { observador?.close(); observador = null; };
   // Notas em foco: redesenhos que vêm de fora (Ao Vivo, arquivos) esperam o editor perder o foco, para não tirar
   // o cursor de quem digita. Navegação da própria pessoa chama render() direto.
-  let notasEmFoco = false, renderAdiado = false;
+  // Ao vivo: linha nova do log não recarrega a página (perderia a rolagem de quem está lendo); só manda a caixa nova para o webview.
+  let notasEmFoco = false, renderAdiado = false, pedirVivo = false, ultimaPagina = null;
+  const renderVivo = () => { pedirVivo = true; try { render(); } finally { pedirVivo = false; } };
   const renderSuave = () => { if (notasEmFoco) renderAdiado = true; else render(); };
   const render = () => {
     if (!view) return;
     notasEmFoco = false; renderAdiado = false;
+    const soVivo = pedirVivo; pedirVivo = false;
     fechar();
     const nonce = crypto.randomBytes(16).toString('hex');
     let t = aberto === SEM_TICKET ? { id: SEM_TICKET, conversas: [] } : aberto && comSpec(ticketDe(aberto));
@@ -98,7 +101,7 @@ exports.provider = (ctx) => {
     // Todos os passos aprovados: o modo refinamento termina sozinho.
     if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
     if (!t) {
-      aberto = null; sessao.focar(null);
+      aberto = null; sessao.focar(null); ultimaPagina = null;
       if (conf.aberta()) { view.webview.html = pagina(nonce, estilo + conf.corpo()); avisarMoldura(); return; }
       view.webview.html = pagina(nonce, lista.corpo(servicos, estilo, emRefino));
       avisarMoldura();
@@ -128,15 +131,22 @@ exports.provider = (ctx) => {
     };
     if (aba === 'ticket' && jira.ehDocumento(t)) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(pasta(t.id))] };
     else if (['evidenciasInc', 'mergulho', 'reproducao'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
-    view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
+    const corpoTicket = telaTicket(t, aba, d), paginaAtual = `${t.id}|${aba}`;
+    if (soVivo && paginaAtual === ultimaPagina) view.webview.postMessage({ tipo: 'vivo', html: corpoTicket });
+    else view.webview.html = pagina(nonce, corpoTicket, aba === 'docs' && dirAba
       ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
+    ultimaPagina = paginaAtual;
     avisarMoldura();
     // O Claude grava documentos, handoffs, decisões e o estado da spec por fora: redesenha quando muda
     // (as notas não, para não atropelar a digitação).
-    let espera;
-    const depois = (ms) => { clearTimeout(espera); espera = setTimeout(renderSuave, ms); };
+    let espera, soAoVivo = true;
+    const depois = (ms, vivo) => {
+      if (!vivo) soAoVivo = false;
+      clearTimeout(espera);
+      espera = setTimeout(() => { const v = soAoVivo; soAoVivo = true; if (!v) renderSuave(); else if (notasEmFoco) renderAdiado = true; else renderVivo(); }, ms);
+    };
     const obs = [];
-    for (const p of new Set([dir, dirAba])) try { if (p) obs.push(fs.watch(p, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300); })); } catch {}
+    for (const p of new Set([dir, dirAba])) try { if (p) obs.push(fs.watch(p, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300, nome === '.ao-vivo.jsonl'); })); } catch {}
     if (dirSpec(t) && fs.existsSync(dirSpec(t))) {
       try { obs.push(fs.watch(dirSpec(t), (_, nome) => { if (nome && !nome.endsWith('.tmp')) depois(400); })); } catch {}
       try { obs.push(fs.watch(t.spec.repo, (_, nome) => { if (nome === 'constitution.md') depois(400); })); } catch {}
@@ -218,14 +228,14 @@ exports.provider = (ctx) => {
       // Em mais de uma aba: sai só desta (a pasta da aba fica, volta a aparecer se puxar de novo).
       if (t && tickets.listasDe(t).length > 1) {
         tickets.gravar({ ...t, listas: tickets.listasDe(t).filter((l) => l !== lista.modo()), lista: undefined, implementacao: undefined });
-        if (aberto === id) { aberto = null; sessao.focar(null); }
+        if (aberto === id) { aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); }
         return render();
       }
       const ok = t && await vscode.window.showWarningMessage(`Excluir o ticket ${id}?`, { modal: true,
         detail: `Sai da lista. A pasta (${t && jira.ehDocumento(t) ? 'o documento, anexos, ' : 'documentos, '}notas, tarefas, evidências) vai para ${path.join(tickets.RAIZ, '_arquivados')} — nada é apagado. As conversas do Claude continuam, sem ticket.` }, 'Excluir');
       if (!ok) return;
       tickets.arquivar(id);
-      if (aberto === id) { aberto = null; sessao.focar(null); }
+      if (aberto === id) { aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); }
       render();
     },
     atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
@@ -244,7 +254,7 @@ exports.provider = (ctx) => {
       const reg = tickets.ler(t.id);
       if (reg && outros) tickets.gravar({ ...reg, listas: tickets.listasDe(reg).filter((l) => l !== foco), lista: undefined, implementacao: undefined });
       else if (reg) tickets.arquivar(t.id);
-      aberto = null; sessao.focar(null);
+      aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); // volta à lista do módulo (como o ←): a seção em que a pessoa estava (Evidências, Massa…) fica sem ticket
       render();
     },
     jira() { const t = ticketAberto(); if (t && jira.ehDocumento(t)) return vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); }

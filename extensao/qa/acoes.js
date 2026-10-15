@@ -162,7 +162,9 @@ async function respostaMassaSql(s, t, dir, p, r) {
     { modal: true, detail: `${prop.sql.join(';\n')};` }, 'Executar');
   if (!ok) return;
   qa.registrarDecisao(dir, 'Usuário aprovou a alteração de massa no banco', { ticket: t.chave, cenarios: prop.cenarios.join(','), instrucoes: prop.sql.length });
-  const res = await qa.aplicarProposta(dir, d);
+  qa.mudar(dir, { processando: 'Executando o SQL no banco…' }); s.render();
+  let res;
+  try { res = await qa.aplicarProposta(dir, d); } finally { qa.mudar(dir, { processando: null }); }
   s.render();
   if (res.ok) return acoes(s).qaIniciar();
 }
@@ -183,6 +185,19 @@ const acoes = (s) => ({
     if (!t || sessao.focoLista() !== 'qa') return;
     qa.registrarDecisao(s.pastaAba(t.id), qa.estado(s.pastaAba(t.id)).execucao === 'pausado' ? 'Usuário retomou os testes' : 'Usuário iniciou os testes', { ticket: t.chave });
     await qa.executar(s.pastaAba(t.id), depsQa(s, t));
+    s.render();
+  },
+  // Etapa 5 (Massa de dados) concluída: ↻ ao passar o mouse apaga a aba Massa e a IA levanta massa nova para todos os cenários.
+  async qaMassaRefazer() {
+    const t = s.ticketAberto();
+    if (!t || sessao.focoLista() !== 'qa') return;
+    const dir = s.pastaAba(t.id);
+    if (qa.rodando(dir)) return vscode.window.showInformationMessage('O QA está rodando: pause antes de refazer a massa.');
+    const ok = await vscode.window.showWarningMessage('Apagar toda a massa da aba Massa e levantar massa nova para todos os cenários?', { modal: true, detail: 'Os itens atuais somem da aba Massa. O SQL já aplicado no banco não é desfeito.' }, 'Refazer massa');
+    if (!ok) return;
+    qa.registrarDecisao(dir, 'Usuário pediu para refazer a massa de dados', { ticket: t.chave });
+    s.pedirSecao(EVID);
+    await qa.executar(dir, depsQa(s, t), { soMassa: true });
     s.render();
   },
   async qaAmbAnalisar() { const t = s.ticketAberto(); if (t) { await qa.analisarAmbiente(s.pastaAba(t.id), depsQa(s, t)); s.render(); } },
@@ -231,11 +246,12 @@ const acoes = (s) => ({
     if (e.publicarPendente) {
       const ok = await vscode.window.showWarningMessage(`Aprovar o planejamento v${e.versao} e ${docLocal(t) ? 'salvar no documento' : `publicar no ${jira.nome}`}? Cria ou atualiza a subtarefa de QA.`, { modal: true }, 'Aprovar e publicar');
       if (!ok) return;
+      qa.mudar(dir, { processando: 'Publicando o planejamento…' }); s.render();
       try { await qa.aprovarPublicando(dir, depsPublicar(s, t)); } catch (x) {
         aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar o plano: ${x.message}` });
         qa.mudar(dir, { erro: x.message });
         return s.render();
-      }
+      } finally { qa.mudar(dir, { processando: null }); }
     } else if (!qa.aprovar(dir)) return;
     qa.registrarDecisao(dir, 'Usuário aprovou o planejamento', { ticket: t.chave });
     s.render();

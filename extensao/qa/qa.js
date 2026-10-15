@@ -102,6 +102,8 @@ function refazer(dir, id) {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id && !x.arquivado);
   if (!c || c.status === 'executando') return false;
   c.status = 'pendente'; delete c.dispensa;
+  c.refazerEm = new Date().toISOString(); // vai para o fim da fila (depois dos que ainda não rodaram)
+  fs.rmSync(path.join(dir, 'evidencias', c.id), { recursive: true, force: true }); // só as evidências novas ficam; o histórico (status, notas) permanece
   gravarJson(path.join(dir, CENARIOS), r);
   return true;
 }
@@ -153,13 +155,15 @@ function dispensar(dir, id, motivo, tipo = 'excluir') {
 // Evidências de cada execução em evidencias/CTnn/<id da execução>/.
 const RESULTADOS = ['passou', 'falhou', 'bloqueado'];
 const carimbo = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');
-const fila = (r) => r.cenarios.filter((c) => !c.arquivado && ['pendente', 'desatualizado'].includes(c.status));
+// Ordem do plano; os pedidos em ↻ Refazer vão para o fim, na ordem em que foram pedidos (não interrompem nem furam a fila).
+const fila = (r) => r.cenarios.filter((c) => !c.arquivado && ['pendente', 'desatualizado'].includes(c.status))
+  .map((c, i) => ({ c, i })).sort((a, b) => (a.c.refazerEm ? 1 : 0) - (b.c.refazerEm ? 1 : 0) || (a.c.refazerEm || '').localeCompare(b.c.refazerEm || '') || a.i - b.i).map((x) => x.c);
 function iniciarCenario(dir, id, sha) {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id);
   const ex = { id: carimbo(), inicio: new Date().toISOString(), status: 'executando', sha: sha || null, evidencias: path.join('evidencias', id) };
   ex.evidencias = path.join(ex.evidencias, ex.id);
   fs.mkdirSync(path.join(dir, ex.evidencias), { recursive: true });
-  c.statusAntes = c.status; c.status = 'executando'; (c.execucoes ||= []).push(ex);
+  c.statusAntes = c.status; c.status = 'executando'; delete c.refazerEm; (c.execucoes ||= []).push(ex);
   gravarJson(path.join(dir, CENARIOS), r);
   return ex;
 }
@@ -652,7 +656,8 @@ async function levantarMassa(dir, d, amb, cens) {
 // ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
 const ativos = new Set();
 const pausado = (dir) => estado(dir).execucao === 'pausado';
-async function executar(dir, d) {
+// soMassa (↻ da Etapa 5): apaga a aba Massa e só levanta massa nova para todos os cenários ativos; não executa cenário.
+async function executar(dir, d, { soMassa = false } = {}) {
   if (rodando(dir)) return;
   if (estado(dir).pausa) return aoVivo.anotar(dir, { tipo: 'aviso', texto: `Responda a pergunta antes de retomar: ${estado(dir).pausa.pergunta}` });
   reconciliar(dir);
@@ -661,8 +666,10 @@ async function executar(dir, d) {
   try {
     if (estado(dir).fase !== 'plano_aprovado') return vivo('aviso', 'Aprove o planejamento antes de dar início');
     vivo('etapa', 'QA · 3. Execução');
-    let pend = fila(cenarios(dir));
+    const ativosC = () => cenarios(dir).cenarios.filter((c) => !c.arquivado && c.status !== 'dispensado');
+    let pend = soMassa ? ativosC() : fila(cenarios(dir));
     if (!pend.length) return vivo('fim', cenarios(dir).cenarios.length ? 'Nenhum cenário pendente. Use ↻ Refazer para executar um de novo' : 'Sem cenários para executar');
+    if (soMassa) { gravarJson(path.join(dir, MASSA), { itens: [] }); vivo('acao', 'Massa antiga apagada da aba Massa: levantando massa nova para todos os cenários'); }
     const dono = donoAmbiente();
     if (dono && dono.chave !== d.chave && !(await d.confirmar(`O ambiente de testes (API, Metro, emulador) está com o ${dono.chave}. Usar no ${d.chave}?`))) {
       return vivo('aviso', `Ambiente em uso pelo ${dono.chave}: QA não iniciado`);
@@ -680,6 +687,7 @@ async function executar(dir, d) {
       if (absorverPausa(dir) || pausado(dir)) return;
       if (rm.erro && semMassa(dir, pend.map((c) => c.id), new Date(), d.horaRefresh).length) return pausarPorApi(dir, d, rm.erro, null);
     } else vivo('fim', 'Massa de hoje ainda válida: reaproveitada');
+    if (soMassa) return vivo('fim', 'Massa nova levantada: use ▶ para executar os cenários');
     const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª pausa pedindo instrução, nunca pula)
     while (!pausado(dir) && (pend = fila(cenarios(dir))).length) {
       const c = pend[0], ex = iniciarCenario(dir, c.id, amb.sha);
@@ -948,6 +956,9 @@ const CSS = `<style>${caixaEtapas.CSS}${aoVivo.CSS}${cardCenario.CSS}
   .qa-card .acoes-passo button.aprovar { background: var(--ok); color: var(--on-cor); border-color: transparent; }
   .qa-card .acoes-passo button:disabled, .qa-card .acoes-passo button.travado { opacity: .45; cursor: not-allowed; }
   .qa-card .sec { background: none; border: 1px solid var(--border); color: var(--text); font-weight: 400; margin-left: 4px; }
+  .qa-card.proc { position: relative; opacity: .55; filter: brightness(.8); pointer-events: none; }
+  .qa-card.proc::after { content: ''; position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 3px solid var(--text-dim); border-top-color: var(--accent); animation: qa-gira .8s linear infinite; }
+  @keyframes qa-gira { to { transform: rotate(360deg); } }
   .cens { margin: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
 </style>`;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -963,7 +974,7 @@ function html(dir, uri = () => '') {
        O Claude escreve o plano; você lê e aprova, e só então a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
     : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar ele aparece aqui para você ler e aprovar (nada é publicado antes).</p></div>`
     : e.fase === 'alterando' && rodando ? `<div class="qa-card"><b><span class="vivo-bola"></span>Aplicando sua mudança no planejamento</b><p>“${esc(e.pedido || '')}”. Ao terminar, a versão nova aparece aqui para aprovar.</p></div>`
-    : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.${e.publicarPendente ? ` O plano ainda está só aqui: aprovar o publica no ${esc(onde(dir))}.` : ''}${e.erro ? ` <span class="dim">Última tentativa: ${esc(e.erro)}</span>` : ''}</p>
+    : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card${e.processando ? ' proc' : ''}" title="${esc(e.processando || '')}"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.${e.publicarPendente ? ` O plano ainda está só aqui: aprovar o publica no ${esc(onde(dir))}.` : ''}${e.erro ? ` <span class="dim">Última tentativa: ${esc(e.erro)}</span>` : ''}</p>
        ${abrir}${e.fase === 'alterando' ? '' : `<div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-painel="qaPlanoAprovar" ${lido ? '' : 'disabled'}
          title="${lido ? 'Aprovar o planejamento e listar os cenários' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
          <button data-painel="qaPlanoMudar" title="Descreva o ajuste: o Claude aplica na subtarefa e gera a versão nova">Pedir ajuste</button></div>`}</div>`
@@ -976,7 +987,8 @@ function html(dir, uri = () => '') {
   const sqlHtml = prop ? `<p><b>Por quê:</b> ${esc(prop.porque || e.pausa.detalhe || '—')} · <b>Papel:</b> ${esc(prop.papel)} · <b>Cenários:</b> ${esc(prop.cenarios.join(', '))}</p>
     <details open><summary>SQL que vai rodar (${prop.sql.length})</summary><pre>${esc(prop.sql.join(';\n'))};</pre></details>
     <details><summary>SQL de desfazer (${prop.desfazer.length})</summary><pre>${esc(prop.desfazer.join(';\n'))};</pre></details>` : '';
-  const pausaCard = e.pausa ? `<div class="qa-card bloq"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
+  const proc = e.processando ? ' proc' : '';
+  const pausaCard = e.pausa ? `<div class="qa-card bloq${proc}" title="${esc(e.processando || '')}"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
     <div class="acoes-passo">${(e.pausa.opcoes || []).map((o, i) => `<button data-painel="qaResponder" data-op="${i}">${esc(o)}</button>`).join('')}
     <button data-painel="qaResponder" class="aprovar">Responder…</button></div></div>` : '';
   const lote = loteRefazer(dir);
@@ -1007,7 +1019,9 @@ function etapasQa(dir, e, rodando) {
     : feitos === r.length ? ['concluida', `${feitos}/${r.length}`] : e.execucao === 'pausado' ? ['pausada', `${feitos}/${r.length}`] : rodando ? ['rodando', `${feitos}/${r.length}`] : ['pendente', feitos ? `${feitos}/${r.length}` : ''];
   const pub = podePublicar(cenarios(dir).cenarios) ? ['aguardando', 'pronta para publicar'] : ['pendente'];
   const est = [plano, aprovado ? ['concluida', `${r.length} cenário(s)`] : ['pendente'], ambEt, preEt, massaEt, exec, pub];
-  const etapas = nomes.map((nome, i) => ({ n: i + 1, nome, estado: est[i][0], ...(est[i][1] !== undefined ? { rotulo: est[i][1] } : {}) }));
+  const refazMassa = '<button class="ce-hover" data-painel="qaMassaRefazer" title="Apaga toda a massa da aba Massa e pede à IA para levantar massa nova">↻ Refazer massa</button>';
+  const etapas = nomes.map((nome, i) => ({ n: i + 1, nome, estado: est[i][0], ...(est[i][1] !== undefined ? { rotulo: est[i][1] } : {}),
+    ...(i === 4 && est[i][0] === 'concluida' && !rodando ? { hover: refazMassa } : {}) }));
   return caixaEtapas.caixa({ titulo: 'Etapas do QA', etapas, atual: (etapas.find((x) => x.estado !== 'concluida') || {}).n });
 }
 function execucaoHtml(dir, e, rodando) {
@@ -1025,17 +1039,17 @@ function massaHtml(dir, hora = '06:00') {
   const m = massa(dir), agora = new Date(), ref = ultimoRefresh(agora, hora);
   const rot = (i) => (i.estado === 'valida' && !massaValida(i, agora, hora) ? ['Vencida', 'desatualizado'] : i.estado === 'valida' ? ['Válida', 'passou']
     : i.estado === 'consumida' ? ['Consumida', 'bloqueado'] : ['Inválida', 'falhou']);
-  const linhas = m.itens.slice().reverse().map((i) => { const [r, cls] = rot(i); return `<div class="cen"><div class="cdet" style="padding-top:8px">
-    <div><b class="cid">${esc(i.id)}</b> · ${esc(i.papel)} <span class="cst ${cls}">${r}</span></div>
+  const linhas = m.itens.slice().reverse().map((i) => { const [r, cls] = rot(i); return `<details class="cen" data-cen="massa-${esc(i.id)}"><summary><span class="cid">${esc(i.id)}</span><span class="ctit">${esc(i.papel)}</span><span class="cst ${cls}">${r}</span></summary><div class="cdet">
     <div>Cenários: ${esc((i.cenarios || []).join(', ') || '—')} · medida ${esc(dataBr(i.medidaEm))}</div>
     <div class="papel-massa">${Object.entries(i.dados || {}).map(([k, v]) => `<div class="campo"><span class="k">${esc(k)}</span><span class="v">${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span><button class="copiar" data-acao="qaMassaCopiar" data-id="${esc(i.id)}" data-key="${esc(k)}" title="Copiar ${esc(k)}">⧉</button></div>`).join('') || '<span class="k">sem campos</span>'}</div>
     ${i.consulta ? `<details><summary>Consulta</summary><pre>${esc(i.consulta)}</pre></details>` : ''}
     ${i.origem === 'sql' && i.desfazer?.length ? `<details><summary>Montada por SQL · desfazer</summary><pre>${esc(i.desfazer.join(';\n'))};</pre><button data-acao="qaMassaDesfazer" data-id="${esc(i.id)}" title="Roda o SQL de desfazer no banco (pede confirmação)">Desfazer no banco</button></details>` : ''}
     ${i.estado === 'valida' ? `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="invalida">Marcar inválida</button>` : `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="valida">Marcar válida</button>`}
-    </div></div>`; }).join('');
+    </div></details>`; }).join('');
   return `${CSS}<div class="qa-card"><b>Massa de dados</b><p>Vale até o refresh do banco (último: ${esc(dataBr(ref.toISOString()))}; horário em Configurações → craftingTable.qaHoraRefresh).
     O ▶ levanta massa só para cenários sem massa válida; a massa que um cenário altera vira consumida.</p>
-    <button data-acao="qaMassaEditar" title="Abre o .massa.json no editor (cole ou corrija dados à mão)">Editar à mão</button></div>
+    <button data-acao="qaMassaEditar" title="Abre o .massa.json no editor (cole ou corrija dados à mão)">Editar à mão</button>
+    ${linhas ? '<button class="sec" data-expandir-tudo title="Abre ou fecha todos os itens da massa">Expandir tudo</button>' : ''}</div>
     <div class="cens">${linhas || '<div class="vazio-aba">Nenhuma massa ainda. O ▶ do QA levanta a massa antes de executar os cenários.</div>'}</div>`;
 }
 function mapaHtml(dir, r, amb, uri) {

@@ -136,13 +136,15 @@ const pagina = (nonce, csp, corpo, gravandoDesde) => `<!doctype html><html><head
 </script></body></html>`;
 
 exports.provider = (ctx) => {
-  let view, dir, ticket, observador, erro, gravacao, raizesAtuais, todos = [], vigiaQa, vigiadoQa;
+  let view, dir, ticket, observador, erro, gravacao, raizesAtuais, todos = [], vigiaQa, vigiadoQa, pedirVivo = false, paginaVivo = null;
 
   const render = async () => {
     if (!view) return;
+    const soVivo = pedirVivo; pedirVivo = false;
     ticket = await ticketAtual();
     const sid = sessao.atual(); // ticket aberto no painel ou, sem ele, a conversa atual
     if (!sid) {
+      paginaVivo = null;
       view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), view.webview.cspSource,
         ESTILO_NOTAS + '<div class="topo"><span class="rotulo">Evidências</span></div><div class="folha"><div class="centro"><div class="icone">💬</div>Nenhuma conversa detectada ainda neste projeto.<br>Envie uma mensagem no Claude.</div></div>');
       return;
@@ -164,7 +166,13 @@ exports.provider = (ctx) => {
       if (dirQa) {
         fs.mkdirSync(dirQa, { recursive: true });
         let espera;
-        vigiaQa = fs.watch(dirQa, (_, nome) => { if ([...aoVivo.ARQUIVOS, '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) { clearTimeout(espera); espera = setTimeout(render, 200); } });
+        let soAoVivo = true;
+        vigiaQa = fs.watch(dirQa, (_, nome) => {
+          if (![...aoVivo.ARQUIVOS, '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) return;
+          if (nome !== '.ao-vivo.jsonl') soAoVivo = false;
+          clearTimeout(espera);
+          espera = setTimeout(() => { pedirVivo = soAoVivo; soAoVivo = true; render(); }, 200); // só linha nova do Ao vivo: troca a caixa, sem recarregar a página
+        });
       }
     }
     const arquivos = listar(dir);
@@ -200,7 +208,10 @@ exports.provider = (ctx) => {
       ${arquivos.length ? `<div class="folha"><p class="contagem">${arquivos.length} evidência${arquivos.length === 1 ? '' : 's'}</p>${grade(arquivos, true)}</div>` : ''}
       ${extras.map((f) => `<div class="folha"><p class="contagem" title="${esc(f.dir)}">${esc(f.titulo)} <span class="tag">somente leitura</span></p>${grade(f.arquivos, false)}</div>`).join('')}`;
     erro = null;
-    view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), view.webview.cspSource, corpo, gravacao?.desde);
+    const paginaAtual = `${sid}|${dirQa || ''}`;
+    if (soVivo && dirQa && paginaAtual === paginaVivo) view.webview.postMessage({ tipo: 'vivo', html: corpo });
+    else view.webview.html = pagina(crypto.randomBytes(16).toString('hex'), view.webview.cspSource, corpo, gravacao?.desde);
+    paginaVivo = paginaAtual;
   };
 
   const falhar = (msg) => { erro = msg; render(); };
@@ -212,6 +223,7 @@ exports.provider = (ctx) => {
   };
 
   const acoes = {
+    vivoRecarregar() { render(); },
     async print() {
       const emu = precisaEmulador();
       if (!emu) return;

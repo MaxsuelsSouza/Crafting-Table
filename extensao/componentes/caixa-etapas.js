@@ -8,6 +8,7 @@ const { esc } = require('../infra/texto');
 //     etapas: [{ n, nome, estado, rotulo?, aberta?, subetapas?: [{ n?, nome, estado, rotulo? }] }]
 //     atual: n da etapa atual (destaque)
 //   estado: 'pendente' | 'rodando' | 'aguardando' (aprovação) | 'concluida' | 'erro' | 'pausada'
+//   hover: HTML opcional (botão) que só aparece ao passar o mouse sobre a etapa
 //   rotulo: texto ao lado do nome; o padrão sai do estado (pendente fica sem texto)
 //   subetapas: quando a etapa É a atual (ou vem com aberta: true) a caixa expande sozinha e mostra N.1, N.2… com o estado de cada uma,
 //     antes de qualquer processo começar; as outras etapas ficam recolhidas. Sem subetapas a etapa é uma linha só. `n` da subetapa
@@ -18,11 +19,11 @@ const { esc } = require('../infra/texto');
 const ROTULOS = { pendente: '', rodando: 'em andamento', aguardando: 'aguardando sua aprovação', concluida: 'concluída', erro: 'com erro', pausada: 'pausada' };
 const CLASSE = { concluida: 'feita', erro: 'erro', rodando: 'rodando', aguardando: 'aguardando', pausada: 'pausada', pendente: '' };
 
-/** @param {{ n: string|number, nome: string, estado?: string, rotulo?: string }} x @param {boolean} atual @param {string} extra */
+/** @param {{ n: string|number, nome: string, estado?: string, rotulo?: string, hover?: string }} x @param {boolean} atual @param {string} extra */
 const linha = (x, atual, extra = '') => {
   const estado = x.estado || 'pendente', rot = x.rotulo ?? ROTULOS[estado] ?? '';
   const cls = [CLASSE[estado] || '', atual && estado !== 'concluida' ? 'atual' : '', extra].filter(Boolean).join(' ');
-  return `<div class="ce-et ${cls}"><b>${estado === 'concluida' ? '✓' : esc(x.n)}</b>${esc(x.nome)}${rot ? `<span class="ce-rot">· ${esc(rot)}</span>` : ''}</div>`;
+  return `<div class="ce-et ${cls}"><b>${estado === 'concluida' ? '✓' : esc(x.n)}</b>${esc(x.nome)}${rot ? `<span class="ce-rot">· ${esc(rot)}</span>` : ''}${x.hover ? `<span class="ce-hover-box">${x.hover}</span>` : ''}</div>`;
 };
 
 /** @param {{ titulo?: string, acao?: string, etapas: any[], atual?: string|number }} o */
@@ -44,6 +45,9 @@ const CSS = `
   .ce-et.atual, .ce-et.rodando, .ce-et.aguardando { color: var(--text); }
   .ce-et.atual b, .ce-et.rodando b, .ce-et.aguardando b { border-color: var(--accent); color: var(--accent); }
   .ce-et.erro b { border-color: var(--danger); color: var(--danger); }
+  .ce-hover-box { margin-left: auto; display: none; } .ce-et:hover .ce-hover-box, .ce-hover-box:focus-within { display: inline-flex; }
+  .ce-hover { height: 22px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--r-md, 4px); background: var(--surface); color: var(--text); font-size: 11px; cursor: pointer; }
+  .ce-hover:hover { border-color: var(--accent); color: var(--accent); }
   .ce-subs { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px 10px; padding-left: 14px; border-left: 1px solid var(--border); }
   .ce-et.sub { font-size: 12px; padding: 2px 0; } .ce-et.sub b { width: auto; min-width: 22px; padding: 0 4px; border-radius: 10px; height: 17px; font-size: 10px; }
 `;

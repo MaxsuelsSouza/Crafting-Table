@@ -127,6 +127,18 @@ const script = (chave = 'vivo') => `{
     av.scrollTop = (vscode.getState() || {})[${JSON.stringify(chave)}] || 0;
     av.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), [${JSON.stringify(chave)}]: av.scrollTop }), { passive: true });
   }
+  // Linha nova: o host manda só a tela nova ({ tipo: 'vivo', html }) e a caixa é trocada no lugar, sem recarregar a página
+  // (a rolagem da página e a da caixa ficam onde a pessoa deixou). Sem caixa na página, pede o redesenho completo.
+  addEventListener('message', (e) => {
+    if (e.data?.tipo !== 'vivo') return;
+    const novo = new DOMParser().parseFromString(e.data.html, 'text/html').getElementById('aoVivo'), box = document.getElementById('aoVivo');
+    if (!novo || !box) return vscode.postMessage({ acao: 'vivoRecarregar' });
+    const topo = box.scrollTop, altura = box.scrollHeight;
+    box.className = novo.className; box.innerHTML = novo.innerHTML;
+    if (topo > 0) box.scrollTop = topo + box.scrollHeight - altura; // linha nova entra em cima: quem lê mais abaixo não é empurrado
+    const cab = box.previousElementSibling, ncab = novo.previousElementSibling;
+    if (cab?.classList.contains('caixa-t') && ncab) cab.innerHTML = ncab.innerHTML;
+  });
 }`;
 
 const CSS = `
@@ -178,6 +190,7 @@ const acoes = (s) => ({
     if (texto?.trim() && !(await maestro.instruir(dir, texto))) vscode.window.showWarningMessage('Não consegui enviar: o Claude deste ticket foi iniciado em outra janela.');
     s.render();
   },
+  vivoRecarregar() { s.render(); },
   vivoExpandir({ id }) {
     const t = s.ticketAberto();
     if (!t || !['qa', 'spec', 'mergulho', 'esteira'].includes(id)) return;

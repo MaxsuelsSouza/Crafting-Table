@@ -50,6 +50,14 @@ const script = (chave = 'cenAbertos') => `{
       vscode.setState({ ...st(), [${JSON.stringify(chave)}]: [...l] });
     });
   }
+  // Expandir tudo / Recolher tudo (aba Massa): o botão fica no card de cima e age sobre os itens da lista logo abaixo.
+  for (const b of document.querySelectorAll('[data-expandir-tudo]')) {
+    const itens = () => [...document.querySelectorAll('.cens details[data-cen]')];
+    const rotulo = () => { b.textContent = itens().length && itens().every((d) => d.open) ? 'Recolher tudo' : 'Expandir tudo'; };
+    b.addEventListener('click', () => { const abrir = !itens().every((d) => d.open); itens().forEach((d) => { d.open = abrir; }); rotulo(); });
+    itens().forEach((d) => d.addEventListener('toggle', rotulo));
+    rotulo();
+  }
 }`;
 
 const CSS = `
