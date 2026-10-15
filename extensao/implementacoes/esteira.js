@@ -67,7 +67,7 @@ const situacao = (dir) => {
   const e = estado(dir), rodando = maestro.rodando(dir) || filhos.has(dir) || (e.fase === 'rodando' && vivoPid(e.host));
   return { e, rodando, fase: e.fase === 'rodando' && !rodando ? 'parado' : e.fase };
 };
-const controlesDe = (sit) => ({ pausar: 'esteiraPausar', dicaPausar: 'Pausar a esteira: o Claude para e a etapa recomeça ao retomar',
+const controlesDe = (sit) => ({ conversa: true, pausar: 'esteiraPausar', dicaPausar: 'Pausar a esteira: o Claude para e a etapa recomeça ao retomar',
   retomar: ['parado', 'erro'].includes(sit.fase) || (sit.fase === 'pausado' && sit.e.pausa?.motivo === 'manual') ? 'esteiraRetomar' : null,
   dicaRetomar: 'Retomar a esteira da etapa em que parou' });
 const existe = (dir, n) => fs.existsSync(path.join(dir, ETAPAS[n - 1].arq));
@@ -385,14 +385,11 @@ const corpo = (t, d0, dir) => {
       <div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-acao="esteiraAprovar" ${lido ? '' : 'disabled'} title="${lido ? 'Aprovar esta etapa: a esteira segue sozinha' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
         <button data-acao="esteiraAjuste">Pedir ajuste</button></div></div></div>` : '';
   const briefing = (() => { try { return fs.readFileSync(path.join(dir, dossie.BRIEFING), 'utf8').trim(); } catch { return ''; } })();
-  const conversa = btn('Conduzir em conversa', 'claude', ' title="Abre o chat do Claude neste ticket, com o dossiê e os artefatos já citados"');
   return `${CSS}${caixaEtapas.caixa({ titulo: 'Esteira de implementação', acao: nova ? btn('▶ Iniciar', 'esteiraIniciar', '', 'bt bt-principal') : '', etapas, atual: e.etapa })}
   ${dos ? `<div class="folha">${resumoDossie(dos)}</div>` : ''}
   ${nova ? `<div class="caixa-t">Quer explicar o que precisa ser feito?<span>opcional</span></div>
-  <div class="folha"><textarea class="es-obs" data-texto data-obs-impl placeholder="Explique com suas palavras (o que mudar, como saber que ficou certo). Vira a fonte verbal do dossiê.">${esc(briefing)}</textarea>
-    <div class="es-barra">${conversa}</div></div>`
-    : `<div class="folha"><div class="es-barra" style="margin-top:0">${conversa}</div></div>`}${aprovacao}${pausa}
-  ${aoVivo.caixa(dir, sit.rodando, 'esteira', controlesDe(sit)) || '<div class="folha"><div class="vazio-aba">Nada ao vivo ainda.</div></div>'}`;
+  <div class="folha"><textarea class="es-obs" data-texto data-obs-impl placeholder="Explique com suas palavras (o que mudar, como saber que ficou certo). Vira a fonte verbal do dossiê.">${esc(briefing)}</textarea></div>` : ''}${aprovacao}${pausa}
+  ${aoVivo.caixa(dir, sit.rodando, 'esteira', controlesDe(sit))}`;
 };
 
 // Aba Dossiê: o que a esteira sabe do ticket, recalculado ao abrir (não depende de a esteira ter rodado). d: dados da aba (d.jira).

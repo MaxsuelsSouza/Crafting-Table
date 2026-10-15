@@ -12,6 +12,8 @@ const { IC } = require('./icones');
 // chamada pelo maestro ao fim de cada execução e antes de iniciar a próxima).
 // Pausar/retomar (padrão do componente): controle(rodando, { pausar, retomar }) → ⏸ enquanto o Claude trabalha, ▶ quando parado (ou nada, se o módulo
 // não passar o comando). A caixa mostra o botão ao lado do estado; o cabeçalho do ticket usa o mesmo controle, então os dois nunca discordam.
+// Conduzir em conversa (padrão do componente, DESLIGADO por padrão): c.conversa = true mostra, ao lado do estado, o botão que abre o chat do Claude
+// neste ticket (data-acao="claude", a mesma ação do ícone do cabeçalho). Sem a flag o botão não existe; com ela aparece mesmo com o log vazio.
 // Para usar numa tela: CSS no <style>, caixa(dir, rodando, alvo) no corpo, script(chave) no <script> e redesenhar
 // quando um dos ARQUIVOS mudar na pasta. O botão Ver tudo/Recolher manda data-painel="vivoExpandir" (painel.js).
 const ARQ = '.ao-vivo.jsonl', EXPANDIDO = '.ao-vivo.expandido';
@@ -96,12 +98,16 @@ const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (!c ? '' :
   ? (c.pausar ? `<button class="ct-ico ct-pausa" ${b(c.pausar)} title="${esc(c.dicaPausar || 'Pausar: o Claude para e a etapa recomeça ao retomar')}">${IC.pausa}</button>` : '')
   : (c.retomar ? `<button class="ct-ico ct-play" ${b(c.retomar)} title="${esc(c.dicaRetomar || 'Retomar de onde parou')}">${IC.play}</button>` : ''));
 
+const conversa = (c) => (c?.conversa === true ? `<button class="vivo-exp vivo-conversa" data-acao="claude" title="${esc(c.dicaConversa || 'Abre o chat do Claude neste ticket, com o contexto e os artefatos já citados')}">Conduzir em conversa</button>` : '');
+
 const caixa = (dir, rodando, alvo, controles) => {
   const exp = expandido(dir), total = ler(dir).length, l = linhas(dir, exp ? Infinity : RECENTES);
-  if (!l.length) return '';
+  if (!l.length) return controles?.conversa === true // só com a flag: o botão existe antes de o Claude falar
+    ? `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${conversa(controles)}${controle(rodando, controles)}</span></div>
+  <div class="folha"><div class="vazio-aba">Nada ao vivo ainda.</div></div>` : '';
   const botao = alvo && (exp || total > l.length) ? `<button class="vivo-exp" data-painel="vivoExpandir" data-id="${esc(alvo)}"
     title="${exp ? `Voltar às últimas ${RECENTES} linhas` : 'Mostrar o log inteiro, do primeiro ao mais recente'}">${exp ? 'Recolher' : `Ver tudo (${total})`}</button>` : '';
-  return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}${controle(rodando, controles)}</span></div>
+  return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}${conversa(controles)}${controle(rodando, controles)}</span></div>
   <div class="folha ao-vivo ${exp ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
     const tipo = TIPO[x.tipo] || x.tipo;
     return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
