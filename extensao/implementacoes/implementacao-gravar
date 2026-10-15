@@ -8,7 +8,7 @@ const path = require('path');
 const dir = process.env.IMPLEMENTACAO_DIR;
 const [nome] = process.argv.slice(2);
 const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };
-const PERMITIDO = /^(entendimento\.md|varredura\.md|plano-mudanca\.md|implementacao\.log\.md|implementacao\.md|\.pausa\.json)$/;
+const PERMITIDO = /^(entendimento\.md|varredura\.md|plano-mudanca\.md|implementacao\.log\.md|implementacao\.md|\.pausa\.(json|md))$/;
 if (!dir) sair('implementacao-gravar: IMPLEMENTACAO_DIR não definida (rode pela esteira da Crafting Table)');
 if (!nome || !PERMITIDO.test(nome)) sair(`implementacao-gravar: nome não permitido: ${nome || '(vazio)'}`);
 try {

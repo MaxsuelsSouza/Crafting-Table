@@ -17,7 +17,7 @@ const { esc } = require('../infra/texto');
 const dossie = require('./dossie');
 const prompts = require('./prompts');
 
-const ESTADO = '.esteira.json', { PAUSA, RESPOSTAS, CONTEXTO, GRAVAR, ARQ } = prompts;
+const ESTADO = '.esteira.json', { PAUSA, PAUSA_MD, RESPOSTAS, CONTEXTO, GRAVAR, ARQ } = prompts;
 const ETAPAS = [
   { n: 1, nome: 'Dossiê', arq: dossie.JSON_, vaga: null },
   { n: 2, nome: 'Entendimento', arq: ARQ[2], vaga: null },
@@ -31,6 +31,23 @@ const TENTAR = 'Tentar de novo', SEGUIR = 'Continuar assim mesmo', CORRIGIR = 'T
 const MAX_CORRECOES = 2;
 const lerJson = (arq, vazio) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return vazio; } };
 const ehDocumento = (t) => require('../provedores/documento').ehDocumento(t);
+
+// Pausa pedida pelo Claude: .pausa.md em texto simples ("motivo:", "pergunta:", "opcoes:" + "- item"); o JSON antigo (.pausa.json) continua valendo.
+// Não é JSON porque o verificador de comandos do Claude Code bloqueia chaves coladas em aspas dentro do heredoc do implementacao-gravar.
+const parsePausa = (txt) => {
+  const linhas = String(txt).split('\n'), rot = (l, nome) => new RegExp(`^\\s*${nome}\\s*:\\s*(.*)$`, 'i').exec(l);
+  const iOp = linhas.findIndex((l) => /^\s*opcoes\s*:\s*$/i.test(l)), iPe = linhas.findIndex((l) => rot(l, 'pergunta'));
+  const corpo = linhas.slice(iPe >= 0 ? iPe : 0, iOp >= 0 ? iOp : undefined);
+  const pergunta = corpo.map((l, i) => (i === 0 && iPe >= 0 ? rot(l, 'pergunta')[1] : l)).filter((l) => !rot(l, 'motivo')).join('\n').trim();
+  const motivo = linhas.map((l) => rot(l, 'motivo')?.[1]).find(Boolean) || '';
+  const opcoes = iOp < 0 ? [] : linhas.slice(iOp + 1).map((l) => /^\s*(?:[-*]|\d+[.)])\s+(.*\S)\s*$/.exec(l)?.[1]).filter(Boolean);
+  return pergunta ? { motivo: motivo.trim(), pergunta, opcoes } : null;
+};
+const lerPausa = (dir) => {
+  try { const p = parsePausa(fs.readFileSync(path.join(dir, PAUSA_MD), 'utf8')); if (p) return p; } catch { /* sem .pausa.md */ }
+  return lerJson(path.join(dir, PAUSA), null);
+};
+const limparPausa = (dir) => { fs.rmSync(path.join(dir, PAUSA), { force: true }); fs.rmSync(path.join(dir, PAUSA_MD), { force: true }); };
 
 // Dependências com o mundo de fora (VS Code, git, terminal). Os testes trocam por _teste.deps.
 const git = (cwd, args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -198,7 +215,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   const arqEtapa = path.join(dir, ETAPAS[n - 1].arq), antes = ajuste && fs.existsSync(arqEtapa) ? fs.statSync(arqEtapa).mtimeMs : 0;
   if (!ajuste && n !== 5) fs.rmSync(arqEtapa, { force: true });
   if (n === 5) fs.rmSync(arqEtapa, { force: true }); // o log de cada tentativa é novo
-  fs.rmSync(path.join(dir, PAUSA), { force: true });
+  limparPausa(dir);
   mudar(dir, { etapa: n, fase: 'rodando', pausa: null, aprovacao: null });
   let falhas = '';
   if (n === 5 && e0.correcao) { const v = lerJson(path.join(dir, ARQ[6]), {}); falhas = (v.rodadas || []).filter((r) => r.codigo !== 0).map((r) => `- ${r.nome} (${r.comando}):\n${String(r.saida || '').slice(-1500)}`).join('\n'); }
@@ -219,10 +236,10 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
 
 // Etapa terminou: pausa pedida pelo Claude, artefato gravado (avança) ou erro.
 const aposEtapa = async (s, t, n, rodada, mtimeAntes = 0) => {
-  const dir = s.pastaAba(t.id), p = lerJson(path.join(dir, PAUSA), null);
+  const dir = s.pastaAba(t.id), p = lerPausa(dir);
   if (!controle.valida(dir, rodada)) return s.render(); // pausado por você: o Claude morto não é erro
   if (p?.pergunta) {
-    fs.rmSync(path.join(dir, PAUSA), { force: true });
+    limparPausa(dir);
     pausar(dir, n, { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [] });
   } else if (!existe(dir, n) || (mtimeAntes && fs.statSync(path.join(dir, ETAPAS[n - 1].arq)).mtimeMs <= mtimeAntes)) {
     mudar(dir, { fase: 'erro' });
@@ -463,5 +480,5 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { corpo, corpoDossie, acoes, botaoPlay, ETAPAS, _teste: { deps, estado, mudar, situacao, seguir, aposEtapa, responder, prepararBranches, prepararDossie, verificar, afetados, ramo, slug, verificacaoComandos,
+module.exports = { corpo, corpoDossie, acoes, botaoPlay, ETAPAS, _teste: { parsePausa, lerPausa, deps, estado, mudar, situacao, seguir, aposEtapa, responder, prepararBranches, prepararDossie, verificar, afetados, ramo, slug, verificacaoComandos,
   FERRAMENTAS, rodarEtapa, avancar, proxima, ESTADO, PAUSA, RESPOSTAS, TENTAR, SEGUIR, CORRIGIR, RESUMIR, REPETIR, VERIFICAR, MAX_CORRECOES, filhos, dentro } };

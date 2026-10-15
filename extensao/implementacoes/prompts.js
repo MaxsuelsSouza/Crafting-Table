@@ -3,7 +3,7 @@
 // 7 Resumo. As etapas 1 (Dossiê) e 6 (Verificação) são da extensão, sem IA. Cada prompt cita o arquivo que o Claude deve gravar.
 const path = require('path');
 
-const PAUSA = '.pausa.json', RESPOSTAS = '.respostas.md', CONTEXTO = '.contexto-ticket.md', GRAVAR = path.join(__dirname, 'implementacao-gravar');
+const PAUSA = '.pausa.json', PAUSA_MD = '.pausa.md', RESPOSTAS = '.respostas.md', CONTEXTO = '.contexto-ticket.md', GRAVAR = path.join(__dirname, 'implementacao-gravar');
 const ARQ = { 2: 'entendimento.md', 3: 'varredura.md', 4: 'plano-mudanca.md', 5: 'implementacao.log.md', 6: 'verificacao.json', 7: 'implementacao.md' };
 
 // Regras comuns: segundo plano sem aprovação, escrita só pelo implementacao-gravar, pausa por .pausa.json.
@@ -12,7 +12,9 @@ const REGRAS = (d, escreveCodigo) => `\n\nRegras: português; você roda em segu
   + `No Bash use um comando simples por vez (sem ; && | encadeados). Banco SOMENTE SELECT via mapa-db. Proibido: commit, push, merge, rebase, INSERT/UPDATE/DELETE/DDL, publicar na ferramenta de tickets. `
   + (escreveCodigo ? 'Edit/Write valem só nos repositórios listados, na branch de trabalho. ' : 'Nesta etapa NÃO altere código: só leia. ')
   + `Não invente nada que não esteja nas fontes: o que não consta fica como "não identificado". Grave o arquivo da etapa só quando ela estiver pronta. `
-  + `Para PAUSAR e perguntar ao usuário (sem AskUserQuestion) grave ${d}/${PAUSA} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio; a recomendada primeiro) e NÃO grave o arquivo da etapa; termine em seguida.`;
+  + `Para PAUSAR e perguntar ao usuário (sem AskUserQuestion) grave ${d}/${PAUSA_MD} com ${GRAVAR} ${PAUSA_MD} <<'FIM' e este texto simples (SEM JSON: o verificador de comandos bloqueia chaves coladas em aspas):\n`
+  + `motivo: <uma palavra ou frase curta>\npergunta: <a pergunta, em uma ou mais linhas>\nopcoes:\n- <opção recomendada primeiro>\n- <outra opção>\nFIM\n`
+  + `(a lista "opcoes:" pode ser omitida se a resposta é livre). Depois NÃO grave o arquivo da etapa e termine em seguida. Em nenhum arquivo escreva chave seguida de aspas sem espaço (use "{ " com espaço ou um bloco de código indentado).`;
 
 /**
  * @typedef {{ dir: string, t: any, d: any, repos: { caminho: string, camada: string, branchPrincipal?: string }[], banco: string,
@@ -54,4 +56,4 @@ function prompt(n, c) {
   return cab + TAREFA[n](c) + ajuste + REGRAS(c.dir, n === 5);
 }
 
-module.exports = { prompt, ARQ, PAUSA, RESPOSTAS, CONTEXTO, GRAVAR, REGRAS };
+module.exports = { prompt, ARQ, PAUSA, PAUSA_MD, RESPOSTAS, CONTEXTO, GRAVAR, REGRAS };

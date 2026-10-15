@@ -160,11 +160,12 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     const t = aprovarSpec(novoTicket(), specs), s = servicos(t, [criarRepo('b3', 'backend')]);
     DIR = s.pastaAba(t.id);
     let vez = 0;
-    roteiro = { 3: (dir) => { if (vez++ === 0) { fs.writeFileSync(path.join(dir, '.pausa.json'), JSON.stringify({ motivo: 'parecido', pergunta: 'Já existe CancelarNotaService. Reutilizar?', opcoes: ['Reutilizar', 'Criar separado'] })); return 'nada'; } } };
+    roteiro = { 3: (dir) => { if (vez++ === 0) { fs.writeFileSync(path.join(dir, '.pausa.md'), 'motivo: parecido\npergunta: Já existe CancelarNotaService.\nReutilizar?\nopcoes:\n- Reutilizar\n- Criar separado\n'); return 'nada'; } } };
     await T.seguir(s, t);
     await esperar(fase('pausado'));
     assert.deepStrictEqual([T.estado(DIR).etapa, T.estado(DIR).pausa.opcoes], [3, ['Reutilizar', 'Criar separado']]);
-    assert.ok(!fs.existsSync(path.join(DIR, '.pausa.json')));
+    assert.ok(!fs.existsSync(path.join(DIR, '.pausa.md')) && !fs.existsSync(path.join(DIR, '.pausa.json')));
+    assert.strictEqual(T.estado(DIR).pausa.pergunta, 'Já existe CancelarNotaService.\nReutilizar?');
     const html = esteira.corpo(t, {}, DIR);
     assert.ok(html.includes('Já existe CancelarNotaService') && html.includes('data-op="1"'));
     await esteira.acoes(s).esteiraResponder(/** @type {any} */ ({ op: '0' }));
@@ -288,6 +289,31 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
   const etapas = require('../agentes/etapas');
   assert.ok(etapas.VAGAS['impl.mapa'] && etapas.MODULOS.find((m) => m.id === 'impl').etapas.length === 7);
   assert.strictEqual(etapas.usos('impl.mapa').length, 2);
+
+  // ═══ 11. Pausa em texto simples (o JSON em heredoc é bloqueado pelo verificador de comandos do Claude Code) ═══
+  {
+    const ex = (txt) => T.parsePausa(txt);
+    assert.deepStrictEqual(ex('motivo: repo\npergunta: Qual repositório?\nopcoes:\n- A (recomendada)\n- B\n'), { motivo: 'repo', pergunta: 'Qual repositório?', opcoes: ['A (recomendada)', 'B'] });
+    assert.deepStrictEqual(ex('pergunta: Livre?\n'), { motivo: '', pergunta: 'Livre?', opcoes: [] });
+    assert.deepStrictEqual(ex('motivo: x\npergunta: Linha 1\nlinha 2\nopcoes:\n1. Um\n2) Dois\n* Três\n'), { motivo: 'x', pergunta: 'Linha 1\nlinha 2', opcoes: ['Um', 'Dois', 'Três'] });
+    assert.strictEqual(ex('só lixo sem pergunta') && ex('só lixo sem pergunta').pergunta, 'só lixo sem pergunta'); // sem rótulos: o texto todo é a pergunta
+    assert.strictEqual(ex(''), null);
+    // .pausa.json antigo continua valendo
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'pausa-'));
+    fs.writeFileSync(path.join(d, '.pausa.json'), JSON.stringify({ motivo: 'm', pergunta: 'p', opcoes: ['o'] }));
+    assert.deepStrictEqual(T.lerPausa(d), { motivo: 'm', pergunta: 'p', opcoes: ['o'] });
+    // o bin grava só os nomes do contrato, com o texto pela entrada padrão, e a pausa gravada por ele é lida
+    const { spawnSync } = require('child_process'), bin = path.join(__dirname, 'implementacao-gravar');
+    const rodar = (nome, entrada) => spawnSync(process.execPath, [bin, nome], { input: entrada, env: { ...process.env, IMPLEMENTACAO_DIR: d }, encoding: 'utf8' });
+    assert.strictEqual(rodar('.pausa.md', 'motivo: parecido\npergunta: Reutilizar?\nopcoes:\n- Sim\n- Não\n').status, 0);
+    assert.deepStrictEqual(T.lerPausa(d), { motivo: 'parecido', pergunta: 'Reutilizar?', opcoes: ['Sim', 'Não'] }); // .pausa.md vence o .json
+    assert.strictEqual(rodar('varredura.md', '# V\n').status, 0);
+    assert.notStrictEqual(rodar('outro.txt', 'x').status, 0);
+    assert.notStrictEqual(rodar('../fuga.md', 'x').status, 0);
+    // o prompt ensina o formato novo e avisa do verificador
+    const pr = prompts.prompt(3, { dir: d, t: { chave: 'X-1' }, d: {}, repos: [], banco: 'x' });
+    assert.ok(pr.includes('.pausa.md') && pr.includes('motivo: <') && pr.includes('SEM JSON') && !pr.includes('{"motivo"'));
+  }
 
   console.log('ok');
   setTimeout(() => process.exit(0), 100); // o log do Ao vivo escoa por timer
