@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
 const { anotar, anexarConversa } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
+const erros = new Map(); // pasta -> motivo do último erro do Claude (is_error do stream, código de saída ou falha ao subir); o QA lê para pausar a fila
 const ultimas = new Map(); // pasta -> opções da última execução (para o ⚡ retomar a sessão com uma instrução)
 const reiniciando = new Set(); // pastas cujo processo foi morto pelo ⚡: o fim dele não avança a etapa (a retomada herda o aoMudar)
 // Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
@@ -134,7 +135,7 @@ function linhas(e) {
 function rodar(dir, opcoes) {
   const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} } = opcoes;
   if (rodandoEm(dir)) return false;
-  ultimas.set(dir, opcoes);
+  ultimas.set(dir, opcoes); erros.delete(dir);
   const gravar = (l) => anotar(dir, l);
   let sid = null, anterior = null;
   try { anterior = fs.readFileSync(path.join(dir, SID), 'utf8').trim() || null; } catch {}
@@ -157,6 +158,7 @@ function rodar(dir, opcoes) {
       let e;
       try { e = JSON.parse(l); } catch { continue; }
       if (e.type === 'system' && e.subtype === 'init' && e.session_id) { sessaoId = e.session_id; fs.writeFileSync(path.join(dir, SID), e.session_id); }
+      if (e.type === 'result' && e.is_error) erros.set(dir, String(e.result || e.subtype || 'erro').slice(0, 300));
       linhas(e).forEach(gravar);
     }
   });
@@ -168,10 +170,11 @@ function rodar(dir, opcoes) {
     soltar();
     if (sessaoId) anexarConversa(dir, sessaoId, titulo); // terminou (ou foi pausada): vira conversa da aba, com o título da etapa
     if (reiniciando.has(dir)) return; // morto pelo ⚡: quem segue é a retomada
+    if (code && !falhou) erros.set(dir, erros.get(dir) || `código ${code}${erro.trim() ? `: ${curto(erro).slice(0, 200)}` : ''}`);
     if (code && !falhou) gravar({ tipo: 'erro', texto: `O Claude parou com erro (código ${code})`, detalhe: `código ${code}${erro.trim() ? `: ${curto(erro).slice(0, 200)}` : ''}` });
     aoMudar();
   });
-  p.on('error', (e) => { falhou = true; soltar(); gravar({ tipo: 'erro', texto: `Não consegui rodar o Claude: ${e.message}` }); aoMudar(); });
+  p.on('error', (e) => { falhou = true; erros.set(dir, e.message); soltar(); gravar({ tipo: 'erro', texto: `Não consegui rodar o Claude: ${e.message}` }); aoMudar(); });
   return true;
 }
 
@@ -208,4 +211,4 @@ async function instruir(dir, texto, tentativa = 1) {
   return true;
 }
 
-module.exports = { rodar, parar, instruir, podeInstruir, rodando: rodandoEm, vivo, claudeBin, _teste: { GIT_LEITURA, VIGIA_MS, DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };
+module.exports = { rodar, parar, erroDe: (dir) => erros.get(dir) || null, instruir, podeInstruir, rodando: rodandoEm, vivo, claudeBin, _teste: { GIT_LEITURA, VIGIA_MS, DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };

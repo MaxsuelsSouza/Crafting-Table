@@ -354,7 +354,7 @@ const QA_STATE = path.join(__dirname, 'qa-state');
 // A extensão mostra a pergunta no cartão e retoma com a resposta (.respostas.md).
 const REGRAS = 'Modo não interativo, sem ninguém para aprovar permissões. Não invente dado nem regra: o que não consta nas fontes você pergunta. '
   + `Para perguntar ao humano: ${QA_STATE} pausa --motivo "<curto>" --pergunta "<o que falta, em uma frase>" [--opcoes "A|B"] e TERMINE em seguida, sem concluir o cenário. `
-  + 'Falha de ambiente ou ferramenta (não de informação): conclua como bloqueado com a nota do que aconteceu. '
+  + 'Bloqueio de fluxo ou tela, falha de ambiente ou de ferramenta: NÃO conclua nem pule o cenário. Pause com o qa-state (pausa, descrevendo o bloqueio: tela, passo e o que viu) e TERMINE: o humano é avisado e instrui. Zero skip. '
   + 'Proibido: escrever no banco por conta própria (INSERT/UPDATE/DELETE/DDL, liberar usuário ou permissão; a alteração de massa só vai por qa-state massa proposta, que o humano aprova antes de rodar), publicar no provedor, commit, push, merge e rebase. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
 const RESPOSTAS = '.respostas.md', PAUSA = '.pausa.json';
@@ -381,7 +381,15 @@ const promptCenario = (chave, c, amb, itens, dir = '', exige = []) => `[segundo 
   + `Se o cenário alterar o registro, ${QA_STATE} massa <ID> consumida.\n`
   + `Evidências (OBRIGATÓRIAS para passou: a extensão recusa passou sem ao menos um arquivo anexado): a tela do emulador já está sendo gravada; anexe também prints e arquivos de resultado (log Robot, junit, relatório): ${QA_STATE} evidencia ${c.id} <arquivo...>.\n`
   + (exige.length ? `Este cenário exercita gravação em tabela (${exige.join(', ')}) da implementação: anexe a consulta SQL (arquivo .sql com o nome da tabela) e o resultado dela (arquivo resultado-<tabela>.txt ou .csv), consultando só por SELECT.\n` : '')
-  + `OBRIGATÓRIO ao final: ${QA_STATE} cenario ${c.id} concluir --status passou|falhou|bloqueado|sem-massa --nota "<1 frase: o que foi visto>". ${REGRAS}`;
+  + `OBRIGATÓRIO ao final: ${QA_STATE} cenario ${c.id} concluir --status passou|falhou|sem-massa --nota "<1 frase: o que foi visto>". ${REGRAS}`;
+// Pré-condição (antes da suíte, fora da lista de cenários): confirma que a aplicação subiu, que a rede responde e que o login abre sessão autenticada.
+const promptPreCondicao = (chave, amb, dir = '') => `[segundo plano · Crafting Table · QA de ${chave}] PRÉ-CONDIÇÃO da suíte (Health Check e Autenticação), antes de qualquer cenário. `
+  + `Use o método da skill testes-funcionais (${SKILL()}/SKILL.md).${vagas.aviso('qa.execucao')}${citarRespostas(dir)}\n`
+  + `Ambiente: backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · API http://localhost:5111 · Metro 8081 · emulador ligado.\n`
+  + '1) Health check: a aplicação (API e app) subiu e responde. 2) Rede: uma requisição real à API volta com resposta válida. '
+  + '3) Autenticação: faça o login com o usuário de teste da skill (credenciais do ambiente, nunca as mostre) e CONFIRME a sessão autenticada (tela pós-login ou token/usuário na resposta). '
+  + 'Não execute cenário nenhum e não altere dado. '
+  + `OBRIGATÓRIO ao final: ${QA_STATE} precondicao --status ok|falhou --nota "<1 frase: o que foi confirmado, ou o motivo exato da falha>". ${REGRAS}`;
 const FERRAMENTAS_EXEC = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill'];
 // Massa: só leitura do código, as consultas pelo mapa-db (SELECT, recusa produção, log e máscara) e o qa-state para gravar. Sem Bash livre.
 const FERRAMENTAS_MASSA = (mapa) => ['Read', 'Glob', 'Grep', `Bash(${QA_STATE}:*)`, ...(mapa ? [`Bash(${mapa}/bin/mapa-db:*)`] : []),
@@ -428,10 +436,10 @@ function gravarAnalise(dir, texto) {
   gravarJson(path.join(dir, AMBIENTE), { ...a, analise: { texto: String(texto).trim(), em: new Date().toISOString() } });
 }
 
-// Claude em segundo plano até terminar (maestro.rodar). d.extras/d.aoMudar vêm do painel. Resolve { estourou } (limite de tempo: d.timeoutMin).
+// Claude em segundo plano até terminar (maestro.rodar). d.extras/d.aoMudar vêm do painel. Resolve { estourou, erro } (limite de tempo: d.timeoutMin; erro: is_error/saída com código do Claude, ex.: limite de tokens ou API fora).
 const claude = (dir, opts, d) => new Promise((ok) => {
   let estourou = false, timer = null;
-  const fim = () => { clearTimeout(timer); ok({ estourou }); };
+  const fim = () => { clearTimeout(timer); ok({ estourou, erro: maestro.erroDe?.(dir) || null }); };
   const foi = maestro.rodar(dir, { ferramentas: FERRAMENTAS_EXEC, proibidas: PROIBIDAS, ...opts, env: { QA_DIR: dir, ...(opts.env || {}) }, extras: [...(d.extras || []), ...(opts.extras || [])],
     aoMudar: () => { d.aoMudar?.(); if (!maestro.rodando(dir)) fim(); } });
   if (!foi) return fim();
@@ -451,6 +459,73 @@ function absorverPausa(dir) {
   mudar(dir, { pausa: p, execucao: 'pausado' });
   aoVivo.anotar(dir, { tipo: 'aviso', texto: `O Claude perguntou: ${p.pergunta}` });
   return p;
+}
+// ── Pré-condição (Health Check e Autenticação): roda antes da suíte e fora da lista de cenários. Só com tudo ok a suíte começa.
+// A etapa marca `etapa: 'precondicao'` no estado enquanto roda; o qa-state precondicao só vale nela. Estado: { status: verificando | ok | falhou, motivo, em }.
+const emPreCondicao = (dir) => estado(dir).etapa === 'precondicao';
+function registrarPreCondicao(dir, status, nota) {
+  if (!['ok', 'falhou'].includes(status)) throw new Error('status inválido: use ok ou falhou');
+  if (!String(nota || '').trim()) throw new Error('a nota é obrigatória (o que foi confirmado ou o motivo da falha)');
+  mudar(dir, { precondicao: { status, motivo: String(nota).trim(), em: new Date().toISOString() } });
+}
+// Aplicação no ar e rede respondendo, sem Claude: portas da API e do Metro abertas e a API devolvendo qualquer resposta HTTP. { ok, motivo }.
+async function healthCheck() {
+  for (const p of Object.values(PAPEIS)) if (!(await portaAberta(p.porta))) return { ok: false, motivo: `${p.nome} não responde na porta ${p.porta}` };
+  const http = require('http');
+  const resp = await new Promise((ok) => {
+    const rq = http.get({ host: '127.0.0.1', port: PAPEIS.api.porta, path: '/', timeout: 5000 }, (r) => { r.resume(); ok(true); });
+    rq.on('timeout', () => { rq.destroy(); ok(false); }); rq.on('error', () => ok(false));
+  });
+  return resp ? { ok: true } : { ok: false, motivo: `A API (porta ${PAPEIS.api.porta}) aceita conexão mas não responde requisição` };
+}
+// true = pode começar a suíte. false = já tratado aqui (falha com o motivo, ou pausa por erro de API do Claude): quem chamou só retorna.
+async function preCondicao(dir, d, amb) {
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  vivo('etapa', 'QA · Pré-condição (Health Check e Autenticação)');
+  mudar(dir, { precondicao: { status: 'verificando', em: new Date().toISOString() }, etapa: 'precondicao' });
+  const falhar = (motivo) => {
+    mudar(dir, { precondicao: { status: 'falhou', motivo, em: new Date().toISOString() }, etapa: null });
+    vivo('erro', `Pré-condição falhou: ${motivo}. A suíte não foi iniciada`);
+    d.alertar?.(`Pré-condição do QA falhou: ${motivo}. Nenhum cenário foi iniciado.`); d.avisar?.(`pré-condição falhou: ${motivo}`);
+    return false;
+  };
+  try {
+    vivo('acao', 'Health check: API, Metro e resposta de rede');
+    const h = await (d.healthCheck || healthCheck)(amb);
+    if (!h.ok) return falhar(h.motivo || 'health check sem resposta');
+    vivo('acao', 'Login com o usuário de teste e confirmação da sessão autenticada');
+    const { estourou, erro } = await claude(dir, { prompt: promptPreCondicao(d.chave, amb, dir), titulo: 'QA · Pré-condição · login', cwd: amb.backend || d.backend }, d);
+    if (pausado(dir)) { mudar(dir, { precondicao: null }); return false; }
+    const p = estado(dir).precondicao;
+    if (p?.status === 'ok') { vivo('fim', `Pré-condição ok: ${p.motivo}`); return true; }
+    if (erro && !p?.motivo) return pausarPorApi(dir, d, erro, null);
+    return falhar(p?.status === 'falhou' ? p.motivo : estourou ? `O login passou de ${d.timeoutMin} min sem confirmar a sessão` : 'O Claude terminou sem confirmar a sessão autenticada');
+  } finally { if (emPreCondicao(dir)) mudar(dir, { etapa: null }); }
+}
+// ── Zero skip: nenhum cenário é pulado. Bloqueio de fluxo/tela pausa NO cenário (volta à fila, mesma posição), abre o diálogo e espera o humano.
+// Falta de tokens ou erro da API do Claude pausa a fila no ponto exato; o estado fica nos arquivos e a retomada segue do mesmo cenário.
+function bloquearFluxo(dir, d, c, motivo) {
+  const x = cenarios(dir).cenarios.find((y) => y.id === c.id), nota = `Bloqueio: ${motivo}`;
+  if (x?.status === 'executando') concluirCenario(dir, c.id, 'descartado', nota);
+  else if (x?.status === 'bloqueado') reabrirBloqueado(dir, c.id, nota); // o Claude concluiu como bloqueado: volta para a fila, não fica como resultado
+  const pergunta = `${c.id} ficou bloqueado: ${motivo}. A fila parou neste cenário (nenhum é pulado). Resolva o bloqueio e responda para retomar.`;
+  mudar(dir, { pausa: { motivo: 'bloqueio', pergunta, opcoes: ['Tentar de novo'], etapa: 'Execução', detalhe: motivo }, execucao: 'pausado' });
+  aoVivo.anotar(dir, { tipo: 'aviso', texto: `${c.id} bloqueado (${motivo}): QA pausado neste cenário, aguardando instrução` });
+  d.alertar?.(`${c.id} · ${c.titulo}\n\nBloqueio: ${motivo}\n\nO QA pausou neste cenário e aguarda a sua instrução.`);
+}
+function reabrirBloqueado(dir, id, nota) {
+  const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id), ex = c?.execucoes?.at(-1);
+  if (!c || c.status !== 'bloqueado') return;
+  c.status = 'pendente'; if (ex) Object.assign(ex, { status: 'descartado', nota: `${ex.nota ? `${ex.nota} · ` : ''}${nota}` });
+  gravarJson(path.join(dir, CENARIOS), r);
+}
+// Erro de API/tokens do Claude: o cenário em andamento volta à fila e a fila pausa; `interrupcao` no estado diz onde parou. Sempre devolve false.
+function pausarPorApi(dir, d, erro, c) {
+  if (c && cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') concluirCenario(dir, c.id, 'descartado', `Erro da API do Claude: ${erro}`);
+  mudar(dir, { execucao: 'pausado', etapa: null, interrupcao: { motivo: 'api-claude', cenario: c?.id || null, detalhe: String(erro).slice(0, 300), em: new Date().toISOString() } });
+  aoVivo.anotar(dir, { tipo: 'erro', texto: `Claude indisponível (${String(erro).slice(0, 120)}): fila pausada${c ? ` em ${c.id}` : ''}; retome quando voltar` });
+  d.alertar?.(`O Claude parou por erro de API ou falta de tokens:\n${String(erro).slice(0, 200)}\n\nA fila foi pausada${c ? ` em ${c.id}` : ''} e nenhum cenário seguinte foi pulado. Retome quando voltar.`);
+  return false;
 }
 // ── Massa por SQL: a IA PROPÕE o lote (qa-state massa proposta); você lê e aprova no cartão; a extensão executa numa transação só e registra a massa.
 // Nada de escrita sai da IA: só o lote aprovado, pela conexão configurada, nunca produção. O SQL de desfazer fica no item da massa.
@@ -517,14 +592,14 @@ async function levantarMassa(dir, d, amb, cens) {
     ferramentas: FERRAMENTAS_MASSA(mapa), env: { ...(mapa ? require('../infra/banco').env(b, dir) : {}), ...(liberado ? { QA_BANCO_ESCRITA: '1' } : {}) } };
   try { return await claude(dir, opts, d); } finally { mudar(dir, { etapa: null }); }
 }
-// ▶ do QA: tudo em ordem. d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, gravarTela(dir), pararTela(), avisar(texto) }.
+// ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
 const ativos = new Set();
 const pausado = (dir) => estado(dir).execucao === 'pausado';
 async function executar(dir, d) {
   if (rodando(dir)) return;
   if (estado(dir).pausa) return aoVivo.anotar(dir, { tipo: 'aviso', texto: `Responda a pergunta antes de retomar: ${estado(dir).pausa.pergunta}` });
   reconciliar(dir);
-  ativos.add(dir); mudar(dir, { execucao: 'rodando', host: process.pid }); d.aoMudar?.();
+  ativos.add(dir); mudar(dir, { execucao: 'rodando', host: process.pid, interrupcao: null }); d.aoMudar?.();
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   try {
     if (estado(dir).fase !== 'plano_aprovado') return vivo('aviso', 'Aprove o planejamento antes de dar início');
@@ -539,46 +614,52 @@ async function executar(dir, d) {
     const amb = await preparar(dir, d.chave, d.backend, d);
     if (!amb && !pausado(dir)) { vivo('acao', 'Pedindo ao Claude uma análise do erro (aparece ao clicar em Ambiente parou, no rodapé)'); await analisarAmbiente(dir, d); }
     if (!amb || pausado(dir)) return;
+    if (!(await preCondicao(dir, d, amb))) return; // falhou (motivo reportado) ou pausou: a suíte não começa
     const agora = new Date(), falta = semMassa(dir, pend.map((c) => c.id), agora, d.horaRefresh);
     vivo('etapa', 'QA · Massa de dados');
     if (falta.length) {
       vivo('acao', `Sem massa válida para ${falta.join(', ')} (refresh do banco às ${d.horaRefresh || '06:00'}): levantando`);
-      await levantarMassa(dir, d, amb, pend.filter((c) => falta.includes(c.id)));
+      const rm = await levantarMassa(dir, d, amb, pend.filter((c) => falta.includes(c.id)));
       if (absorverPausa(dir) || pausado(dir)) return;
+      if (rm.erro && semMassa(dir, pend.map((c) => c.id), new Date(), d.horaRefresh).length) return pausarPorApi(dir, d, rm.erro, null);
     } else vivo('fim', 'Massa de hoje ainda válida: reaproveitada');
-    const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª fica bloqueado)
+    const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª pausa pedindo instrução, nunca pula)
     while (!pausado(dir) && (pend = fila(cenarios(dir))).length) {
       const c = pend[0], ex = iniciarCenario(dir, c.id, amb.sha);
       const itens = massa(dir).itens.filter((i) => (i.cenarios || []).includes(c.id) && massaValida(i, new Date(), d.horaRefresh));
       d.gravarTela?.(path.join(dir, ex.evidencias));
       const exige = exigenciasDe(dir, c);
-      const { estourou } = await claude(dir, { prompt: promptCenario(d.chave, c, amb, itens, dir, exige), titulo: `QA · ${c.id} · ${c.titulo}`, cwd: amb.backend || d.backend }, d);
+      const { estourou, erro } = await claude(dir, { prompt: promptCenario(d.chave, c, amb, itens, dir, exige), titulo: `QA · ${c.id} · ${c.titulo}`, cwd: amb.backend || d.backend }, d);
       d.pararTela?.();
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && absorverPausa(dir)) {
         concluirCenario(dir, c.id, 'descartado', 'O Claude perguntou antes de concluir: volta à fila depois da resposta');
         return;
       }
-      if (estourou && cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') {
-        concluirCenario(dir, c.id, 'bloqueado', `Passou de ${d.timeoutMin} min sem concluir`); vivo('aviso', `${c.id}: estourou o tempo (bloqueado)`); continue;
-      }
+      const statusAgora = () => cenarios(dir).cenarios.find((x) => x.id === c.id)?.status;
+      if (pausado(dir)) { if (statusAgora() === 'executando') { concluirCenario(dir, c.id, 'descartado', 'QA pausado no meio do cenário'); vivo('aviso', `${c.id} descartado (pausa no meio): volta da fila na retomada`); } return; }
+      // Erro de API/tokens do Claude sem resultado registrado: pausa a fila neste cenário, sem pular os seguintes.
+      if (erro && statusAgora() === 'executando') return pausarPorApi(dir, d, erro, c);
+      // Zero skip: tempo estourado ou bloqueio relatado pelo Claude não pulam o cenário; pausa nele e espera o humano.
+      if (estourou && statusAgora() === 'executando') return bloquearFluxo(dir, d, c, `passou de ${d.timeoutMin} min sem concluir`);
+      if (statusAgora() === 'bloqueado') return bloquearFluxo(dir, d, c, cenarios(dir).cenarios.find((x) => x.id === c.id).execucoes.at(-1)?.nota || 'bloqueio informado pelo Claude');
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && itens.length && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) {
         concluirCenario(dir, c.id, 'sem-massa', 'Massa invalidada e o Claude não registrou o resultado'); // invalidou tudo e parou: é falta de massa, não falha
       }
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.execucoes?.at(-1)?.status === 'sem-massa') {
         if (pausado(dir)) continue;
-        if (retentou.has(c.id)) { bloquearSemMassa(dir, c.id, 'Sem massa válida mesmo depois de refazer a Etapa 4'); vivo('aviso', `${c.id}: de novo sem massa válida (bloqueado; levante a massa na aba Massa e use ↻ Refazer)`); continue; }
+        if (retentou.has(c.id)) { return bloquearFluxo(dir, d, c, 'sem massa válida mesmo depois de refazer a Etapa 4 (levante a massa na aba Massa e responda para tentar de novo)'); }
         retentou.add(c.id);
         vivo('aviso', `Etapa 5 → voltando para a Etapa 4: massa de ${c.id} inválida`); vivo('etapa', 'QA · Massa de dados');
-        await levantarMassa(dir, d, amb, [c]);
+        const r4 = await levantarMassa(dir, d, amb, [c]);
         if (absorverPausa(dir)) return;
-        if (!pausado(dir) && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) { bloquearSemMassa(dir, c.id, 'A Etapa 4 não achou massa válida para o cenário'); vivo('aviso', `${c.id}: a Etapa 4 não achou massa válida (bloqueado)`); }
+        if (r4.erro && !pausado(dir) && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) return pausarPorApi(dir, d, r4.erro, c);
+        if (!pausado(dir) && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) return bloquearFluxo(dir, d, c, 'a Etapa 4 não achou massa válida para o cenário');
         else vivo('fim', `Etapa 4 refeita para ${c.id}: retomando a Etapa 5`);
         vivo('etapa', 'QA · Execução');
         continue;
       }
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') {
-        if (pausado(dir)) { concluirCenario(dir, c.id, 'descartado', 'QA pausado no meio do cenário'); vivo('aviso', `${c.id} descartado (pausa no meio): volta da fila na retomada`); }
-        else { concluirCenario(dir, c.id, 'bloqueado', 'O Claude terminou sem registrar o resultado'); vivo('aviso', `${c.id}: o Claude não registrou o resultado (bloqueado)`); }
+        return bloquearFluxo(dir, d, c, 'o Claude terminou sem registrar o resultado');
       }
     }
     if (!pausado(dir)) {
@@ -856,11 +937,12 @@ function etapasQa(dir, e, rodando) {
   const aprovado = e.fase === 'plano_aprovado', amb = statusAmbiente(dir), ms = massa(dir).itens;
   const plano = e.fase === 'erro' ? ['erro'] : aprovado ? ['concluida'] : e.fase === 'plano_encontrado' ? ['aguardando'] : ['criando', 'alterando'].includes(e.fase) && rodando ? ['rodando'] : ['pendente'];
   const ambEt = !aprovado ? ['pendente'] : amb?.tipo === 'preparando' ? ['rodando'] : amb?.tipo === 'erro' ? ['erro'] : amb ? ['concluida'] : ['pendente'];
+  const pc = estado(dir).precondicao, preEt = !aprovado || !r.length ? ['pendente'] : pc?.status === 'ok' ? ['concluida'] : pc?.status === 'falhou' ? ['erro'] : pc?.status === 'verificando' && rodando ? ['rodando'] : ['pendente'];
   const massaEt = !aprovado || !r.length ? ['pendente'] : ms.some((i) => i.estado === 'valida') ? ['concluida'] : ambEt[0] === 'concluida' && rodando ? ['rodando'] : ['pendente'];
   const exec = !aprovado || !r.length ? ['pendente']
     : feitos === r.length ? ['concluida', `${feitos}/${r.length}`] : e.execucao === 'pausado' ? ['pausada', `${feitos}/${r.length}`] : rodando ? ['rodando', `${feitos}/${r.length}`] : ['pendente', feitos ? `${feitos}/${r.length}` : ''];
   const pub = podePublicar(cenarios(dir).cenarios) ? ['aguardando', 'pronta para publicar'] : ['pendente'];
-  const est = [plano, aprovado ? ['concluida', `${r.length} cenário(s)`] : ['pendente'], ambEt, massaEt, exec, pub];
+  const est = [plano, aprovado ? ['concluida', `${r.length} cenário(s)`] : ['pendente'], ambEt, preEt, massaEt, exec, pub];
   const etapas = nomes.map((nome, i) => ({ n: i + 1, nome, estado: est[i][0], ...(est[i][1] !== undefined ? { rotulo: est[i][1] } : {}) }));
   return caixaEtapas.caixa({ titulo: 'Etapas do QA', etapas, atual: (etapas.find((x) => x.estado !== 'concluida') || {}).n });
 }
@@ -868,7 +950,7 @@ function execucaoHtml(dir, e, rodando) {
   const r = cenarios(dir).cenarios.filter((c) => !c.arquivado), pend = fila({ cenarios: r }).length, feitos = r.filter((c) => RESULTADOS.includes(c.status)).length;
   const dono = donoAmbiente(), outro = dono && dono.chave !== e.chave ? ` O ambiente está com o ${esc(dono.chave)}.` : '';
   if (rodando) return `<div class="qa-card"><b><span class="vivo-bola"></span>QA em andamento</b><p>⏸ no topo pausa: o cenário em andamento é descartado e volta na retomada.</p></div>`;
-  if (pend) return `<div class="qa-card"><b>${pend} cenário(s) na fila${e.execucao === 'pausado' ? ' · pausado' : ''}</b><p>Sobe API, Metro, emulador e app, confere a massa e executa um cenário por vez.${outro}</p>
+  if (pend) return `${e.interrupcao ? `<div class="qa-card bloq"><b>Fila pausada: Claude indisponível${e.interrupcao.cenario ? ` em ${esc(e.interrupcao.cenario)}` : ''}</b><p>${esc(e.interrupcao.detalhe)}</p><p>Nenhum cenário foi pulado: retome e a execução segue do mesmo ponto.</p></div>` : ''}${e.precondicao?.status === 'falhou' ? `<div class="qa-card bloq"><b>Pré-condição falhou: a suíte não foi iniciada</b><p>${esc(e.precondicao.motivo)}</p></div>` : ''}<div class="qa-card"><b>${pend} cenário(s) na fila${e.execucao === 'pausado' ? ' · pausado' : ''}</b><p>Sobe API, Metro, emulador e app, confere a massa e executa um cenário por vez.${outro}</p>
     <button data-painel="qaIniciar">${e.execucao === 'pausado' ? 'Retomar' : feitos ? 'Continuar' : 'Dar início'}</button>
     ${feitos ? BOTAO_PUBLICAR(podePublicar(r), ehLocal(dir)) : ''}</div>`;
   return `<div class="qa-card"><b>Execução concluída</b><p>Nenhum cenário na fila. ↻ Refazer num cenário o coloca de volta.</p>
@@ -902,5 +984,5 @@ function mapaHtml(dir, r, amb, uri) {
 }
 
 module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
-  ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
-  _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };
+  ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, emPreCondicao, registrarPreCondicao, promptPreCondicao, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
+  _teste: { healthCheck, papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

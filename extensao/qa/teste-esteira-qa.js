@@ -124,10 +124,13 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     fs.writeFileSync(path.join(back, 'testes-funcionais', 'preparar-ambiente.py'), 'import json\nprint(json.dumps({"ref":"v1","backend":"","mobile":"","parou_em":None,"pendentes":0,"itens":[]}))\n');
     const apiPlano = async () => [{ key: 'K-9', resumo: '[QA] Planejamento dos Casos de Testes', updated: 'x', md: '#### CT01 – A\n\n#### CT02 – B' }];
     const novo = async () => { const d = novoDir(); await qa.verificarPlano(d, 'K-1', apiPlano); qa.aprovar(d); return d; };
-    const deps = { chave: 'K-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true };
-    const veio = []; let acaoNoClaude = async () => {}, rodandoFlag = false, fim = () => {};
-    maestro.rodar = (dir, o) => { veio.push({ titulo: o.titulo, prompt: o.prompt, ferramentas: o.ferramentas, env: o.env, proibidas: o.proibidas }); rodandoFlag = true; fim = o.aoMudar;
-      Promise.resolve(acaoNoClaude(dir, o)).then((encerra = true) => { if (encerra) { rodandoFlag = false; o.aoMudar(); } }); return true; };
+    const alertas = [];
+    const deps = { chave: 'K-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true, healthCheck: async () => ({ ok: true }), alertar: (t) => alertas.push(t) };
+    // A pré-condição (login) não entra em `veio` (só cenários e massa); `pre` guarda cada chamada e `loginFalha` o que o Claude simulado registra.
+    const veio = [], pre = []; let acaoNoClaude = async () => {}, rodandoFlag = false, fim = () => {}, loginFalha = '', erroClaude = null;
+    maestro.erroDe = () => erroClaude;
+    maestro.rodar = (dir, o) => { const ePre = /Pré-condição/.test(o.titulo); if (ePre) pre.push(o); else veio.push({ titulo: o.titulo, prompt: o.prompt, ferramentas: o.ferramentas, env: o.env, proibidas: o.proibidas }); rodandoFlag = true; fim = o.aoMudar;
+      Promise.resolve(ePre ? (loginFalha === 'nada' ? undefined : cli(dir, 'precondicao', '--status', loginFalha ? 'falhou' : 'ok', '--nota', loginFalha || 'sessão autenticada')) : acaoNoClaude(dir, o)).then((encerra = true) => { if (encerra) { rodandoFlag = false; o.aoMudar(); } }); return true; };
     maestro.rodando = () => rodandoFlag; maestro.parar = () => { rodandoFlag = false; fim(); };
     const evidenciaEPassa = (dir, id) => { const ev = path.join(os.tmpdir(), `e-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); cli(dir, 'evidencia', id, ev); cli(dir, 'cenario', id, 'concluir', '--status', 'passou'); };
 
@@ -149,9 +152,11 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     qa.massaAdd(dt, { papel: 'p', cenarios: ['CT01', 'CT02'], dados: {} });
     acaoNoClaude = async () => false; // nunca encerra sozinho
     await qa.executar(dt, { ...deps, timeoutMin: 0.0005 });
-    assert.strictEqual(qa.cenarios(dt).cenarios[0].status, 'bloqueado');
-    assert.ok(/Passou de/.test(qa.cenarios(dt).cenarios[0].execucoes.at(-1).nota));
-    assert.strictEqual(qa.estado(dt).execucao, 'parado');
+    // zero skip: o cenário NÃO é bloqueado/pulado; volta à fila e a execução pausa nele pedindo instrução (o CT02 nem começa)
+    assert.deepStrictEqual(qa.cenarios(dt).cenarios.map((c) => c.status), ['pendente', 'pendente']);
+    assert.ok(/passou de/.test(qa.cenarios(dt).cenarios[0].execucoes.at(-1).nota));
+    assert.deepStrictEqual([qa.estado(dt).execucao, qa.estado(dt).pausa.motivo, qa.cenarios(dt).cenarios[1].execucoes], ['pausado', 'bloqueio', []]);
+    assert.ok(alertas.at(-1).includes('CT01'));
 
     // Pausa que pergunta na massa: o Claude pergunta, a extensão para, a resposta vai para .respostas.md e a retomada a cita.
     const dp = await novo(); veio.length = 0;
@@ -183,6 +188,68 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     // permissões da execução: cada claude -p leva as proibidas e a massa não tem Bash livre
     assert.ok(veio.every((v) => v.proibidas.includes('Bash(git push:*)')));
     assert.ok(veio.some((v) => /massa/.test(v.titulo)) && veio.filter((v) => /massa/.test(v.titulo)).every((v) => !v.ferramentas.includes('Bash')));
+    // ── Pré-condição (health check + login): antes da suíte, fora da lista de cenários; só com tudo ok os cenários começam.
+    {
+      const antes = alertas.length;
+      const dh = await novo(); veio.length = 0; pre.length = 0;
+      await qa.executar(dh, { ...deps, healthCheck: async () => ({ ok: false, motivo: 'API não responde na porta 5111' }) });
+      assert.deepStrictEqual([veio.length, pre.length, qa.estado(dh).precondicao.status, qa.estado(dh).precondicao.motivo, qa.estado(dh).execucao, qa.cenarios(dh).cenarios.map((c) => c.status)],
+        [0, 0, 'falhou', 'API não responde na porta 5111', 'parado', ['pendente', 'pendente']]);
+      assert.ok(alertas.length === antes + 1 && alertas.at(-1).includes('5111') && qa.html(dh).includes('Pré-condição falhou'));
+      assert.strictEqual(qa.cenarios(dh).cenarios.some((c) => c.execucoes?.length), false);
+      // login recusado: o Claude registra falhou, nada de massa nem cenário
+      loginFalha = 'login recusado (401)'; veio.length = 0; pre.length = 0;
+      await qa.executar(dh, deps);
+      assert.deepStrictEqual([veio.length, pre.length, qa.estado(dh).precondicao.motivo], [0, 1, 'login recusado (401)']);
+      assert.ok(pre[0].prompt.includes('Health check') && pre[0].prompt.includes('precondicao --status ok|falhou') && pre[0].prompt.includes('sessão autenticada'));
+      // Claude termina sem registrar nada: também reprova
+      loginFalha = 'nada'; veio.length = 0;
+      await qa.executar(dh, deps);
+      assert.ok(veio.length === 0 && qa.estado(dh).precondicao.status === 'falhou' && /sem confirmar/.test(qa.estado(dh).precondicao.motivo));
+      // tudo ok: a suíte roda depois (pré-condição primeiro, não é cenário da lista)
+      loginFalha = ''; veio.length = 0; pre.length = 0;
+      acaoNoClaude = async (dir, o) => { if (/massa/.test(o.titulo)) return cli(dir, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'); evidenciaEPassa(dir, o.titulo.match(/CT\d+/)[0]); };
+      await qa.executar(dh, deps);
+      assert.deepStrictEqual([pre.length, qa.estado(dh).precondicao.status, qa.cenarios(dh).cenarios.map((c) => c.status), qa.cenarios(dh).cenarios.length], [1, 'ok', ['passou', 'passou'], 2]);
+      assert.throws(() => cli(dh, 'precondicao', '--status', 'ok', '--nota', 'x'), /só vale na Pré-condição/); // fora da etapa o qa-state recusa
+
+      // ── Zero skip: bloqueio relatado pelo Claude (concluir como bloqueado) pausa no cenário; o seguinte nunca roda.
+      const db = await novo(); veio.length = 0;
+      acaoNoClaude = async (dir, o) => {
+        if (/massa/.test(o.titulo)) return cli(dir, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}');
+        cli(dir, 'cenario', 'CT01', 'concluir', '--status', 'bloqueado', '--nota', 'tela de confirmação não abre');
+      };
+      await qa.executar(db, deps);
+      assert.deepStrictEqual(veio.map((v) => v.titulo), ['QA · Levantando massa de dados', 'QA · CT01 · A']);
+      assert.deepStrictEqual([qa.cenarios(db).cenarios.map((c) => c.status), qa.estado(db).execucao, qa.estado(db).pausa.motivo, qa.estado(db).pausa.detalhe], [['pendente', 'pendente'], 'pausado', 'bloqueio', 'tela de confirmação não abre']);
+      assert.ok(alertas.at(-1).includes('tela de confirmação não abre') && qa.html(db).includes('tela de confirmação não abre'));
+      await qa.executar(db, deps); // com o bloqueio aberto não retoma
+      assert.strictEqual(veio.length, 2);
+      // instrução humana libera: retoma no CT01 (mesmo ponto) e segue para o CT02
+      qa.responder(db, 'Tentar de novo'); veio.length = 0;
+      acaoNoClaude = async (dir, o) => evidenciaEPassa(dir, o.titulo.match(/CT\d+/)[0]);
+      await qa.executar(db, deps);
+      assert.deepStrictEqual([veio.map((v) => v.titulo), qa.cenarios(db).cenarios.map((c) => c.status)], [['QA · CT01 · A', 'QA · CT02 · B'], ['passou', 'passou']]);
+
+      // ── Erro de API/tokens do Claude: pausa a fila no ponto exato, sem pergunta nem skip; a retomada segue do mesmo cenário.
+      const da = await novo(); veio.length = 0;
+      acaoNoClaude = async (dir, o) => {
+        if (/massa/.test(o.titulo)) return cli(dir, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}');
+        if (/CT01/.test(o.titulo)) { erroClaude = 'Usage limit reached'; return; }
+        evidenciaEPassa(dir, 'CT02');
+      };
+      await qa.executar(da, deps);
+      erroClaude = null;
+      assert.deepStrictEqual(veio.map((v) => v.titulo), ['QA · Levantando massa de dados', 'QA · CT01 · A']);
+      assert.deepStrictEqual([qa.cenarios(da).cenarios.map((c) => c.status), qa.estado(da).execucao, qa.estado(da).interrupcao.motivo, qa.estado(da).interrupcao.cenario, !!qa.estado(da).pausa],
+        [['pendente', 'pendente'], 'pausado', 'api-claude', 'CT01', false]);
+      assert.ok(/Usage limit/.test(alertas.at(-1)) && qa.html(da).includes('Claude indisponível em CT01'));
+      veio.length = 0; acaoNoClaude = async (dir, o) => evidenciaEPassa(dir, o.titulo.match(/CT\d+/)[0]);
+      await qa.executar(da, deps); // volta o Claude: retoma do CT01 sem repetir a massa
+      assert.deepStrictEqual([veio.map((v) => v.titulo), qa.cenarios(da).cenarios.map((c) => c.status), qa.estado(da).interrupcao], [['QA · CT01 · A', 'QA · CT02 · B'], ['passou', 'passou'], null]);
+      acaoNoClaude = async () => {};
+      maestro.erroDe = () => erroClaude; // (mantido para os próximos blocos)
+    }
     // Banco: liberado só fora de produção, com mapa-db e log; produção/vazio = pendência no prompt, sem env
     const orig = vagas.raiz; vagas.raiz = () => '/mapa';
     const caso = async (banco) => {
@@ -270,11 +337,11 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     const apiPlano = async () => [{ key: 'K-9', resumo: '[QA] Planejamento dos Casos de Testes', updated: 'x', md: '#### CT01 – A\n\n#### CT02 – B' }];
     const novo = async () => { const d = novoDir(); await qa.verificarPlano(d, 'K-1', apiPlano); qa.aprovar(d); return d; };
     const sqlRodado = []; let respostaSql = { ok: true, saida: '2 rows updated.' };
-    const deps = { chave: 'K-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true,
+    const deps = { chave: 'K-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true, healthCheck: async () => ({ ok: true }),
       banco: { conexao: 'qas-wms', ambiente: 'copia-producao', sqlcl: '', sensiveis: [] }, executarSql: async (b, stmts) => { sqlRodado.push({ b, stmts }); return respostaSql; } };
     const veio = []; let fazer = async () => {};
-    maestro.rodando = () => false; maestro.parar = () => {};
-    maestro.rodar = (dir, o) => { veio.push(o); Promise.resolve(fazer(dir, o)).then(() => o.aoMudar()); return true; };
+    maestro.rodando = () => false; maestro.parar = () => {}; maestro.erroDe = () => null;
+    maestro.rodar = (dir, o) => { if (/Pré-condição/.test(o.titulo)) { cliEnv(dir, {}, 'precondicao', '--status', 'ok', '--nota', 'sessão autenticada'); setTimeout(() => o.aoMudar(), 0); return true; } veio.push(o); Promise.resolve(fazer(dir, o)).then(() => o.aoMudar()); return true; };
     const cliEnv = (dir, env, ...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
     const propor = (dir, o) => cliEnv(dir, o.env, 'massa', 'proposta', '--papel', 'pedido faturado', '--cenarios', 'CT01,CT02', '--dados', '{"NUMPEDIDO":77,"STATUS":"F"}',
       '--sql', "UPDATE pedido SET status = 'F' WHERE numpedido = 77; INSERT INTO log_nota (id, nota) VALUES (1, 77)", '--desfazer', "UPDATE pedido SET status = 'A' WHERE numpedido = 77; DELETE FROM log_nota WHERE id = 1 AND nota = 77", '--porque', 'nenhum pedido faturado na cópia');

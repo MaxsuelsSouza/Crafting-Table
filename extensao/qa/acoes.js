@@ -102,6 +102,7 @@ const depsQa = (s, t) => {
     emulador: { avd: cfg().get('avdPadrao'), aparelhos: () => emu.dispositivos(), ligar: () => emu.ligar(cfg().get('avdPadrao')) },
     adb: path.join(emu.SDK, 'platform-tools', 'adb'),
     confirmar: async (texto) => (await vscode.window.showWarningMessage(texto, { modal: true }, 'Usar')) === 'Usar',
+    alertar: (texto) => { vscode.window.showErrorMessage(texto, { modal: true }); },
     gravarTela: (destino) => { if (emu.emuladorRodando()) require('../modulos/evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
     pararTela: () => require('../modulos/evidencias').pararGravacao?.(),
     avisar: (texto) => { try { fs.appendFileSync(path.join(dir, NOTIF), JSON.stringify({ em: new Date().toISOString(), tipo: 'fim', texto: `${t.chave} · ${texto}` }) + '\n'); } catch {} }

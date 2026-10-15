@@ -177,6 +177,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     prompts.push(o.titulo);
     setTimeout(() => {
       const env = { ...process.env, QA_DIR: o.env.QA_DIR };
+      if (/Pré-condição/.test(o.titulo)) execFileSync(path.join(__dirname, 'qa-state'), ['precondicao', '--status', 'ok', '--nota', 'login confirmado'], { env });
       if (/massa/.test(o.titulo)) execFileSync(path.join(__dirname, 'qa-state'), ['massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'], { env });
       const id = o.titulo.match(/CT\d+/)?.[0];
       if (id && id === pausarNo) qa.pausar(dir);
@@ -190,7 +191,8 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     return true;
   };
   maestro.rodando = () => false; maestro.parar = () => {};
-  const deps = { chave: 'WMS-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true };
+  const deps = { chave: 'WMS-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true, healthCheck: async () => ({ ok: true }), alertar: (t) => alertas.push(t) };
+  const alertas = [];
   await qa.executar(d5, deps); // sem plano aprovado não executa
   assert.deepStrictEqual(prompts, []);
   await qa.verificarPlano(d5, 'WMS-1', apiPlano); qa.aprovar(d5);
@@ -198,12 +200,12 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   const st5 = () => qa.cenarios(d5).cenarios.map((c) => c.status);
   assert.deepStrictEqual(st5(), ['passou', 'pendente']);
   assert.strictEqual(qa.cenarios(d5).cenarios[1].execucoes[0].status, 'descartado');
-  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · CT02 · B']);
+  assert.deepStrictEqual(prompts, ['QA · Pré-condição · login', 'QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · CT02 · B']);
   assert.strictEqual(qa.ambiente(d5).ref, 'v9');
   // Retomada no mesmo dia: massa reaproveitada (sem nova busca), segue do CT02.
   prompts.length = 0; pausarNo = null;
   await qa.executar(d5, deps);
-  assert.deepStrictEqual([st5(), prompts], [['passou', 'passou'], ['QA · CT02 · B']]);
+  assert.deepStrictEqual([st5(), prompts], [['passou', 'passou'], ['QA · Pré-condição · login', 'QA · CT02 · B']]); // a pré-condição roda de novo a cada retomada
   assert.ok(qa.html(d5).includes('Execução concluída') && qa.html(d5).includes('Publicar no Jira'));
   // Execução invalida a massa: volta à Etapa 4 só para esse cenário, retoma e, na 2ª vez, bloqueia (sem laço infinito).
   const d10 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
@@ -215,7 +217,8 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
     prompts.push(o.titulo);
     setTimeout(() => {
       const id = o.titulo.match(/CT\d+/)?.[0];
-      if (/massa/.test(o.titulo)) { qs({}, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'); massaAdds++; }
+      if (/Pré-condição/.test(o.titulo)) qs({}, 'precondicao', '--status', 'ok', '--nota', 'login confirmado');
+      else if (/massa/.test(o.titulo)) { qs({}, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'); massaAdds++; }
       else if (id === 'CT01' && invalidar-- > 0) { for (const i of qa.massa(dir).itens) if (qa.massaValida(i, new Date(), '06:00')) qs({}, 'massa', i.id, 'invalida'); qs({}, 'cenario', id, 'concluir', '--status', 'sem-massa', '--nota', 'registro mudou'); }
       else { const ev = path.join(os.tmpdir(), `ev-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); qs({}, 'evidencia', id, ev); qs({}, 'cenario', id, 'concluir', '--status', 'passou'); }
       o.aoMudar();
@@ -225,10 +228,16 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   const notas = [], anotarOrig = require('../componentes/ao-vivo').anotar; // as linhas do Ao vivo saem em fila; aqui capturo na hora
   require('../componentes/ao-vivo').anotar = (dir, l) => { notas.push(l.texto); anotarOrig(dir, l); };
   await qa.executar(d10, deps);
-  // massa → CT01 (invalida) → volta à massa só do CT01 → CT01 (invalida de novo) → bloqueado (sem 3ª massa) → CT02 passa.
-  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · CT02 · B']);
-  assert.deepStrictEqual(qa.cenarios(d10).cenarios.map((c) => c.status), ['bloqueado', 'passou']);
-  assert.ok(qa.cenarios(d10).cenarios[0].execucoes.at(-1).nota.includes('Etapa 4') && massaAdds === 2);
+  // massa → CT01 (invalida) → volta à massa só do CT01 → CT01 (invalida de novo) → PAUSA no CT01 pedindo instrução (zero skip: o CT02 não roda).
+  assert.deepStrictEqual(prompts, ['QA · Pré-condição · login', 'QA · Levantando massa de dados', 'QA · CT01 · A', 'QA · Levantando massa de dados', 'QA · CT01 · A']);
+  assert.deepStrictEqual(qa.cenarios(d10).cenarios.map((c) => c.status), ['pendente', 'pendente']);
+  assert.ok(qa.estado(d10).pausa.detalhe.includes('Etapa 4') && massaAdds === 2);
+  assert.deepStrictEqual([qa.estado(d10).execucao, qa.estado(d10).pausa.motivo, qa.estado(d10).pausa.opcoes], ['pausado', 'bloqueio', ['Tentar de novo']]);
+  assert.ok(alertas.length === 1 && alertas[0].includes('CT01') && qa.html(d10).includes('data-painel="qaResponder"'));
+  // instrução humana: responde e retoma do CT01 (massa válida de novo), depois o CT02
+  assert.ok(qa.responder(d10, 'Tentar de novo')); prompts.length = 0; invalidar = 0;
+  await qa.executar(d10, deps);
+  assert.deepStrictEqual([qa.cenarios(d10).cenarios.map((c) => c.status), prompts.filter((t) => /CT\d/.test(t))], [['passou', 'passou'], ['QA · CT01 · A', 'QA · CT02 · B']]);
   assert.ok(notas.some((t) => t.includes('Etapa 5 → voltando para a Etapa 4: massa de CT01 inválida')));
   assert.strictEqual(qa.estado(d10).etapa, null);
   // Uma só invalidação: a 2ª passada na Etapa 4 resolve e o CT01 passa.
@@ -242,7 +251,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   const m11 = qa.massa(d11); m11.itens.forEach((i) => { i.medidaEm = new Date(2000, 0, 1).toISOString(); }); fs.writeFileSync(path.join(d11, qa.MASSA), JSON.stringify(m11));
   qa.refazer(d11, 'CT02'); prompts.length = 0;
   await qa.executar(d11, deps);
-  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT02 · B']);
+  assert.deepStrictEqual(prompts, ['QA · Pré-condição · login', 'QA · Levantando massa de dados', 'QA · CT02 · B']);
 
   // Cenário expandido: pasta/copiar e as evidências de TODAS as execuções (CT02 tem a descartada e a que passou).
   const ct2 = qa.cenarios(d5).cenarios[1];
