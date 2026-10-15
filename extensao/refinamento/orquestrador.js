@@ -26,7 +26,18 @@ let s;
 
 // ── Maestro: o Claude em segundo plano (maestro.js), uma execução por etapa. A extensão decide quando rodar:
 // Dar início/▶, aprovação (execução nova: contexto limpo), respostas e ajuste (também execução nova, com a memória do passo em disco). Pausado não roda.
-const binsSdd = () => [sddState(), path.join(os.homedir(), '.claude', 'plugins-locais', 'crafting', 'plugins', 'sdd', 'bin', 'sdd-state')].filter(Boolean);
+// Marketplace de pasta (directory): o Claude resolve ${CLAUDE_PLUGIN_ROOT} para a pasta de origem, não para a cópia em plugins/cache
+// (installPath). A allowlist precisa dos dois caminhos, senão o sdd-state é negado no claude -p e a spec nunca nasce.
+const origensSdd = () => {
+  const id = require('../agentes/etapas').escolha('refinamento.sdd');
+  if (id.tipo !== 'plugin') return [];
+  const [nome, mercado] = String(id.id).split('@');
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'plugins', 'known_marketplaces.json'), 'utf8'))[mercado];
+    return m?.source?.source === 'directory' ? [path.join(m.source.path, 'plugins', nome, 'bin', 'sdd-state')].filter((b) => fs.existsSync(b)) : [];
+  } catch { return []; }
+};
+const binsSdd = () => [...new Set([sddState(), ...origensSdd(), path.join(os.homedir(), '.claude', 'plugins-locais', 'crafting', 'plugins', 'sdd', 'bin', 'sdd-state')].filter(Boolean))];
 // Plugins de cada etapa (Configurações > Plugins, agentes/etapas.js). Padrão: "mapa" (mapeamento do código do passo 3) e "foco" (texto curto
 // em tudo que o Claude escreve: regras + medição dos .md) moram na extensão e só o maestro carrega (--plugin-dir).
 const MAPA = () => vagas.raiz('refinamento.mapa') || '';
@@ -105,11 +116,21 @@ const depoisDaEtapa = (t) => {
     alterando.clear();
     if (mudou) s.gravar(t.chave, TAREFAS, l);
   }
+  semSpec(t);
   avisarImpactos(t);
   pacote.gravar(t.chave); // refinamento.md: tudo o que a execução deixou (passos, decisões, respostas, mudanças)
   filaTriagem(t);
   filaImpactos(t);
   filaTarefas(t);
+};
+// A execução que cria a spec terminou e a spec não existe (ex.: o sdd-state foi negado): o "Preparando…" nunca sairia sozinho. Volta ao
+// ▶ (estado desligado) com o motivo na linha do Ao vivo; o próximo ▶ tenta de novo.
+const semSpec = (t) => {
+  const chave = t.chave || t.id;
+  if (estadoDe(chave) !== 'aguardando_inicio' || estadoSpec(ticketDe(chave) || t)) return;
+  mudarEstado(chave, 'desligado');
+  anotar(pasta(chave), { tipo: 'erro', texto: 'A spec não foi criada: a execução terminou sem o sdd-state init. Clique em ▶ para tentar de novo' });
+  notificar(chave, 'impacto', 'A spec não foi criada: confira o Ao vivo da aba Spec e tente de novo');
 };
 // Execução terminou: o que ficou sem registro vira erro; a análise que mexeu na spec é desfeita; decisão pendente e
 // aplicação concluída avisam quem iniciou o refinamento (esta máquina).
