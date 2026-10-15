@@ -22,7 +22,7 @@ const blocosAbertos = new Set();
 // Contrato: `acoes(servicos)` devolve { nome: handler }; o painel espalha no seu `acoes`. Sem `this`.
 const acoes = (s) => ({
   cmdsAlternar() { aberta = !aberta; },
-  cmdBlocoAlternar({ id }) { blocosAbertos.has(id) ? blocosAbertos.delete(id) : blocosAbertos.add(id); },
+  cmdBlocoAlternar({ id }) { blocosAbertos.has(id) ? blocosAbertos.delete(id) : blocosAbertos.add(id); s.render(); },
   cmdBloco({ id }) { require('../modulos/comandos').api?.acao({ acao: 'rodarBloco', id }); },
   cmdAlternar({ id }) { require('../modulos/comandos').api?.alternar({ id }); },
   emuAlternar({ id }) { require('../modulos/emulador').api?.alternar({ id }); },
