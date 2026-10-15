@@ -6,10 +6,10 @@ const jira = require('../infra/ticket').jira;
 const { ESTILO_NOTAS } = require('../modulos/comandos').ui;
 const sessao = require('../infra/sessao');
 const { duvidasDe, tarefasDe } = require('../refinamento/locais');
-const { IC } = require('../componentes/icones');
 const aoVivo = require('../componentes/ao-vivo');
 const rodape = require('../componentes/rodape');
 const menuAbas = require('../componentes/menu-abas');
+const botoesTicket = require('../componentes/botoes-ticket');
 const abaDocs = require('../componentes/aba-docs');
 const pill = require('../componentes/pill');
 const listaTickets = require('../componentes/lista-tickets');
@@ -70,8 +70,8 @@ const CSS_MOLDURA = `<style>
 </style>`;
 
 // ⚡ Instrução direta ao Claude do Ao vivo (maestro.instruir): ativo só quando há uma execução desta janela neste ticket.
-const raio = (t, b) => { const maestro = require('./maestro'), pode = [pastaDe(t.id), pastaAba(t.id)].some((d) => d && maestro.podeInstruir(d));
-  return `<button class="ct-ico" ${pode ? b('raio') : 'disabled'} title="${pode ? 'Instrução direta: manda uma mensagem ao Claude que está no Ao vivo' : 'Nenhum Claude em segundo plano neste ticket para receber instrução'}">${IC.raio}</button>`; };
+// O botão em si é do componente botoes-ticket.js.
+const podeInstruir = (t) => { const maestro = require('./maestro'); return [pastaDe(t.id), pastaAba(t.id)].some((d) => d && maestro.podeInstruir(d)); };
 
 function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
@@ -81,20 +81,19 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     : id === 'tarefas' ? [tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length, 'tarefa(s) esperando sua decisão'] : [0, '']);
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
+  const play = refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
+  const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
+    tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">
-      <button class="ct-ico" ${dentro ? 'data-acao="voltar"' : `data-secao="${PRINCIPAL}" data-cmd="voltar"`} title="Voltar para a lista de tickets">${IC.voltar}</button>
+      ${botoesTicket.botoes(ctx, 'esquerda')}
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span>${t.titulo ? ` · ${esc(t.titulo)}` : ''}`}</span>
-      ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : ''}
-      <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
-      ${semTicket ? '' : raio(t, b)}
-      ${semTicket || jira.ehDocumento(t) ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no ${esc(jira.nome)}">${IC.jira}</button>`}
-      ${semTicket ? '' : `<button class="ct-ico perigo" ${b('excluirTicket')} title="Excluir o ticket (ou o ticket e os registros dele neste módulo)">${IC.lixo}</button>`}
+      ${botoesTicket.botoes(ctx, 'direita')}
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
       : `${jira.ehDocumento(t) ? pill.pill(t.status || 'Documento', { cor: 'novo', grande: true, dica: 'Status do ticket (editável na aba Ticket)' }) : pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
       ${(() => { const tt = require('../infra/tipo-ticket'), c = tt.categoriaDe(t); return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], grande: true, bola: false, dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : ''; })()}
       ${refino && emRefino(t) ? pillRefino(t) : ''}
-      <button class="ct-ico" ${b('atualizar')} title="${jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${esc(jira.nome)}`}">${IC.atualizar}</button>`}</div>
+      ${botoesTicket.botoes(ctx, 'pills')}`}</div>
     ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
     ${menuAbas.menu(itens, { aba, secao, principal: PRINCIPAL, dentro })}
   </header>`;

@@ -161,3 +161,7 @@ Testes: `node extensao/testes/teste-teams.js`, `node extensao/configuracao/teste
 - O **@** cola pela área de transferência (a extensão do Claude não tem API para escrever na conversa atual). A área de transferência volta ao conteúdo anterior logo depois.
 - A colagem depende de tempo (0,3 s para abrir e 0,3 s para focar a caixa); numa máquina lenta o texto pode não entrar.
 - Vídeos abrem no player do sistema: o VS Code não reproduz mp4.
+
+## Criar um módulo novo
+
+Copie `modelo-modulo/` e siga o `LEIA-ME.md` (6 pontos de registro). O padrão de lista, cabeçalho, menu e rodapé está em `../CLAUDE.md`.
