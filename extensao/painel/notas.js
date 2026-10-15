@@ -78,6 +78,8 @@ const CSS_NOTAS = `<style>
   #ed h2 { font-size: 1.25em; margin: .8em 0 .35em; padding-bottom: .2em; border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
   #ed h2:first-child { margin-top: 0; }
   #ed ol, #ed ul { margin: .3em 0; padding-left: 1.5em; text-align: left; }
+  #ed b, #ed strong { font-weight: 700; }
+  #ed s, #ed strike { text-decoration: line-through; }
   #ed li { margin: .15em 0; }
   #ed li::marker { color: color-mix(in srgb, currentColor 55%, transparent); }
   #busca { display: flex; align-items: center; gap: 4px; margin: 0 12px 8px; padding: 3px 4px 3px 8px; border-radius: var(--r-md);
@@ -136,6 +138,8 @@ const corpoNotas = (vazio = 'Escreva suas notas desta conversa…') => `<div cla
     <button class="icon-btn fb-btn" data-cmd="titulo" title="Título (Ctrl+Alt+1)"><b>T</b></button>
     <button class="icon-btn fb-btn" data-cmd="insertOrderedList" title="Lista numerada 1. 2. 3. (Ctrl+Shift+7)">1.</button>
     <button class="icon-btn fb-btn" data-cmd="insertUnorderedList" title="Lista com marcador • (Ctrl+Shift+8)">•</button>
+    <button class="icon-btn fb-btn" data-cmd="bold" title="Negrito (Ctrl+B)"><b>N</b></button>
+    <button class="icon-btn fb-btn" data-cmd="strikeThrough" title="Riscado (Ctrl+Shift+X)"><s>R</s></button>
     <span class="fb-sep"></span>
     <button class="icon-btn fb-btn" id="mencionar" title="Mencionar a nota no Claude (com o trecho selecionado, se houver)">@</button>
     <span id="estado" class="ok" title="Nota salva">Salva</span>
@@ -178,11 +182,30 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   document.addEventListener('visibilitychange', () => { if (document.hidden) emDia(); });
   document.addEventListener('click', emDia, true); // clicar em outra aba/botão grava antes de a página trocar
 
-  // Título alterna: se o bloco já é título, volta a texto normal.
+  // Bloco (h2 ou li) em que está o início da seleção, dentro do editor. Título e lista são independentes:
+  // cada linha é de um tipo só, e trocar o tipo de uma linha nunca mexe nas vizinhas.
+  const blocoAtual = (tag) => {
+    const s = getSelection();
+    for (let n = s.rangeCount ? s.getRangeAt(0).startContainer : null; n && n !== ed; n = n.parentNode) if (n.nodeName === tag) return n;
+    return null;
+  };
+  const emLista = () => blocoAtual('LI');
+  // Título alterna: se o bloco já é título, volta a texto normal. Numa linha de lista, sai da lista antes (a linha vira
+  // título sem partir a lista). Lista numa linha de título: o título vira texto normal e então entra na lista.
+  // Negrito e riscado seguem o trecho selecionado (execCommand só atua no range da seleção).
   const aplicar = (cmd) => {
     ed.focus();
-    if (cmd === 'titulo') document.execCommand('formatBlock', false, document.queryCommandValue('formatBlock') === 'h2' ? 'div' : 'h2');
-    else document.execCommand(cmd);
+    if (cmd === 'titulo') {
+      if (blocoAtual('H2')) document.execCommand('formatBlock', false, 'div');
+      else {
+        const li = emLista();
+        if (li) document.execCommand(li.parentNode.nodeName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList');
+        document.execCommand('formatBlock', false, 'h2');
+      }
+    } else if (cmd === 'insertOrderedList' || cmd === 'insertUnorderedList') {
+      if (blocoAtual('H2')) document.execCommand('formatBlock', false, 'div');
+      document.execCommand(cmd);
+    } else document.execCommand(cmd);
     salvar();
     marcar();
   };
@@ -193,6 +216,33 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   });
 
 
+
+  // Isolamento de foco: a extensão adia o redesenho da página enquanto o editor está em foco (ver painel.js) e,
+  // se a página recarregar mesmo assim, foco e seleção voltam do estado do webview (deslocamentos de texto).
+  const offset = (no, off) => { const r = document.createRange(); r.selectNodeContents(ed); r.setEnd(no, off); return r.toString().length; };
+  const guardar = () => {
+    const s = getSelection();
+    if (!s.rangeCount || !ed.contains(s.anchorNode)) return;
+    try { vscode.setState({ ...(vscode.getState() || {}), [SID]: { a: offset(s.anchorNode, s.anchorOffset), f: offset(s.focusNode, s.focusOffset) } }); } catch {}
+  };
+  const noEm = (pos) => {
+    const w = document.createTreeWalker(ed, NodeFilter.SHOW_TEXT);
+    for (let n, acc = 0; (n = w.nextNode()); acc += n.data.length) if (pos <= acc + n.data.length) return [n, pos - acc];
+    return [ed, ed.childNodes.length];
+  };
+  const restaurar = () => {
+    const est = (vscode.getState() || {})[SID];
+    if (!est || document.activeElement === ed) return;
+    try { ed.focus(); const [an, ao] = noEm(est.a), [fn, fo] = noEm(est.f); getSelection().setBaseAndExtent(an, ao, fn, fo); } catch {}
+  };
+  let emFoco = false;
+  const avisarFoco = (v) => { if (emFoco !== v) { emFoco = v; vscode.postMessage({ tipo: 'foco', sid: SID, ativo: v }); } };
+  ed.addEventListener('focus', () => avisarFoco(true));
+  ed.addEventListener('blur', () => avisarFoco(false));
+  document.addEventListener('selectionchange', guardar);
+  if ((vscode.getState() || {})[SID]?.foco) restaurar();
+  ed.addEventListener('focus', () => { try { const e = vscode.getState() || {}; vscode.setState({ ...e, [SID]: { ...(e[SID] || {}), foco: true } }); } catch {} });
+  ed.addEventListener('blur', () => { try { const e = vscode.getState() || {}; vscode.setState({ ...e, [SID]: { ...(e[SID] || {}), foco: false } }); } catch {} });
 
   // Busca: destaca todas as ocorrências (CSS Custom Highlight, sem mexer no texto salvo).
   const busca = document.getElementById('busca');
@@ -246,7 +296,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
 
   const botoes = [...document.querySelectorAll('.barra button[data-cmd]')];
   const marcar = () => botoes.forEach((b) => b.classList.toggle('is-on',
-    b.dataset.cmd === 'titulo' ? document.queryCommandValue('formatBlock') === 'h2' : document.queryCommandState(b.dataset.cmd)));
+    b.dataset.cmd === 'titulo' ? !!blocoAtual('H2') : document.queryCommandState(b.dataset.cmd)));
 
   botoes.forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); aplicar(b.dataset.cmd); }));
   ed.addEventListener('input', salvar);
@@ -254,7 +304,7 @@ const scriptNotas = (conteudo, sid, estilo = ESTILO_PADRAO) => `(() => {
   addEventListener('crafting:sair', emDia);
   document.addEventListener('selectionchange', marcar);
   ed.addEventListener('keydown', (e) => {
-    const k = e.ctrlKey && (e.shiftKey ? { '&': 'insertOrderedList', '7': 'insertOrderedList', '*': 'insertUnorderedList', '8': 'insertUnorderedList' }[e.key]
+    const k = e.ctrlKey && (e.shiftKey ? { '&': 'insertOrderedList', '7': 'insertOrderedList', '*': 'insertUnorderedList', '8': 'insertUnorderedList', x: 'strikeThrough', X: 'strikeThrough' }[e.key]
       : e.altKey && e.key === '1' && 'titulo');
     if (k) { e.preventDefault(); aplicar(k); }
   });
