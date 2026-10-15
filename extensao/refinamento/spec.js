@@ -160,7 +160,7 @@ function cartaoAgora(t, est, rodandoAgora, tarefas = [], impactos = []) {
       ? [`Revise as tarefas · ${n} sem decisão`, `Aprove (vira subtarefa no ${esc(nomeProvedor(t))}), reprove ou peça alteração em cada card. Depois aprove o passo 4 aqui.`, '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>']
       : ['Revise o plano de testes', `O card [QA] está na aba Tarefas: aprove (cria a subtarefa [QA] no ${esc(nomeProvedor(t))} com o plano), reprove ou peça alteração. Depois aprove o passo 6 aqui.`, '<button class="primario" data-acao="aba" data-id="tarefas">Abrir Tarefas</button>'];
   } else if (passo?.status === 'aguardando_revisao') [titulo, texto] = [`Revise o passo ${passo.n} · ${passo.titulo}`, `Abra <b>${esc(path.basename(arquivoPasso(t, passo.n)))}</b> no cartão do passo, leia e clique em <b>Aprovar</b> ou <b>Pedir ajuste</b>.`];
-  else if (!passo) [titulo, texto] = ['Spec concluída', 'Todos os passos aprovados.'];
+  else if (!passo) [titulo, texto, acoes] = ['Spec concluída', 'Todos os passos aprovados. O <b>refinamento.md</b> reúne spec, plano, tarefas, testes, decisões e respostas para quem for implementar.', '<button class="primario" data-acao="refinamentoAbrir">Abrir refinamento.md</button>'];
   else if (modo === 'aguardando_inicio') [titulo, texto, acoes] = ['Spec criada', `Próximo: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="darInicio">Dar início</button>'];
   else if (modo === 'pausado') [titulo, texto, acoes] = ['Refinamento pausado', `Para em: passo ${passo.n} · ${passo.titulo}.`, '<button class="primario" data-acao="retomar">▶ Retomar</button>'];
   else if (duvidasAbertas) [titulo, texto, acoes] = [`Passo ${passo.n} · ${passo.titulo} bloqueado`, `Há ${duvidasAbertas} dúvida(s) em aberto. A spec só avança quando todas forem respondidas.`, '<button class="primario" data-acao="aba" data-id="duvidas">Ver dúvidas</button>'];
@@ -246,6 +246,13 @@ const acoes = (s) => ({
       `${path.basename(arquivoPasso(r, n))}: aprovado ↔ atual`);
     s.render();
   },
+  // refinamento.md: gera de novo (a pasta da spec pode ter mudado) e abre a prévia.
+  refinamentoAbrir() {
+    const r = s.ticketAberto();
+    const arq = r && require('./pacote').gravar(r.id);
+    if (!arq) return vscode.window.showWarningMessage('A spec ainda não existe: não há refinamento para reunir.');
+    vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arq));
+  },
   specMencionar({ id }) { mencionar(`@${arquivoPasso(s.ticketAberto(), Number(id))}`); },
   specContinuar() { return acoes(s).refinar(); },
   async specAprovar({ id }) {
@@ -266,6 +273,7 @@ const acoes = (s) => ({
       if (err) return vscode.window.showErrorMessage(String(errOut || err.message).replace(/^sdd-state: /, ''));
       // Aprovado: próximo passo numa execução nova (contexto limpo), se o refinamento estiver rodando.
       vscode.window.setStatusBarMessage(`$(check) ${out.trim()}`, 6000);
+      require('./pacote').gravar(r.id); // refinamento.md atualizado com o passo aprovado (por quem e quando)
       orq.seguir(ticketDe(r.id));
     });
   },
@@ -294,6 +302,7 @@ const acoes = (s) => ({
       await orq.sdd(['pergunta', 'responder', id, '--ref', pasta(r.id), '--resposta', resposta]);
     }
     orq.respondidas.push(`${id} → ${resposta}`);
+    require('./pacote').gravar(r.id);
     const est = estadoSpec(r);
     if (!est.perguntas.some((x) => x.status === 'aberta') && orq.estadoDe(r.id) === 'rodando' && !maestro.rodando(pasta(r.id))) {
       orq.aplicarRespostas(r, est.proximoPasso, orq.respondidas.slice());
