@@ -51,6 +51,7 @@ function fecharDuvida(s, t, id, resposta) {
   x.resposta = { ...resposta, em: new Date().toISOString() }; x.sugestao = null;
   s.gravar(t.chave, DUVIDAS, l);
   s.orq.respondidas.push(`${id} (dúvida) → ${resposta.texto}`);
+  require('./pacote').gravar(t.chave); // a resposta entra no refinamento.md mesmo sem execução depois
   s.render();
   if (!l.some((y) => !y.resposta)) s.orq.seguir(ticketDe(t.chave));
 }

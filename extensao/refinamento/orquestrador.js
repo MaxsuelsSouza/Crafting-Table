@@ -14,6 +14,7 @@ const vagas = require('../agentes/etapas');
 const { notificar } = require('../painel/notificacoes');
 const { anotar } = require('../componentes/ao-vivo');
 const controle = require('../incidentes/controle');
+const pacote = require('./pacote');
 const { dirSpec, ondeSalvar, arquivoPasso, HANDOFF, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, refinoDe, gravarRefino, briefingDe, BRIEFING } = require('./locais');
 
 // ORQUESTRADOR do refinamento: o Maestro dirigido pela extensão. Monta cada execução do Claude em segundo plano (etapa),
@@ -105,6 +106,7 @@ const depoisDaEtapa = (t) => {
     if (mudou) s.gravar(t.chave, TAREFAS, l);
   }
   avisarImpactos(t);
+  pacote.gravar(t.chave); // refinamento.md: tudo o que a execução deixou (passos, decisões, respostas, mudanças)
   filaTriagem(t);
   filaImpactos(t);
   filaTarefas(t);

@@ -283,12 +283,16 @@ const reconciliar = (s) => {
   if (mudou) s.render();
 };
 
-// Implementações: dossiê e artefatos da esteira que já existem na pasta da aba (contexto do ticket, entendimento, varredura, plano), para a conversa começar de onde a esteira parou.
+// Implementações e Incidentes: dossiê/entrada e artefatos da esteira que já existem na pasta da aba (contexto do ticket, entendimento, varredura, plano), para a conversa começar de onde a esteira parou.
+const ARQUIVOS_ESTEIRA = {
+  [require('../implementacoes/implementacoes').ID]: { rotulo: 'Esteira de implementação', nomes: ['dossie.md', '.contexto-ticket.md', '.briefing.md', 'entendimento.md', 'varredura.md', 'plano-mudanca.md', 'implementacao.log.md', 'verificacao.json'] },
+  [require('../incidentes/incidentes').ID]: { rotulo: 'Mergulho do incidente', nomes: ['entrada.md', '1-triagem.md', '2-artefatos.md', '3-dados-logs.md', '4-diagnostico.md', 'massa-real.sql', 'massa-teste.sql', 'fluxo.json', 'reproducao.json', 'resumo.md'] }
+};
 const esteiraArquivos = (s, t) => {
-  if (sessao.focoLista() !== require('../implementacoes/implementacoes').ID) return '';
-  const dir = s.pastaAba(t.chave), achados = ['dossie.md', '.contexto-ticket.md', '.briefing.md', 'entendimento.md', 'varredura.md', 'plano-mudanca.md', 'implementacao.log.md', 'verificacao.json']
-    .filter((n) => fs.existsSync(path.join(dir, n)));
-  return achados.length ? `Esteira de implementação (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
+  const e = ARQUIVOS_ESTEIRA[sessao.focoLista()];
+  if (!e) return '';
+  const dir = s.pastaAba(t.chave), achados = e.nomes.filter((n) => fs.existsSync(path.join(dir, n)));
+  return achados.length ? `${e.rotulo} (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
 };
 const pedido = (s, t) => {
   const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');

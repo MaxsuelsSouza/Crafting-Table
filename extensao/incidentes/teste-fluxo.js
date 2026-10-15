@@ -1,3 +1,4 @@
+// @ts-check
 // node teste-fluxo.js
 const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
