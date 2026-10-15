@@ -247,7 +247,7 @@ function sincronizarMassa(dir, ids, agora, hora) {
   return { validas, faltam, esgotadas };
 }
 function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '', origem = 'consulta', desfazer = [] }) {
-  const m = massa(dir), id = `M${m.itens.reduce((n, i) => Math.max(n, Number(i.id.slice(1)) || 0), 0) + 1}`;
+  const m = massa(dir), id = `M${[...m.itens, ...(m.mortas || [])].reduce((n, i) => Math.max(n, Number(i.id.slice(1)) || 0), 0) + 1}`;
   m.itens.push({ id, papel: papel || '', cenarios: cens || [], dados: dados || {}, consulta: consulta || '', medidaEm: new Date().toISOString(), estado: 'valida',
     ...(origem === 'sql' ? { origem, desfazer } : {}) });
   gravarJson(path.join(dir, MASSA), m);
@@ -656,7 +656,7 @@ async function levantarMassa(dir, d, amb, cens) {
 // ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
 const ativos = new Set();
 const pausado = (dir) => estado(dir).execucao === 'pausado';
-// soMassa (↻ da Etapa 5): apaga a aba Massa e só levanta massa nova para todos os cenários ativos; não executa cenário.
+// soMassa (↻ da Etapa 5): move a massa da aba para "Massas mortas" e só levanta massa nova para todos os cenários ativos; não executa cenário.
 async function executar(dir, d, { soMassa = false } = {}) {
   if (rodando(dir)) return;
   if (estado(dir).pausa) return aoVivo.anotar(dir, { tipo: 'aviso', texto: `Responda a pergunta antes de retomar: ${estado(dir).pausa.pergunta}` });
@@ -669,7 +669,7 @@ async function executar(dir, d, { soMassa = false } = {}) {
     const ativosC = () => cenarios(dir).cenarios.filter((c) => !c.arquivado && c.status !== 'dispensado');
     let pend = soMassa ? ativosC() : fila(cenarios(dir));
     if (!pend.length) return vivo('fim', cenarios(dir).cenarios.length ? 'Nenhum cenário pendente. Use ↻ Refazer para executar um de novo' : 'Sem cenários para executar');
-    if (soMassa) { gravarJson(path.join(dir, MASSA), { itens: [] }); vivo('acao', 'Massa antiga apagada da aba Massa: levantando massa nova para todos os cenários'); }
+    if (soMassa) { const m = massa(dir); gravarJson(path.join(dir, MASSA), { ...m, itens: [], mortas: [...(m.mortas || []), ...m.itens.map((i) => ({ ...i, morreuEm: new Date().toISOString() }))] }); vivo('acao', 'Massa antiga movida para Massas mortas: levantando massa nova para todos os cenários'); }
     const dono = donoAmbiente();
     if (dono && dono.chave !== d.chave && !(await d.confirmar(`O ambiente de testes (API, Metro, emulador) está com o ${dono.chave}. Usar no ${d.chave}?`))) {
       return vivo('aviso', `Ambiente em uso pelo ${dono.chave}: QA não iniciado`);
@@ -1019,7 +1019,7 @@ function etapasQa(dir, e, rodando) {
     : feitos === r.length ? ['concluida', `${feitos}/${r.length}`] : e.execucao === 'pausado' ? ['pausada', `${feitos}/${r.length}`] : rodando ? ['rodando', `${feitos}/${r.length}`] : ['pendente', feitos ? `${feitos}/${r.length}` : ''];
   const pub = podePublicar(cenarios(dir).cenarios) ? ['aguardando', 'pronta para publicar'] : ['pendente'];
   const est = [plano, aprovado ? ['concluida', `${r.length} cenário(s)`] : ['pendente'], ambEt, preEt, massaEt, exec, pub];
-  const refazMassa = '<button class="ce-hover" data-painel="qaMassaRefazer" title="Apaga toda a massa da aba Massa e pede à IA para levantar massa nova">↻ Refazer massa</button>';
+  const refazMassa = '<button class="ce-hover" data-painel="qaMassaRefazer" title="Move a massa da aba Massa para Massas mortas e pede à IA para levantar massa nova">↻ Refazer massa</button>';
   const etapas = nomes.map((nome, i) => ({ n: i + 1, nome, estado: est[i][0], ...(est[i][1] !== undefined ? { rotulo: est[i][1] } : {}),
     ...(i === 4 && est[i][0] === 'concluida' && !rodando ? { hover: refazMassa } : {}) }));
   return caixaEtapas.caixa({ titulo: 'Etapas do QA', etapas, atual: (etapas.find((x) => x.estado !== 'concluida') || {}).n });
@@ -1039,18 +1039,21 @@ function massaHtml(dir, hora = '06:00') {
   const m = massa(dir), agora = new Date(), ref = ultimoRefresh(agora, hora);
   const rot = (i) => (i.estado === 'valida' && !massaValida(i, agora, hora) ? ['Vencida', 'desatualizado'] : i.estado === 'valida' ? ['Válida', 'passou']
     : i.estado === 'consumida' ? ['Consumida', 'bloqueado'] : ['Inválida', 'falhou']);
-  const linhas = m.itens.slice().reverse().map((i) => { const [r, cls] = rot(i); return `<details class="cen" data-cen="massa-${esc(i.id)}"><summary><span class="cid">${esc(i.id)}</span><span class="ctit">${esc(i.papel)}</span><span class="cst ${cls}">${r}</span></summary><div class="cdet">
+  const item = (i, morta = false) => { const [r, cls] = morta ? ['Morta', 'falhou'] : rot(i); return `<details class="cen" data-cen="massa-${morta ? 'morta-' : ''}${esc(i.id)}"><summary><span class="cid">${esc(i.id)}</span><span class="ctit">${esc(i.papel)}</span><span class="cst ${cls}">${r}</span></summary><div class="cdet">
     <div>Cenários: ${esc((i.cenarios || []).join(', ') || '—')} · medida ${esc(dataBr(i.medidaEm))}</div>
     <div class="papel-massa">${Object.entries(i.dados || {}).map(([k, v]) => `<div class="campo"><span class="k">${esc(k)}</span><span class="v">${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span><button class="copiar" data-acao="qaMassaCopiar" data-id="${esc(i.id)}" data-key="${esc(k)}" title="Copiar ${esc(k)}">⧉</button></div>`).join('') || '<span class="k">sem campos</span>'}</div>
     ${i.consulta ? `<details><summary>Consulta</summary><pre>${esc(i.consulta)}</pre></details>` : ''}
-    ${i.origem === 'sql' && i.desfazer?.length ? `<details><summary>Montada por SQL · desfazer</summary><pre>${esc(i.desfazer.join(';\n'))};</pre><button data-acao="qaMassaDesfazer" data-id="${esc(i.id)}" title="Roda o SQL de desfazer no banco (pede confirmação)">Desfazer no banco</button></details>` : ''}
-    ${i.estado === 'valida' ? `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="invalida">Marcar inválida</button>` : `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="valida">Marcar válida</button>`}
-    </div></details>`; }).join('');
+    ${!morta && i.origem === 'sql' && i.desfazer?.length ? `<details><summary>Montada por SQL · desfazer</summary><pre>${esc(i.desfazer.join(';\n'))};</pre><button data-acao="qaMassaDesfazer" data-id="${esc(i.id)}" title="Roda o SQL de desfazer no banco (pede confirmação)">Desfazer no banco</button></details>` : ''}
+    ${morta ? '' : i.estado === 'valida' ? `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="invalida">Marcar inválida</button>` : `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="valida">Marcar válida</button>`}
+    </div></details>`; };
+  const linhas = m.itens.slice().reverse().map((i) => item(i)).join('');
+  const mortas = (m.mortas || []).slice().reverse();
   return `${CSS}<div class="qa-card"><b>Massa de dados</b><p>Vale até o refresh do banco (último: ${esc(dataBr(ref.toISOString()))}; horário em Configurações → craftingTable.qaHoraRefresh).
     O ▶ levanta massa só para cenários sem massa válida; a massa que um cenário altera vira consumida.</p>
     <button data-acao="qaMassaEditar" title="Abre o .massa.json no editor (cole ou corrija dados à mão)">Editar à mão</button>
     ${linhas ? '<button class="sec" data-expandir-tudo title="Abre ou fecha todos os itens da massa">Expandir tudo</button>' : ''}</div>
-    <div class="cens">${linhas || '<div class="vazio-aba">Nenhuma massa ainda. O ▶ do QA levanta a massa antes de executar os cenários.</div>'}</div>`;
+    <div class="cens">${linhas || '<div class="vazio-aba">Nenhuma massa ainda. O ▶ do QA levanta a massa antes de executar os cenários.</div>'}</div>
+    ${mortas.length ? `<details class="qa-card"><summary><b style="display:inline">Massas mortas (${mortas.length})</b></summary><p>Massas de rodadas anteriores, trocadas por ↻ Refazer massa. Ficam só para consulta.</p><div class="cens">${mortas.map((i) => item(i, true)).join('')}</div></details>` : ''}`;
 }
 function mapaHtml(dir, r, amb, uri) {
   const ativos = r.cenarios.filter((c) => !c.arquivado), arq = r.cenarios.filter((c) => c.arquivado);

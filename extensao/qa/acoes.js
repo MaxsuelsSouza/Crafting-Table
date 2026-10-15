@@ -193,7 +193,7 @@ const acoes = (s) => ({
     if (!t || sessao.focoLista() !== 'qa') return;
     const dir = s.pastaAba(t.id);
     if (qa.rodando(dir)) return vscode.window.showInformationMessage('O QA está rodando: pause antes de refazer a massa.');
-    const ok = await vscode.window.showWarningMessage('Apagar toda a massa da aba Massa e levantar massa nova para todos os cenários?', { modal: true, detail: 'Os itens atuais somem da aba Massa. O SQL já aplicado no banco não é desfeito.' }, 'Refazer massa');
+    const ok = await vscode.window.showWarningMessage('Mover a massa da aba Massa para "Massas mortas" e levantar massa nova para todos os cenários?', { modal: true, detail: 'Os itens atuais vão para a área Massas mortas da aba Massa. O SQL já aplicado no banco não é desfeito.' }, 'Refazer massa');
     if (!ok) return;
     qa.registrarDecisao(dir, 'Usuário pediu para refazer a massa de dados', { ticket: t.chave });
     s.pedirSecao(EVID);
