@@ -212,6 +212,8 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     corpo.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), rolagem: corpo.scrollTop }));
   }
 
+  ${require('../modulos/comandos').scriptBloco()}
+
   ${tarefas.script()}
 </script></body></html>`;
 }

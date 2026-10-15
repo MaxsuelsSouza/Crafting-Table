@@ -9,6 +9,7 @@ const { botao, mini, icone } = require('./botao');
 // Sem script: cliques por data-acao (rodar, parar, mostrar, mencionar, processos, editar, remover, matar, matarTodos; comandos.js).
 // Redesenhe quando um botão ou terminal mudar.
 //   b: { id, nome, comando, pasta } · rodando: terminal aberto · procs: processos do terminal ({ pid, args }[]) ou undefined (lista fechada)
+//   comando(b, rodando, procs, bloco): bloco = true põe a alça ⠿ de arrastar (item de um bloco, reordenado por scriptBloco em comandos.js)
 //   card({ estado, abertos, run, corpo, corpoAttr, mini, procs }): estado = 'rodando' | 'ligado' | 'ocupado' | '' (a borda do card)
 
 const pastaCurta = (p) => { const partes = p.replace(os.homedir(), '~').split('/'); return partes.length > 3 ? '…/' + partes.slice(-2).join('/') : partes.join('/'); };
@@ -22,10 +23,11 @@ const procs = (lista, id) => `<div class="procs">${lista.length ? `
   ${botao(`Matar todos (${lista.length})`, { perigo: true, acao: 'matarTodos', id, classe: 'todos' })}`
   : '<p class="vazio">Nenhum processo rodando.</p>'}</div>`;
 
-const card = ({ estado = '', abertos = false, run, corpo, corpoAttr = '', mini: botoes, procs: lista = '' }) => `<li class="${estado} ${abertos ? 'com-procs' : ''}"><div class="card">
-  ${run}<div class="corpo"${corpoAttr}>${corpo}</div>${botoes}</div>${lista}</li>`;
+const card = ({ estado = '', abertos = false, run, corpo, corpoAttr = '', mini: botoes, procs: lista = '', alca = '', liAttr = '' }) => `<li class="${estado} ${abertos ? 'com-procs' : ''}"${liAttr}><div class="card">
+  ${alca}${run}<div class="corpo"${corpoAttr}>${corpo}</div>${botoes}</div>${lista}</li>`;
 
-const comando = (b, rodando, lista) => card({
+const comando = (b, rodando, lista, bloco = null) => card({
+  alca: bloco ? '<span class="alca" title="Arraste para mudar a ordem">⠿</span>' : '', liAttr: bloco ? ` data-bloco-item data-id="${esc(b.id)}"` : '',
   estado: rodando ? 'rodando' : '', abertos: Boolean(lista),
   run: rodando ? botao('■', { variante: 'parar', acao: 'parar', id: b.id, titulo: 'Parar' }) : botao('▶', { variante: 'executar', acao: 'rodar', id: b.id, titulo: 'Executar' }),
   corpoAttr: ` data-acao="${rodando ? 'mostrar' : 'rodar'}" data-id="${esc(b.id)}" title="${rodando ? 'Mostrar o terminal' : 'Executar'}"`,
@@ -55,6 +57,9 @@ const CSS = `
   .cmd { display: inline-block; max-width: 100%; margin-top: 4px; padding: 1px 6px; border-radius: var(--r-md); font-family: var(--fc-mono); font-size: 11px;
     background: var(--surface-2); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
   .pastinha { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .alca { flex: none; cursor: grab; color: var(--text-dim); font-size: 15px; line-height: 1; padding: 4px 2px; user-select: none; }
+  .alca:hover { color: var(--accent); }
+  li.arrastando { opacity: .45; }
   .procs { margin: 8px 0 0 38px; padding: 6px 8px; border-radius: var(--r-md); background: var(--surface-2); font-size: 12px; }
   .proc { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
   .proc .pid { padding: 0 6px; border-radius: var(--r-pill); font-family: var(--fc-mono); font-size: 10.5px; background: var(--surface); color: var(--accent); }

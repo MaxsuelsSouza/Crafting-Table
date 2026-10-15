@@ -5,7 +5,7 @@ const sessao = require('../infra/sessao');
 const { lerTexto } = require('../refinamento/locais');
 const { IC } = require('./icones');
 const { quando } = require('./formato');
-const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto } = require('../painel/notificacoes');
+const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto, blocosAbertos } = require('../painel/notificacoes');
 const acoesQa = require('../qa/acoes');
 const { SEM_TICKET } = require('./card-ticket');
 const { pastaAba } = require('../infra/pastas');
@@ -42,6 +42,15 @@ const CSS = `  .ct-rod { flex: none; height: 30px; display: flex; align-items: c
   .ct-cmd:disabled { opacity: .55; cursor: default; }
   .ct-cmd small { color: var(--text-dim); }
   .ct-cmd-grupo { margin: 8px 0 2px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
+  .ct-bloco { margin-bottom: 4px; }
+  .ct-cmd-bloco { display: flex; align-items: center; gap: 6px; padding: 3px 0; }
+  .ct-cmd-nome { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct-cmd-nome small { color: var(--text-dim); font-weight: 400; }
+  .ct-cmd-seta { flex: none; width: 18px; height: 18px; border: 0; background: none; color: var(--text-dim); cursor: pointer; transition: transform 120ms; }
+  .ct-cmd-seta.aberto { transform: rotate(90deg); }
+  .ct-bloco-itens { padding-left: 22px; }
+  .ct-cmd-run { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--ok); font-size: 10px; text-transform: none; letter-spacing: 0; cursor: pointer; }
+  .ct-cmd-run svg { width: 10px; height: 10px; }
   .ct-cmd-vazio { color: var(--text-dim); padding: 2px 0; }
   .ct-amb { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
     font: inherit; font-size: 11.5px; color: inherit; }
@@ -65,9 +74,20 @@ const rodape = (t, dentro = false) => {
   const novas = l.filter(nova).length;
   const cmds = require('../modulos/comandos').api?.lista() || [], emus = require('../modulos/emulador').api?.lista() || [];
   const acao = dentro ? 'data-acao' : 'data-painel';
+  const btnCmd = (c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
+      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`;
+  // Blocos (Configurações → Comandos): o nome, ▶ Executar bloco e os comandos na ordem de execução; os fora de bloco vêm depois.
+  const blocosCmd = (require('../modulos/comandos').api?.blocos() || []).map((b) => ({ ...b, lista: b.ids.map((id) => cmds.find((c) => c.id === id)).filter(Boolean) }));
+  const emBloco = new Set(blocosCmd.flatMap((b) => b.ids));
+  const soltos = cmds.filter((c) => !emBloco.has(c.id));
   const caixaCmds = `<details class="ct-cmds"${cmdsAberto() ? ' open' : ''}><summary ${acao}="cmdsAlternar">${IC.play} Comandos</summary>
-    <div class="ct-notifs">${cmds.length ? cmds.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="cmdAlternar" data-id="${esc(c.id)}"
-      title="${c.rodando ? 'Parar' : 'Executar'}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}</button>`).join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
+    <div class="ct-notifs">${cmds.length || blocosCmd.length ? [
+      ...blocosCmd.map((g) => { const aberto = blocosAbertos.has(g.id); return `<div class="ct-bloco"><div class="ct-cmd-bloco">
+        <button class="ct-cmd-seta${aberto ? ' aberto' : ''}" ${acao}="cmdBlocoAlternar" data-id="${esc(g.id)}" title="${aberto ? 'Recolher' : 'Mostrar os comandos'}">▸</button>
+        <span class="ct-cmd-nome">${esc(g.nome)} <small>${g.lista.length}</small></span>
+        <button class="ct-cmd-run" ${acao}="cmdBloco" data-id="${esc(g.id)}" title="Executar na ordem, de cima para baixo">${IC.play} Executar bloco</button></div>
+        ${aberto ? `<div class="ct-bloco-itens">${g.lista.length ? g.lista.map(btnCmd).join('') : '<div class="ct-cmd-vazio">Bloco vazio. Adicione comandos em Configurações → Comandos.</div>'}</div>` : ''}</div>`; }),
+      ...(soltos.length ? [`<div class="ct-bloco-itens">${soltos.map(btnCmd).join('')}</div>`] : [])].join('') : '<div class="ct-cmd-vazio">Nenhum comando. Cadastre em Configurações → Comandos.</div>'}
     ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
       title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
   // QA: ambiente depois de Comandos. Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise (Evidências).
