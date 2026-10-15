@@ -47,7 +47,7 @@
  * @property {(secrets: any, site: string, chave: string) => Promise<{ chave: string, nome: string }>} projetoInfo
  * @property {(secrets: any, site: string, projeto: string) => Promise<string[]>} statusDoProjeto
  * @property {(secrets: any, site: string) => Promise<Descoberta>} descobrir  metadados da conta (projetos, boards com etapas, status, tipos de item, labels), com limites; alimenta o mapeamento por IA
- * @property {(secrets: any, alvo: Alvo, o: { resumo: string, descricao: string, estimativa?: string, atribuirAMim?: boolean }) => Promise<{ key: string, aviso?: string }>} criarSubtarefa
+ * @property {(secrets: any, alvo: Alvo, o: { resumo: string, descricao: string, estimativa?: string, atribuirAMim?: boolean, responsavelId?: string, tipoNome?: string }) => Promise<{ key: string, aviso?: string }>} criarSubtarefa
  * @property {(secrets: any, alvo: { site: string }, key: string, md: string, o?: { titulo?: string, estimativa?: string }) => Promise<{ aviso?: string }>} atualizarDescricao
  */
 

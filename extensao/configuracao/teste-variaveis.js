@@ -21,7 +21,7 @@ assert.strictEqual(variaveis.ler('site'), '');
 assert.deepStrictEqual(variaveis.ler('boardPrincipal'), []);
 assert.deepStrictEqual(variaveis.ler('etapasQA'), []);
 assert.deepStrictEqual(variaveis.definicoes.map((d) => d.chave),
-  ['site', 'projeto', 'boardPrincipal', 'etapasExtras', 'tipoIncidente', 'etapasQA', 'labelQA', 'etapasImplementacao']);
+  ['site', 'projeto', 'boardPrincipal', 'etapasExtras', 'tipoIncidente', 'etapasQA', 'labelQA', 'etapasImplementacao', 'tiposQuebrar', 'tiposDesenvolver', 'tiposExecutar']);
 assert.ok(variaveis.definicoes.every((d) => d.rotulo && d.descricao && d.usadaEm));
 
 // Migração: settings antigos e globalState.labelQA viram valor (sem apagar nada).

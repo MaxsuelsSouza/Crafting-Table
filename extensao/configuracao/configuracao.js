@@ -527,6 +527,14 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         } else if (d.escolha === 'labels' && site) {
           const p = await vscode.window.showQuickPick((await jira.labels(ctx.secrets, site, '')).map((l) => ({ label: l })), { title: d.rotulo, placeHolder: d.descricao });
           novo = p?.label;
+        } else if (d.escolha === 'tipos' && site) {
+          // Tipos de item da conta. Tipos que se quebram vão do mais alto ao mais baixo: ordena pelo nível da hierarquia do Jira.
+          const tipos = (await jira.descobrir(ctx.secrets, site, proj)).tiposItem || [];
+          const nivel = new Map(tipos.map((x) => [x.nome, x.nivel ?? -9]));
+          const nomes = [...new Set([...[...marcados].map((x) => String(x).split('|')[0]), ...tipos.map((x) => x.nome)])];
+          const p = await vscode.window.showQuickPick(nomes.map((n) => ({ label: n, description: tipos.find((x) => x.nome === n)?.subtarefa ? 'subtarefa' : '', picked: [...marcados].some((m) => String(m).split('|')[0] === n) })),
+            { canPickMany: true, title: d.rotulo, placeHolder: d.descricao });
+          novo = id === 'tiposQuebrar' ? p?.map((x) => x.label).sort((a, b) => (nivel.get(b) ?? -9) - (nivel.get(a) ?? -9)) : p?.map((x) => x.label);
         } else if (d.escolha === 'status' && site && proj.length) {
           const DIGITAR = 'Digitar à mão…';
           const nomes = await jira.statusDoProjeto(ctx.secrets, site, proj);

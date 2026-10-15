@@ -78,6 +78,18 @@ const blocoDocumento = (t) => {
 // O que o dev explicou quando o ticket só tinha título (aba Spec): fonte verbal, de confiança menor que a spec aprovada.
 const blocoBriefing = (t) => (briefingDe(pasta(t.chave))
   ? `\nExplicação do dev (fonte verbal; o ticket sozinho não bastava): ${path.join(pasta(t.chave), BRIEFING)}. Leia antes do passo 1, trate como insumo e marque o que só vem dela.` : '');
+// Tipo do ticket (hierarquia): papel gravado ao iniciar o refinamento (spec.js). Sem papel (refinamento antigo) = desenvolvimento.
+const papelDoTicket = (t) => { const r = tickets.ler(t.chave || t.id)?.refinamento || {}; return { papel: r.papel || 'desenvolver', tipo: r.tipoTicket || '', filho: r.filho || '' }; };
+// Ticket que se quebra (Épico, Feature…): a spec descreve o escopo e a saída são itens do tipo abaixo, não subtarefas de dev.
+const blocoTipo = (t) => {
+  const { papel, tipo, filho } = papelDoTicket(t);
+  if (papel !== 'quebrar') return '';
+  const itens = filho ? `itens do tipo "${filho}"` : 'itens do nível abaixo';
+  return `\nTipo do ticket: ${tipo || '?'} (papel: quebrar). Este refinamento NÃO é de desenvolvimento: o resultado são ${itens}, que o time refina depois, um a um. `
+    + `Passos 1 e 2: especificação do escopo (o quê e por quê, critérios de aceite, sem tecnologia). Passo 3 (plan.md): "## Decomposição", como o escopo se divide em ${itens}, ordem e dependências; `
+    + 'NÃO mapeie código nem consulte banco. Passo 4: cada card (sdd-state card) é UM item, com título, objetivo e critérios de aceite na descrição; nada de subtarefas técnicas, camadas ou estimativa em horas. '
+    + 'Os passos 5 e 6 não existem neste escopo (init --escopo quebrar os dispensa).';
+};
 // leitura = true: sem o gravador (início, triagem, impacto). A rodada (controle.js) só deixa o `depois` de uma execução valer enquanto
 // ninguém pausou: pausar cancela a rodada e mata o processo, e a etapa recomeça ao retomar.
 const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois, leitura = false) => {
@@ -94,7 +106,7 @@ const etapa = (t, texto, continuar = false, cwd = t.spec?.repo, titulo, depois, 
     extras: [...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : []), ...(cfg().get('esforco') ? ['--effort', cfg().get('esforco')] : []),
       ...vagas.pluginDirs('refinamento.foco'), ...vagas.pluginDirs('refinamento.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', pasta(t.chave), areaIA(pasta(t.chave)), ...repos.map((r) => r.caminho)],
     prompt: `[segundo plano] [Crafting Table · ticket ${t.chave}] ${texto}\nPasta do ticket: ${pasta(t.chave)} · sdd-state: ${sddState()}`
-      + ondeSalvar(t) + (leitura ? '' : ESCRITA) + blocoDocumento(t) + blocoBriefing(t)
+      + ondeSalvar(t) + (leitura ? '' : ESCRITA) + blocoDocumento(t) + blocoBriefing(t) + blocoTipo(t)
       + `\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}${r.refRelease ? ` (ref de release: ${r.refRelease})` : ''}`).join(' · ') || 'nenhum configurado'}`
       + ` · plugin mapa: ${MAPA()} (bin/mapa-git, bin/mapa-conferir, bin/mapa-db)`
       + vagas.aviso('refinamento.sdd') + vagas.aviso('refinamento.mapa')
@@ -256,7 +268,8 @@ const qaCaminhos = () => {
 };
 // O que o refinamento espera de você agora (null = nada: o Claude pode seguir).
 const esperaHumano = (est) => (est.perguntas.some((q) => q.status === 'aberta') ? 'perguntas'
-  : est.passos.some((p) => p.status === 'aguardando_revisao') ? 'revisao' : null);
+  // Só espera você o passo que dá para aprovar (todos os anteriores aprovados); revisão atrás de passo desatualizado é o Claude que reconcilia.
+  : est.passos.some((p) => p.status === 'aguardando_revisao' && est.passos.slice(0, p.n).every((x) => x.dispensado || x.status === 'aprovado')) ? 'revisao' : null);
 const seguir = (t) => {
   const est = estadoSpec(t);
   if (!est || estadoDe(t.chave) !== 'rodando' || maestro.rodando(pasta(t.chave)) || esperaHumano(est) || duvidasDe(pasta(t.chave)).some((x) => !x.resposta) || mudancas.pendentes(impactosDe(pasta(t.chave))).length || est.proximoPasso > 6) return false;
@@ -265,6 +278,10 @@ const seguir = (t) => {
   const n = est.proximoPasso, titulo = est.passos[n].titulo;
   const extra = (novas ? ` Respostas do humano desde a última execução: ${novas}.` : '')
     + (reprovadas.length ? ` Tarefas reprovadas pelo humano (considere na análise de cobertura): ${reprovadas.map((c) => `${c.id}${c.motivo ? ` (${c.motivo})` : ''}`).join('; ')}.` : '');
+  if (n === 3 && papelDoTicket(t).papel === 'quebrar') {
+    return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo 3 (decomposição do escopo, sem mapeamento de código): `
+      + `grave o plan.md com "## Decomposição" e rode concluir 3.` + extra + pedirMemoria(t, 3, false), false, undefined, 'Passo 3 · Decomposição', () => conferir(t, 3));
+  }
   if (n === 3) return seguirPlano(t, titulo, extra);
   return etapa(t, `Siga a skill sdd, protocolo de retomada, sem perguntar: rode status e trabalhe só o passo ${n} (${titulo}).`
     + (n === 6 ? qaCaminhos() : '') + extra + pedirMemoria(t, n, false), false, undefined, `Passo ${n} · ${titulo}`, () => conferir(t, n));
@@ -311,6 +328,7 @@ const problemaDoPasso = (t, n) => {
   try { texto = fs.readFileSync(arq, 'utf8'); } catch { return { tipo: 'artefato', texto: `${nome} não existe` }; }
   if (texto.trim().length < MIN_CARACTERES) return { tipo: 'artefato', texto: `${nome} está vazio ou curto demais (menos de ${MIN_CARACTERES} caracteres)` };
   if (EXIGE[n] && !EXIGE[n][0].test(texto)) return { tipo: 'artefato', texto: `${nome} tem ${EXIGE[n][1]}` };
+  if (n === 3 && papelDoTicket(t).papel === 'quebrar') return /Decomposi/i.test(texto) ? null : { tipo: 'artefato', texto: `${nome} sem a seção "Decomposição"` };
   if (n === 3 && !(/Mapeamento do código/i.test(texto) && /Conformidade com a Constitui/i.test(texto))) return { tipo: 'artefato', texto: `${nome} sem as seções "Mapeamento do código" e "Conformidade com a Constituição"` };
   return null;
 };
@@ -429,4 +447,4 @@ const iniciar = (servicos, ctx) => {
   ctx.subscriptions?.push({ dispose: () => clearInterval(relogio) });
 };
 
-module.exports = { iniciar, etapa, seguir, retomarFilas: (t) => depoisDaEtapa(t), interromper, situacao, mudarEstado, conferir, problemaDoPasso, FERRAMENTAS, MAX_CORRECOES, subetapas3, mapasDe, memoriaPasso, promptAjuste, promptRespostas, ajustar, aplicarRespostas, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };
+module.exports = { iniciar, etapa, papelDoTicket, blocoTipo, seguir, retomarFilas: (t) => depoisDaEtapa(t), interromper, situacao, mudarEstado, conferir, problemaDoPasso, FERRAMENTAS, MAX_CORRECOES, subetapas3, mapasDe, memoriaPasso, promptAjuste, promptRespostas, ajustar, aplicarRespostas, filaTarefas, vigiarComentarios, respondidas, sdd, estadoDe, reposDe, avisarImpactos };

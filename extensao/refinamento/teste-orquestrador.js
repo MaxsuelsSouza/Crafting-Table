@@ -85,3 +85,16 @@ setTimeout(() => {
   console.log('orquestrador ok');
   process.exit(0); // o vigia deixa um setTimeout de 20 s
 }, 2500);
+
+// Tipo do ticket (hierarquia): só "quebrar" muda o prompt.
+const tq = 'ORQ-TIPO';
+fs.mkdirSync(tickets.pasta(tq), { recursive: true });
+tickets.gravar({ chave: tq, refinamento: { papel: 'quebrar', tipoTicket: 'Epic', filho: 'Feature' } });
+assert.deepStrictEqual(orq.papelDoTicket({ chave: tq }), { papel: 'quebrar', tipo: 'Epic', filho: 'Feature' });
+assert.match(orq.blocoTipo({ chave: tq }), /papel: quebrar/);
+assert.match(orq.blocoTipo({ chave: tq }), /"Feature"/);
+assert.match(orq.blocoTipo({ chave: tq }), /Decomposição/);
+tickets.gravar({ chave: tq, refinamento: { papel: 'desenvolver' } });
+assert.strictEqual(orq.blocoTipo({ chave: tq }), '');
+assert.strictEqual(orq.papelDoTicket({ chave: 'SEM-TICKET' }).papel, 'desenvolver'); // refinamento antigo, sem papel
+console.log('orquestrador tipo ok');

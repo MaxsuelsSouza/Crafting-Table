@@ -5,6 +5,8 @@ const jira = require('../infra/ticket').jira;
 const { esc } = require('../infra/texto');
 const { markdown } = require('../componentes/markdown');
 const { quando, iniciais } = require('../componentes/formato');
+const { IC } = require('../componentes/icones');
+const { escolherPessoa } = require('../componentes/escolher-pessoa');
 const { TAREFAS, lerTexto, tarefasDe, impactosDe } = require('./locais');
 const mudancas = require('./mudancas');
 
@@ -12,6 +14,11 @@ const mudancas = require('./mudancas');
 // alteração (o Claude ajusta em segundo plano). O detalhe abre por cima do quadro (script "Tarefas" em pagina()).
 // Onde a subtarefa mora: no documento (ticket-documento, tudo local) ou na ferramenta de gestão.
 const ondeNome = (t) => (jira.ehDocumento(t) ? 'documento' : jira.nome);
+// Ticket que se quebra (Épico, Feature…): o card vira um item do tipo abaixo (refinamento.filho), não uma subtarefa.
+const filhoDe = (t) => { const r = require('../infra/tickets').ler(t.chave)?.refinamento || {}; return r.papel === 'quebrar' ? r.filho || '' : ''; };
+// Responsável da tarefa: UMA pessoa ({ id, nome }, escolhida na lista de pessoas do ticket). `vinculado` (boolean) é o formato antigo: "eu".
+const respNome = (c) => c.responsavel?.nome || (c.vinculado ? 'você' : '');
+const siglas = (nome) => (String(nome).split(/\s+/).filter(Boolean).map((x) => x[0]).join('').slice(0, 2) || '?').toUpperCase();
 const linkSub = (t, k) => { try { return jira.linkDo(t.site, k) || ''; } catch { return ''; } };
 const STATUS_T = { pendente: 'Pendente', em_alteracao: 'Claude alterando', aprovada: 'Aprovada', reprovada: 'Reprovada' };
 const COLUNAS_T = [['Pendentes', ['pendente', 'em_alteracao']], ['Aprovadas', ['aprovada']], ['Reprovadas', ['reprovada']]];
@@ -22,19 +29,17 @@ function telaTarefas(t, l, impactos = []) {
   const chip = (c) => `${c.camada ? `<span class="tcam cam-${esc(c.camada)}">${esc(c.camada)}</span>` : ''}
     ${c.estimativa ? `<span class="test" title="Estimativa original">⏱ ${esc(c.estimativa)}</span>` : ''}
     ${c.ticket ? `<span class="tjira">${esc(c.ticket)}</span>` : ''}
-    ${c.vinculado ? `<span class="tav" title="Vinculada a você">${esc(iniciais())}</span>` : ''}`;
+    ${respNome(c) ? `<span class="tav" title="Responsável: ${esc(respNome(c))}">${esc(c.responsavel ? siglas(c.responsavel.nome) : iniciais())}</span>` : ''}`;
   const card = (c) => `<div class="tcard ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''} ${atencao.has(c.id) ? 'tatencao' : ''}" data-tcard="${esc(c.id)}" title="Abrir ${esc(c.id)}">
     <div class="ttit">${atencao.has(c.id) ? `<span class="taten" title="Uma mudança pedida em comentário do ${esc(ondeNome(t))} pode atingir este card (aguarda sua decisão na aba Spec)">⚠</span>` : ''}${c.tipo === 'qa' ? '<span class="selo-qa">QA</span>' : ''}${esc(c.titulo || c.id)}${c.revisao ? '<span class="trev" title="Uma mudança no ticket atingiu esta subtarefa">↻ revisar</span>' : ''}</div>
     ${c.tipo === 'qa' && c.resumo ? `<div class="tres">${esc(c.resumo)}</div>` : ''}
     ${c.status === 'em_alteracao' ? '<div class="tproc"><span class="vivo-bola"></span>Claude alterando…</div>' : ''}
     <div class="tpe"><span class="tid">${esc(c.id)}</span>${chip(c)}</div></div>`;
   const linha = (rot, v) => (v ? `<div class="tm-l"><span>${rot}</span><div>${v}</div></div>` : '');
-  const modal = (c) => {
+  // Corpo do detalhe (título em diante): o mesmo no modal de uma tarefa e na célula da grade das abertas.
+  const corpo = (c) => {
     const aberta = c.status === 'pendente';
-    return `<div class="tmodal" data-tmodal="${esc(c.id)}" hidden><div class="tm-caixa">
-      <div class="tm-cab"><span class="tid">${esc(c.id)}</span><span class="tstatus ts-${esc(c.status)}">${STATUS_T[c.status] || esc(c.status)}</span>
-        <button class="tm-x" data-tfechar title="Fechar (Esc)">✕</button></div>
-      <h3>${esc(c.titulo || c.id)}</h3>
+    return `<h3>${esc(c.titulo || c.id)}</h3>
       ${c.status === 'em_alteracao' ? `<div class="tproc"><span class="vivo-bola"></span>Claude aplicando: “${esc(c.alteracao || '')}”</div>` : ''}
       ${c.tipo === 'qa' ? `<div class="tm-desc md">${markdown(lerTexto(c.arquivo || '') || 'Plano de testes não encontrado.')}</div>`
         : `<div class="tm-desc">${esc(c.descricao || 'Sem descrição.')}</div>`}
@@ -44,12 +49,13 @@ function telaTarefas(t, l, impactos = []) {
         ${linha('Depende de', esc((c.depende || []).join(', ')))}
         ${linha('Camada', esc(c.camada || ''))}
         ${linha(esc(ondeNome(t)), c.ticket ? (linkSub(t, c.ticket) ? `<a href="${esc(linkSub(t, c.ticket))}">${esc(c.ticket)}</a>` : esc(c.ticket)) : '')}
-        ${!aberta ? linha('Estimativa original', esc(c.estimativa || '—')) + linha('Responsável', c.vinculado ? 'você' : '—') : ''}
+        ${!aberta ? linha('Estimativa original', esc(c.estimativa || '—')) + linha('Responsável', esc(respNome(c) || '—')) : ''}
         ${c.motivo ? linha('Motivo', esc(c.motivo)) : ''}
       </div>
       ${aberta ? `<div class="tm-campos">
         <label>Estimativa original<input data-tcampo="estimativa" value="${esc(c.estimativa || '')}" placeholder="ex.: 30m, 2h, 1d"></label>
-        <label class="tchk"><input type="checkbox" data-tcampo="vinculado" ${c.vinculado ? 'checked' : ''}>Vincular a mim (responsável no ${esc(ondeNome(t))})</label></div>
+        <div class="tm-resp"><span>Responsável no ${esc(ondeNome(t))}</span><b>${esc(respNome(c) || 'Sem responsável')}</b>
+          <button data-tacao="tarefaResponsavel" title="Escolher quem fica com a tarefa (uma pessoa só)">${respNome(c) ? 'Trocar' : 'Escolher…'}</button></div></div>
       <div class="tm-acoes"><button class="aprovar" data-tacao="tarefaAprovar">Aprovar</button>
         <button class="reprovar" data-tacao="tarefaReprovar">Reprovar</button><button data-talterar>Pedir alteração</button></div>
       <div class="tm-alt" hidden><textarea placeholder="O que o Claude deve mudar nesta tarefa?"></textarea>
@@ -59,13 +65,24 @@ function telaTarefas(t, l, impactos = []) {
         ${Object.entries(c.revisao.campos || {}).map(([k, v]) => `<div class="tm-l"><span>${esc(k)} (novo)</span><div>${esc(v)}</div></div>`).join('')}
         ${c.tipo === 'qa' ? '<div class="tm-l"><span>Plano</span><div>testes.md atualizado (acima)</div></div>' : ''}
         <div class="tm-acoes"><button class="aprovar" data-tacao="revisaoAplicar">Aplicar no ${esc(ondeNome(t))}</button><button data-tacao="revisaoDescartar">Descartar</button></div></div>` : ''}
-      ${(c.historico || []).length ? `<div class="tm-hist">${c.historico.map((h) => `<div><span>${esc(quando(h.em))}</span> ${esc(h.texto || h.evento)}</div>`).join('')}</div>` : ''}
-    </div></div>`;
+      ${(c.historico || []).length ? `<div class="tm-hist">${c.historico.map((h) => `<div><span>${esc(quando(h.em))}</span> ${esc(h.texto || h.evento)}</div>`).join('')}</div>` : ''}`;
   };
+  const cab = (c) => `<span class="tid">${esc(c.id)}</span><span class="tstatus ts-${esc(c.status)}">${STATUS_T[c.status] || esc(c.status)}</span>`;
+  const modal = (c) => `<div class="tmodal" data-tmodal="${esc(c.id)}" data-tstatus="${esc(c.status)}" hidden><div class="tm-caixa">
+      <div class="tm-cab">${cab(c)}<button class="tm-x" data-tfechar title="Fechar (Esc)">✕</button></div>${corpo(c)}
+    </div></div>`;
+  // Grade das tarefas abertas (pendentes e em alteração): todas na mesma tela, para ler, aprovar, reprovar ou pedir alteração sem abrir uma a uma.
+  const abertas = l.filter((c) => ['pendente', 'em_alteracao'].includes(c.status));
+  const grade = abertas.length ? `<div class="tmodal tgrade" data-tgrade hidden><div class="tg-caixa">
+      <div class="tm-cab"><b>Tarefas abertas</b><span class="tid">${abertas.length}</span><button class="tm-x" data-tfechar title="Fechar (Esc)">✕</button></div>
+      <div class="tg-grade">${abertas.map((c) => `<div class="tg-cel ts-${esc(c.status)} ${c.tipo === 'qa' ? 'tqa' : ''}" data-tgcard="${esc(c.id)}">
+        <div class="tm-cab">${cab(c)}</div>${corpo(c)}</div>`).join('')}</div>
+    </div></div>` : '';
   return `<div class="tboard">${COLUNAS_T.map(([nome, sts]) => {
     const cs = l.filter((c) => sts.includes(c.status));
-    return `<div class="tcol"><div class="tcol-t">${nome}<span>${cs.length}</span></div>${cs.map(card).join('') || '<div class="tvazio">—</div>'}</div>`;
-  }).join('')}</div>${l.map(modal).join('')}`;
+    const abrir = sts.includes('pendente') && abertas.length ? `<button class="tg-abrir" data-tgrade-abrir title="Ver todas as tarefas abertas numa grade (ler, aprovar, reprovar ou pedir alteração)">${IC.grade || '⊞'}</button>` : '';
+    return `<div class="tcol"><div class="tcol-t"><span class="tcol-n">${nome}<span>${cs.length}</span></span>${abrir}</div>${cs.map(card).join('') || '<div class="tvazio">—</div>'}</div>`;
+  }).join('')}</div>${grade}${l.map(modal).join('')}`;
 }
 
 // Script da webview do modal de tarefas. Espera `vscode` (acquireVsCodeApi) e `enviar` já definidos no <script> da página.
@@ -75,17 +92,30 @@ const script = () => `// Tarefas: clique no card abre o detalhe; Esc/✕/fundo f
     const estado = () => vscode.getState() || {};
     const abrirT = (id) => {
       document.querySelectorAll('[data-tmodal]').forEach((m) => { m.hidden = m.dataset.tmodal !== id; });
-      vscode.setState({ ...estado(), tmodal: id || null });
+      const m = id && document.querySelector('[data-tmodal="' + id + '"]');
+      vscode.setState({ ...estado(), tmodal: id || null, tstatus: m ? m.dataset.tstatus : null });
     };
+    // Grade das abertas: abre por cima do quadro; o detalhe de uma tarefa e a grade nunca ficam abertos juntos.
+    const abrirGrade = (sim) => {
+      const g = document.querySelector('[data-tgrade]');
+      if (g) g.hidden = !sim;
+      vscode.setState({ ...estado(), tgrade: !!sim });
+    };
+    // Detalhe e célula da grade usam os mesmos botões e campos: o dono é o modal ou a célula mais próxima.
+    const dono = (el) => el.closest('[data-tmodal], [data-tgcard]');
+    const idDe = (m) => m.dataset.tmodal || m.dataset.tgcard;
     const rascunho = (id, texto) => { const r = { ...(estado().talt || {}) }; if (texto === null) delete r[id]; else r[id] = texto; vscode.setState({ ...estado(), talt: r }); };
     const camposDe = (m) => m.querySelectorAll('[data-tcampo]').forEach((i) =>
-      enviar({ acao: 'tarefaCampo', id: m.dataset.tmodal, campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value }));
+      enviar({ acao: 'tarefaCampo', id: idDe(m), campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value }));
     document.addEventListener('click', (e) => {
+      if (e.target.closest('[data-tgrade-abrir]')) return abrirGrade(true);
       const c = e.target.closest('[data-tcard]');
       if (c) return abrirT(c.dataset.tcard);
-      const m = e.target.closest('[data-tmodal]');
+      const g = e.target.closest('[data-tgrade]');
+      const m = dono(e.target);
+      if (g && !m) { if (e.target === g || e.target.closest('[data-tfechar]')) abrirGrade(false); return; }
       if (!m) return;
-      const id = m.dataset.tmodal, alt = m.querySelector('.tm-alt');
+      const id = idDe(m), alt = m.querySelector('.tm-alt');
       if (e.target === m || e.target.closest('[data-tfechar]')) return abrirT(null);
       const a = e.target.closest('[data-tacao]');
       if (a) { camposDe(m); return enviar({ acao: a.dataset.tacao, id }); }
@@ -96,19 +126,22 @@ const script = () => `// Tarefas: clique no card abre o detalhe; Esc/✕/fundo f
         if (!texto) return alt.querySelector('textarea').focus();
         enviar({ acao: 'tarefaAlterar', id, texto });
         rascunho(id, null);
-        abrirT(null);
+        if (m.dataset.tmodal) abrirT(null);
       }
     });
     document.querySelectorAll('[data-tcampo]').forEach((i) => i.addEventListener('change', () =>
-      enviar({ acao: 'tarefaCampo', id: i.closest('[data-tmodal]').dataset.tmodal, campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value })));
-    document.querySelectorAll('.tm-alt textarea').forEach((ta) => ta.addEventListener('input', () => rascunho(ta.closest('[data-tmodal]').dataset.tmodal, ta.value)));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') abrirT(null); });
+      enviar({ acao: 'tarefaCampo', id: idDe(dono(i)), campo: i.dataset.tcampo, valor: i.type === 'checkbox' ? i.checked : i.value })));
+    document.querySelectorAll('.tm-alt textarea').forEach((ta) => ta.addEventListener('input', () => rascunho(idDe(dono(ta)), ta.value)));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const g = document.querySelector('[data-tgrade]'); if (g && !g.hidden && !document.querySelector('[data-tmodal]:not([hidden])')) abrirGrade(false); else abrirT(null); } });
     const st = estado();
+    // Rascunho do pedido de alteração: vale para o detalhe e para a célula da grade da mesma tarefa.
     for (const [id, texto] of Object.entries(st.talt || {})) {
-      const m = document.querySelector('[data-tmodal="' + id + '"] .tm-alt');
-      if (m) { m.hidden = false; m.querySelector('textarea').value = texto; }
+      document.querySelectorAll('[data-tmodal="' + id + '"] .tm-alt, [data-tgcard="' + id + '"] .tm-alt').forEach((m) => { m.hidden = false; m.querySelector('textarea').value = texto; });
     }
-    if (st.tmodal && document.querySelector('[data-tmodal="' + st.tmodal + '"]')) abrirT(st.tmodal);
+    if (st.tgrade) abrirGrade(true);
+    // Detalhe aberto sobrevive ao redesenho, menos quando a tarefa deixou de estar como estava (aprovada/reprovada: o card fecha).
+    const aberto = st.tmodal && document.querySelector('[data-tmodal="' + st.tmodal + '"]');
+    if (aberto) abrirT(!st.tstatus || aberto.dataset.tstatus === st.tstatus ? st.tmodal : null);
   }`;
 
 // Subtarefa de QA que já existe no ticket / texto que vai para a descrição da subtarefa no Jira.
@@ -173,6 +206,19 @@ const CSS = `
     background: var(--surface-2); color: var(--text); font: inherit; resize: vertical; }
   .tm-hist { font-size: 11px; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 6px; display: flex; flex-direction: column; gap: 2px; }
   .tm-hist span { margin-right: 6px; }
+  .tcol-t { align-items: center; } .tcol-n { display: inline-flex; gap: 6px; }
+  .tg-abrir { width: 22px; height: 22px; padding: 3px; border-radius: var(--r-sm); color: var(--text-dim); } .tg-abrir:hover { background: var(--surface); color: var(--text); }
+  .tg-abrir svg { width: 100%; height: 100%; }
+  .tm-resp { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-dim); } .tm-resp b { font-weight: 500; color: var(--text); }
+  .tm-resp button { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-sm); font-size: 11.5px; }
+  .tgrade { padding: 16px; z-index: 310; }
+  .tg-caixa { width: min(1400px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface);
+    border: 1px solid var(--border); box-shadow: 0 12px 40px rgb(0 0 0 / 45%); font-size: 12.5px; line-height: 1.5; }
+  .tg-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; align-items: start; }
+  .tg-cel { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); }
+  .tg-cel.ts-em_alteracao { border-color: var(--ia); }
+  .tg-cel h3 { margin: 0; font-size: 13px; }
+  .tg-cel .tm-desc { background: var(--surface); max-height: 220px; overflow: auto; }
 `;
 
 // Ações do card de tarefa (handlers da webview). Contrato: acoes(servicos), ver teste-acoes.js.
@@ -185,11 +231,30 @@ const acoes = (s) => ({
       if (v && !/^(\d+(\.\d+)?[wdhm]\s*)+$/i.test(v)) return vscode.window.showWarningMessage(`Estimativa no formato do ${ondeNome(s.ticketAberto())}: 30m, 2h, 1d ou 1d 4h.`);
       if ((c.estimativa || '') === v) return;
       c.estimativa = v;
-    } else if (campo === 'vinculado') {
-      if (!!c.vinculado === !!valor) return;
-      c.vinculado = !!valor;
     } else return;
     s.gravar(s.aberto, TAREFAS, l);
+  },
+  // Responsável: UMA pessoa, escolhida na mesma busca das menções do comentário (pessoas do ticket). "Eu" e "Sem responsável" no topo.
+  async tarefaResponsavel({ id }) {
+    const t = s.ticketAberto();
+    const c = t && tarefasDe(s.pasta(t.chave)).find((x) => x.id === id);
+    if (!c || c.status !== 'pendente') return;
+    let eu = null;
+    try { eu = await jira.eu(s.secrets, t.site); } catch { /* sem "Eu": a busca continua */ }
+    const atual = c.responsavel?.nome || (c.vinculado ? 'você' : '');
+    const r = await escolherPessoa({
+      titulo: `Responsável por ${c.id}${atual ? ` (hoje: ${atual})` : ''}`,
+      placeholder: `Digite parte do nome ou do e-mail para buscar no ${ondeNome(t)}`,
+      buscar: (q) => jira.pessoas(s.secrets, jira.alvo(t), q),
+      fixas: [...(eu ? [{ label: `$(account) Eu (${eu.nome})`, pessoa: { id: eu.id, nome: eu.nome } }] : []), { label: '$(circle-slash) Sem responsável', pessoa: null }]
+    });
+    if (!r) return;
+    const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
+    if (!x || x.status !== 'pendente') return;
+    delete x.vinculado;
+    if (r.pessoa) x.responsavel = { id: r.pessoa.id, nome: r.pessoa.nome }; else delete x.responsavel;
+    s.gravar(t.chave, TAREFAS, l);
+    s.render();
   },
   // Aprovar = criar a subtarefa no Jira (com confirmação). Só então o card vai para Aprovadas.
   async tarefaAprovar({ id }) {
@@ -199,13 +264,14 @@ const acoes = (s) => ({
     await new Promise((ok) => setTimeout(ok, 150)); // os campos do detalhe chegam antes
     const c = tarefasDe(s.pasta(t.chave)).find((x) => x.id === id);
     if (c.tipo === 'qa') return acoes(s).qaAprovar(t, c);
-    const ok = await vscode.window.showWarningMessage(`Aprovar ${c.id}? A subtarefa será criada no ${ondeNome(t)}, no ticket ${t.chave}.`, { modal: true,
-      detail: `“${c.titulo}”\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` }, `Aprovar e criar no ${ondeNome(t)}`);
+    const filho = filhoDe(t), oque = filho ? `O item (${filho})` : 'A subtarefa';
+    const ok = await vscode.window.showWarningMessage(`Aprovar ${c.id}? ${oque} será criad${filho ? 'o' : 'a'} no ${ondeNome(t)}, no ticket ${t.chave}.`, { modal: true,
+      detail: `“${c.titulo}”\nResponsável: ${respNome(c) || 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` }, `Aprovar e criar no ${ondeNome(t)}`);
     if (!ok) return;
     let r;
     try {
-      r = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: descricaoJira(t, c), estimativa: c.estimativa, atribuirAMim: c.vinculado });
-    } catch (e) { return vscode.window.showErrorMessage(`Subtarefa não criada: ${e.message}`); }
+      r = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: descricaoJira(t, c), estimativa: c.estimativa, responsavelId: c.responsavel?.id, atribuirAMim: !c.responsavel && !!c.vinculado, tipoNome: filho || undefined });
+    } catch (e) { return vscode.window.showErrorMessage(`${filho ? 'Item' : 'Subtarefa'} não criad${filho ? 'o' : 'a'}: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === id);
     Object.assign(x, { status: 'aprovada', ticket: r.key });
     (x.historico ||= []).push({ em: new Date().toISOString(), evento: 'aprovada', texto: `Aprovada: subtarefa ${r.key} criada no ${ondeNome(t)}` });
@@ -226,13 +292,13 @@ const acoes = (s) => ({
     const ok = await vscode.window.showWarningMessage(existente
       ? `Aprovar o plano de testes? A subtarefa ${existente.key} (“${existente.resumo}”) já existe em ${t.chave}: a descrição dela será substituída pelo plano.`
       : `Aprovar o plano de testes? A subtarefa “${c.titulo}” será criada no ${ondeNome(t)}, no ticket ${t.chave}.`, { modal: true,
-      detail: `${c.resumo || ''}\nResponsável: ${c.vinculado ? 'você' : 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` },
+      detail: `${c.resumo || ''}\nResponsável: ${respNome(c) || 'sem responsável'} · Estimativa original: ${c.estimativa || 'sem estimativa'}` },
       existente ? `Aprovar e atualizar no ${ondeNome(t)}` : `Aprovar e criar no ${ondeNome(t)}`);
     if (!ok) return;
     let key, aviso;
     try {
       if (existente) { await jira.atualizarDescricao(s.secrets, { site: t.site }, existente.key, plano); key = existente.key; }
-      else ({ key, aviso } = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: plano, estimativa: c.estimativa, atribuirAMim: c.vinculado }));
+      else ({ key, aviso } = await jira.criarSubtarefa(s.secrets, jira.alvo(t), { resumo: c.titulo, descricao: plano, estimativa: c.estimativa, responsavelId: c.responsavel?.id, atribuirAMim: !c.responsavel && !!c.vinculado }));
     } catch (e) { return vscode.window.showErrorMessage(`Plano de testes não enviado: ${e.message}`); }
     const l = tarefasDe(s.pasta(t.chave)), x = l.find((y) => y.id === c.id);
     Object.assign(x, { status: 'aprovada', ticket: key });

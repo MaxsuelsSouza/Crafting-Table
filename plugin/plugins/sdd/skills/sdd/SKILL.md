@@ -111,6 +111,11 @@ comentário é, antes de qualquer análise de impacto.
 2. `sdd-state init --ref <pasta> --repo <repo>` → cria `<CHAVE>-<slug>/` na raiz do repositório de specs (ticket) ou `specs/NNN-<slug>/` (refinamento antigo) e o estado.
 3. Siga para o **protocolo de retomada**.
 
+**Escopo `quebrar` (Épico, Feature…).** Se `.ticket.json › refinamento.papel` for `quebrar` (ou a mensagem trouxer "papel: quebrar"), o ticket não
+é desenvolvido por dev: o resultado são itens do tipo abaixo (`refinamento.filho`). O `init` já dispensa os passos 5 e 6 (`--escopo quebrar`).
+Passos 1 e 2 como de costume (escopo, critérios de aceite, sem tecnologia); passo 3 é **`## Decomposição`** em `plan.md` (como o escopo se divide, ordem e
+dependências, sem mapeamento de código nem banco); passo 4 gera um card por item (`sdd-state card`), sem subtarefas técnicas, camada ou horas.
+
 ## Protocolo de retomada (`/sdd:continuar <pasta>` — inclusive em conversa nova)
 
 1. `sdd-state status --ref <pasta>` (ele recalcula hashes e aplica a cascata de edições feitas fora da conversa).

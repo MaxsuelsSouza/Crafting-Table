@@ -5,7 +5,7 @@
 // Todos os comandos recebem --ref <pasta do refinamento> (~/.claude/refinamentos/<id>, meta.json) ou do ticket
 // (~/.claude/tickets/<CHAVE>, .ticket.json), cujo arquivo aponta
 // spec.repo e spec.dir.
-//   init      --ref R --repo REPO [--titulo T] [--ticket K]  cria <CHAVE>-slug/ (ticket) ou specs/NNN-slug/ e o estado (idempotente)
+//   init      --ref R --repo REPO [--titulo T] [--ticket K] [--escopo quebrar]  cria <CHAVE>-slug/ (ticket) ou specs/NNN-slug/ e o estado (idempotente)
 //   status    --ref R                                       resumo de retomada (5 linhas) — roda o check antes
 //   check     --ref R                                       recalcula hashes e aplica a cascata
 //   iniciar   N --ref R                                     passo N → em_andamento (exige anteriores aprovados)
@@ -154,12 +154,23 @@ function check(L, e) {
     hist(e, 'editado_apos_aprovacao', { passo: p.n });
     for (const m of DEPENDENTES[p.n]) {
       const d = e.passos[m];
+      if (d.dispensado) continue; // escopo quebrar: passos 5 e 6 não existem
       if ((d.status === 'aprovado' || d.status === 'aguardando_revisao' || d.status === 'em_andamento') && d.baseadoEm[p.n] !== h) {
         d.status = 'desatualizado';
         d.motivoDesatualizado = `${PASSOS[p.n].titulo} (${p.arquivo}) mudou depois de aprovado`;
         hist(e, 'desatualizado', { passo: m, por: p.n });
       }
     }
+  }
+  // Passo em revisão depois de um desatualizado não pode ser aprovado (aprovar exige os anteriores): também fica desatualizado,
+  // senão a extensão acha que espera o humano e o refinamento trava.
+  for (const p of e.passos) {
+    if (p.status !== 'aguardando_revisao' || p.dispensado) continue;
+    const base = e.passos.slice(0, p.n).find((x) => x.status === 'desatualizado');
+    if (!base) continue;
+    p.status = 'desatualizado';
+    p.motivoDesatualizado = `${base.titulo} (${base.arquivo}) está desatualizado: reconcilie antes`;
+    hist(e, 'desatualizado', { passo: p.n, por: base.n });
   }
   apontar(e);
   return mudancas;
@@ -226,6 +237,14 @@ const comandos = {
     gravarJson(metaArq(), meta);
     const L = locais();
     const e = novoEstado(L, meta, feature);
+    // Escopo "quebrar" (Épico, Feature…): sem plano de testes nem análise técnica; os passos 5 e 6 nascem dispensados. A extensão grava
+    // refinamento.papel no .ticket.json antes do init; --escopo vale quando ela não passou por lá.
+    const escopo = String(opt.escopo || meta.refinamento?.papel || '');
+    if (escopo === 'quebrar') {
+      e.escopo = 'quebrar';
+      for (const p of e.passos.filter((x) => x.n >= 5)) Object.assign(p, { status: 'aprovado', dispensado: true, aprovadoPor: 'escopo quebrar', aprovadoEm: agora() });
+      hist(e, 'escopo', { escopo });
+    }
     check(L, e);
     salvar(L, e);
     console.log(`spec iniciada: ${dir}`);
@@ -267,6 +286,8 @@ const comandos = {
     const n = passoN(); const L = locais(); const e = carregar(L);
     const p = e.passos[n];
     if (!['em_andamento', 'desatualizado', 'aguardando_revisao'].includes(p.status)) falhar(`passo ${n} está ${p.status}; rode iniciar antes`, 3);
+    const antes = e.passos.slice(0, n).filter((x) => !x.dispensado && x.status !== 'aprovado');
+    if (antes.length) falhar(`passo ${n} não pode concluir: aprove antes ${antes.map((x) => `${x.n} ${x.titulo} (${x.status})`).join(', ')}`, 3);
     const h = hashDe(arquivoDo(L, p)); if (!h) falhar(`arquivo do passo não existe: ${arquivoDo(L, p)}`, 3);
     let resumo = {};
     if (opt.resumo) { try { resumo = JSON.parse(opt.resumo); } catch { falhar('--resumo precisa ser JSON'); } }

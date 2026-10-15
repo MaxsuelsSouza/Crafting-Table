@@ -66,6 +66,7 @@ async function buscar(secrets, { key, site }) {
     resumo: j.fields.summary,
     status: j.fields.status?.name,
     tipo: j.fields.issuetype?.name,
+    pai: j.fields.parent?.key || null,
     prioridade: j.fields.priority?.name,
     responsavel: j.fields.assignee?.displayName || 'Sem responsável',
     horas: { original: tt.originalEstimate, restante: tt.remainingEstimate, registrado: tt.timeSpent },
@@ -408,20 +409,23 @@ async function descobrir(secrets, site, projetoAtual = '') {
     (await statusDoProjeto(secrets, site, p.chave).catch(() => [])).forEach((n) => status.add(n));
   }
   const tipos = await api(secrets, site, 'issuetype').catch(() => []);
-  const tiposItem = [...new Map((Array.isArray(tipos) ? tipos : []).map((t) => [t.name, { nome: t.name, subtarefa: !!t.subtask }])).values()];
+  const tiposItem = [...new Map((Array.isArray(tipos) ? tipos : []).map((t) => [t.name, { nome: t.name, subtarefa: !!t.subtask, nivel: t.hierarchyLevel }])).values()];
   const labs = await labels(secrets, site, '').catch(() => []);
   return { site, projetos, boards: lista, status: [...status].sort((a, b) => a.localeCompare(b)).slice(0, LIMITES.status), tiposItem, labels: labs.slice(0, LIMITES.labels) };
 }
 
 // Subtarefa no ticket pai: tipo de subtarefa do projeto, você como responsável (opcional) e estimativa original.
 // A estimativa vai num segundo passo: muitas telas de criação não têm o campo de tempo.
-async function criarSubtarefa(secrets, { key, site }, { resumo, descricao, estimativa, atribuirAMim }) {
+// `tipoNome`: cria um item deste tipo sob o ticket (Feature sob Épico, História sob Feature…) em vez da subtarefa.
+async function criarSubtarefa(secrets, { key, site }, { resumo, descricao, estimativa, atribuirAMim, responsavelId, tipoNome }) {
   const projeto = key.split('-')[0];
   const tipos = await api(secrets, site, `issue/createmeta/${projeto}/issuetypes`);
-  const tipo = (tipos.issueTypes || tipos.values || []).find((t) => t.subtask);
-  if (!tipo) throw new Error(`O projeto ${projeto} não tem tipo de subtarefa`);
+  const lista = tipos.issueTypes || tipos.values || [];
+  const tipo = tipoNome ? lista.find((t) => String(t.name).trim().toLowerCase() === String(tipoNome).trim().toLowerCase()) : lista.find((t) => t.subtask);
+  if (!tipo) throw new Error(tipoNome ? `O projeto ${projeto} não tem o tipo ${tipoNome}` : `O projeto ${projeto} não tem tipo de subtarefa`);
   const fields = { project: { key: projeto }, parent: { key }, issuetype: { id: tipo.id }, summary: String(resumo).slice(0, 250), description: mdParaAdf(descricao) };
-  if (atribuirAMim) fields.assignee = { accountId: (await api(secrets, site, 'myself')).accountId };
+  if (responsavelId) fields.assignee = { accountId: responsavelId };
+  else if (atribuirAMim) fields.assignee = { accountId: (await api(secrets, site, 'myself')).accountId };
   const novo = await api(secrets, site, 'issue', { method: 'POST', body: JSON.stringify({ fields }) });
   if (estimativa) {
     try { await api(secrets, site, `issue/${novo.key}`, { method: 'PUT', body: JSON.stringify({ fields: { timetracking: { originalEstimate: estimativa } } }) }); }

@@ -17,6 +17,7 @@ const aoVivo = require('../componentes/ao-vivo');
 const pill = require('../componentes/pill');
 const mudancas = require('./mudancas');
 const orq = require('./orquestrador');
+const hierarquia = require('./hierarquia');
 const caixaEtapas = require('../componentes/caixa-etapas');
 const { SPECS_PADRAO, sddState } = require('../configuracao/configuracao');
 
@@ -69,6 +70,13 @@ const caixaPausa = (t, dir) => {
     <div class="folha"><div class="atexto">${esc(pausa.pergunta)}</div><ol>${(pausa.perguntas || []).map((q) => `<li>${esc(q)}</li>`).join('')}</ol>
       <textarea data-texto style="width:100%;min-height:110px;box-sizing:border-box" placeholder="Responda com suas palavras: vira a fonte verbal do passo 1."></textarea>
       <div class="aacoes"><button class="primario" data-acao="refinoBriefing">Enviar e iniciar o refinamento</button></div></div>`;
+  if (pausa.motivo === 'tipo') return `<div class="caixa-t">Qual o papel deste tipo de ticket?<span>o refinamento muda conforme o tipo; sua resposta fica nas variáveis</span></div>
+    <div class="folha"><div class="atexto">${esc(pausa.pergunta)}</div>
+      <div class="aacoes">
+        <button class="primario" data-acao="refinoTipo" data-id="quebrar" title="Épico, Feature…: o refinamento propõe os itens do nível abaixo, sem spec técnica">Quebra em itens menores</button>
+        <button class="primario" data-acao="refinoTipo" data-id="desenvolver" title="História, Tarefa, Bug…: spec completa e subtarefas de desenvolvimento">É o que o dev desenvolve</button>
+        <button data-acao="refinoTipo" data-id="executar" title="Subtarefa: já é o trabalho, não se refina">Já é a unidade de trabalho</button>
+      </div></div>`;
   return `<div class="agora"><div class="atitulo">${esc(pausa.pergunta)}</div><div class="atexto">${esc(pausa.detalhe || '')}</div>
     <div class="aacoes"><button class="primario" data-acao="retomar">▶ Continuar</button></div></div>`;
 };
@@ -86,6 +94,7 @@ function telaConstituicao(r, est, abertos, impactos = []) {
   return `<div class="sdd-topo"><b>${esc(est.feature)}</b> · ${esc(path.basename(r.spec.repo))}<br>Próxima ação: ${esc(est.proximaAcao || '')}</div>
   <div class="passos">${est.passos.map((p) => {
     const lido = abertos.has(`${r.id}:${p.n}:${p.hash}`);
+    const anteriores = est.passos.slice(0, p.n).filter((x) => !x.dispensado && x.status !== 'aprovado').map((x) => x.n);
     const portaoFechado = p.n === 2 ? abertas.length : p.n === 5 ? bloq.length : 0;
     const resumo = Object.entries(p.resumo || {}).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length));
     const extra = p.n === 2 && est.perguntas.length ? `<ul class="lista-mini">${est.perguntas.map((q) => `<li><b>${esc(q.id)}</b> ${esc(q.pergunta)} — ${q.status === 'respondida' ? esc(q.resposta) : `<i>${esc(q.status)}</i>`}</li>`).join('')}</ul>`
@@ -112,8 +121,8 @@ function telaConstituicao(r, est, abertos, impactos = []) {
           ${p.hashAprovado && p.hash !== p.hashAprovado && fs.existsSync(copiaAprovada(r, p.n)) ? `<button class="fb-btn" data-acao="specMudancas" data-id="${p.n}" title="Diferença para a versão aprovada">Ver mudanças</button>` : ''}
         </div>
         ${p.status === 'aguardando_revisao' ? `<div class="acoes-passo">
-          <button class="aprovar ${vivo && !decide ? '' : 'travado'}" data-acao="specAprovar" data-id="${p.n}" ${decide ? 'disabled' : !vivo || (lido && !portaoFechado) ? '' : 'disabled'}
-            title="${decide ? `Decida primeiro a mudança pedida em comentário do ${esc(nomeProvedor(r))} (caixa vermelha acima)` : !vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
+          <button class="aprovar ${vivo && !decide ? '' : 'travado'}" data-acao="specAprovar" data-id="${p.n}" ${decide || anteriores.length ? 'disabled' : !vivo || (lido && !portaoFechado) ? '' : 'disabled'}
+            title="${anteriores.length ? `Aprove antes o(s) passo(s) ${anteriores.join(', ')}` : decide ? `Decida primeiro a mudança pedida em comentário do ${esc(nomeProvedor(r))} (caixa vermelha acima)` : !vivo ? 'O Claude ainda está trabalhando: espere a etapa terminar' : !lido ? 'Abra o arquivo antes de aprovar: nunca aprove sem ler' : portaoFechado ? 'Resolva as pendências do portão' : 'Aprovar este passo'}">Aprovar</button>
           <button data-acao="specAjuste" data-id="${p.n}">Pedir ajuste</button></div>` : ''}
         ${p.status === 'desatualizado' ? `<div class="acoes-passo"><button data-acao="specContinuar">Reconciliar</button></div>` : ''}
       </div>`}
@@ -186,9 +195,26 @@ const acoes = (s) => ({
       if (!uri) return;
       repo = uri[0].fsPath;
     }
-    // Ticket só com título: pergunta ao dev antes de gastar uma execução (nunca invenção). Já explicou? segue com o briefing.
     let j;
     try { j = jira.ehDocumento(t) ? require('../provedores/documento').buscarSync({ key: t.chave }) : s.cacheJira?.[t.chave]; } catch { /* sem dados: não bloqueia */ }
+    // Tipo do ticket (hierarquia Épico > Feature > História > Subtarefa): o que se refina depende dele. Sem o tipo (ticket por documento,
+    // ainda não buscou) segue como desenvolvimento; tipo fora das variáveis: pergunta o que ele é e grava lá.
+    let papel = { papel: 'desenvolver' };
+    if (j?.tipo && !jira.ehDocumento(t)) {
+      const h = hierarquia.papelDe(j.tipo);
+      if (!h) {
+        gravarRefino(pasta(t.chave), { pausa: { motivo: 'tipo', tipo: j.tipo, pergunta: `${t.chave} é do tipo “${j.tipo}”, que ainda não está na hierarquia dos tipos (Configurações › variáveis). O que um ticket deste tipo é para o time?` } });
+        s.mudarAba('spec');
+        s.render();
+        return;
+      }
+      if (h.papel === 'executar') {
+        const pai = j.pai ? ` (${j.pai})` : '';
+        return vscode.window.showWarningMessage(`${t.chave} é do tipo “${j.tipo}”, que já é a unidade de trabalho. Refine o ticket pai${pai}: é ali que nascem as subtarefas.`);
+      }
+      papel = h;
+    }
+    // Ticket só com título: pergunta ao dev antes de gastar uma execução (nunca invenção). Já explicou? segue com o briefing.
     if (!briefingFeito(t) && !suficiente(t, j)) {
       gravarRefino(pasta(t.chave), { pausa: { motivo: 'briefing', pergunta: 'O ticket só tem o título: não há o que refinar sem saber o que se quer. Responda para o Claude começar.', perguntas: PERGUNTAS_BRIEFING } });
       s.mudarAba('spec');
@@ -196,7 +222,8 @@ const acoes = (s) => ({
       return;
     }
     modo(t.chave, 'aguardando_inicio');
-    tickets.gravar({ ...tickets.ler(t.chave), refinamento: { ...tickets.ler(t.chave).refinamento, iniciadoPor: os.userInfo().username } });
+    tickets.gravar({ ...tickets.ler(t.chave), refinamento: { ...tickets.ler(t.chave).refinamento, iniciadoPor: os.userInfo().username,
+      papel: papel.papel, tipoTicket: j?.tipo || null, filho: papel.filho || null } });
     s.mudarAba('spec'); // o refinamento acontece na aba Spec
     s.atualizarJira(t.chave); // anexos do ticket aparecem em Docs para baixar
     // Maestro (prova): o Claude roda em segundo plano e a caixa Ao vivo da aba Spec mostra o que ele faz.
@@ -211,6 +238,25 @@ const acoes = (s) => ({
     if (r.length < 20) return vscode.window.showWarningMessage('Explique um pouco mais (o que precisa mudar e como saber que ficou certo).');
     fs.mkdirSync(pasta(t.chave), { recursive: true });
     fs.appendFileSync(path.join(pasta(t.chave), BRIEFING), `${r}\n\n`);
+    gravarRefino(pasta(t.chave), { pausa: null });
+    return acoes(s).refinar();
+  },
+  // Resposta à pergunta de tipo: grava nas variáveis (hierarquia) e começa o refinamento. Quebra: pergunta também o que o tipo gera.
+  async refinoTipo({ id }) {
+    const t = s.ticketAberto();
+    const tipo = t && refinoDe(pasta(t.chave)).pausa?.tipo;
+    if (!tipo || !['quebrar', 'desenvolver', 'executar'].includes(id)) return;
+    let filho;
+    if (id === 'quebrar') {
+      const OUTRO = 'Outro tipo…', cands = hierarquia.conhecidos().filter((x) => x.toLowerCase() !== tipo.toLowerCase());
+      let escolhido = cands.length ? await vscode.window.showQuickPick([...cands, OUTRO], { title: `Refinar um ${tipo} gera itens de qual tipo?`, placeHolder: 'O nível logo abaixo na hierarquia' }) : OUTRO;
+      if (!escolhido) return;
+      if (escolhido === OUTRO) escolhido = (await vscode.window.showInputBox({ title: `Refinar um ${tipo} gera itens de qual tipo?`, prompt: 'Nome do tipo no Jira (ex.: Feature, Story)', ignoreFocusOut: true }))?.trim();
+      if (!escolhido) return;
+      filho = escolhido;
+      if (!hierarquia.papelDe(filho)) await hierarquia.registrar(filho, 'desenvolver'); // filho desconhecido: assume desenvolvimento (editável nas variáveis)
+    }
+    await hierarquia.registrar(tipo, id, filho);
     gravarRefino(pasta(t.chave), { pausa: null });
     return acoes(s).refinar();
   },

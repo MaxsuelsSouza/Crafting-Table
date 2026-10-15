@@ -40,6 +40,7 @@ function valoresPermitidos(descoberta, definicoes) {
   const status = conj([...(d.status || []), ...etapas]);
   const porChave = { site: conj([d.site]), projeto: conj((d.projetos || []).map((p) => p.chave)), ticket: conj((d.tiposItem || []).map((t) => t.nome)),
     tipoIncidente: conj((d.tiposItem || []).map((t) => t.nome)), etapas: conj(etapas.length ? etapas : [...status.values()]) };
+  for (const k of ['tiposQuebrar', 'tiposDesenvolver', 'tiposExecutar']) porChave[k] = porChave.ticket;
   return Object.fromEntries(definicoes.map((df) => [df.chave, porChave[df.chave]
     || (df.escolha === 'boards' ? conj((d.boards || []).map((b) => b.nome)) : df.escolha === 'labels' ? conj(d.labels) : df.escolha === 'status' ? status : new Map())]));
 }
@@ -85,6 +86,7 @@ Você vai mapear as variáveis da extensão para a conta de gestão de trabalho 
 Regras:
 - Use SOMENTE valores que existem na descoberta, escritos exatamente como lá (nomes de board, status, tipos de item, labels, chaves de projeto). Nunca invente.
 - Tipo "texto": valor é um texto. Tipo "lista": valor é uma lista de textos. Em etapas de QA, um nome alternativo do mesmo status se escreve com "|" (ex.: "Pronto para QA|Pronto p/ QA").
+- Tipos do Refinamento (tiposQuebrar, tiposDesenvolver, tiposExecutar): classifique os "tiposItem" sem repetir um tipo em duas listas. Subtarefa (subtarefa: true) é de execução; "nivel" é o hierarchyLevel do Jira (maior = mais alto: Épico acima de História). Em tiposQuebrar, do mais alto ao mais baixo; tipos de nível 0 que o dev desenvolve (História, Tarefa, Bug) vão em tiposDesenvolver. Na dúvida, omita.
 - Omita a variável quando não houver correspondência segura. Se já há valorAtual coerente, pode repeti-lo.
 - Leia e escreva apenas nessa pasta. Não use rede, não rode comandos e não procure credenciais.
 - Responda com uma frase curta ao terminar.`;

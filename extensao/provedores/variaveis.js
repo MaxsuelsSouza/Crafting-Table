@@ -9,7 +9,7 @@ const vscode = require('vscode');
 // globalState.labelQA (que continuam lá; nada é apagado). Valores que só existiam no código não são sugeridos.
 //   ler(chave) · todas() · gravar(chave, valor, origem) · definicoes · vincular(globalState)
 
-/** @typedef {{ chave: string, rotulo: string, descricao: string, usadaEm: string, tipo: 'texto' | 'lista', escolha?: 'projetos' | 'boards' | 'status' | 'labels' }} Definicao */
+/** @typedef {{ chave: string, rotulo: string, descricao: string, usadaEm: string, tipo: 'texto' | 'lista', escolha?: 'projetos' | 'boards' | 'status' | 'labels' | 'tipos' }} Definicao */
 
 /** @type {Definicao[]} */
 const definicoes = [
@@ -29,7 +29,15 @@ const definicoes = [
   { chave: 'labelQA', rotulo: 'Label de QA', tipo: 'texto', escolha: 'labels', usadaEm: 'lista de tickets do módulo QA',
     descricao: 'Junto com as Etapas de QA: só entram na caixa do QA os tickets com esta label (é como o time marca o que é do QA).' },
   { chave: 'etapasImplementacao', rotulo: 'Etapas de implementação', tipo: 'lista', escolha: 'status', usadaEm: 'lista de tickets do módulo Implementações',
-    descricao: 'A caixa de vinculados do módulo Implementações mostra só os tickets nestas etapas: os disponíveis para desenvolver (ex.: Buffer, Não iniciado, Em andamento|In progress).' }
+    descricao: 'A caixa de vinculados do módulo Implementações mostra só os tickets nestas etapas: os disponíveis para desenvolver (ex.: Buffer, Não iniciado, Em andamento|In progress).' },
+  // Hierarquia dos tipos de ticket (módulo Refinamento): o que cada tipo gera ao ser refinado. Tipo fora das três listas: o refinamento
+  // pergunta o que ele é e grava aqui. Nome alternativo do mesmo tipo com "|" (ex.: Story|História).
+  { chave: 'tiposQuebrar', rotulo: 'Tipos que se quebram', tipo: 'lista', escolha: 'tipos', usadaEm: 'módulo Refinamento: tipos que geram itens menores',
+    descricao: 'Tipos de ticket que o time não desenvolve direto: refinar um deles propõe os itens do nível abaixo. Do mais alto ao mais baixo (ex.: Epic, Feature): cada um gera o seguinte; o último gera o primeiro dos Tipos de desenvolvimento.' },
+  { chave: 'tiposDesenvolver', rotulo: 'Tipos de desenvolvimento', tipo: 'lista', escolha: 'tipos', usadaEm: 'módulo Refinamento: tipos que viram spec e subtarefas',
+    descricao: 'Tipos de ticket que o dev desenvolve (ex.: Story, Task, Bug): o refinamento faz a spec completa e gera as subtarefas de desenvolvimento.' },
+  { chave: 'tiposExecutar', rotulo: 'Tipos de execução', tipo: 'lista', escolha: 'tipos', usadaEm: 'módulo Refinamento: tipos que já são o trabalho',
+    descricao: 'Tipos que já são a unidade de trabalho (ex.: Sub-task): não se refinam; o refinamento manda você para o ticket pai.' }
 ];
 
 const def = (chave) => definicoes.find((d) => d.chave === chave);
