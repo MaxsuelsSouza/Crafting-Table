@@ -195,6 +195,19 @@ function ultimoRefresh(agora, hora = '06:00') {
 }
 const massaValida = (i, agora, hora) => i.estado === 'valida' && new Date(i.medidaEm) >= ultimoRefresh(agora, hora);
 const semMassa = (dir, ids, agora, hora) => ids.filter((id) => !massa(dir).itens.some((i) => (i.cenarios || []).includes(id) && massaValida(i, agora, hora)));
+// Sincronia Ao Vivo ↔ aba Massa: antes de tocar no banco, a sessão lê o que a aba já tem. Por cenário: `validas` (itens que ainda servem),
+// `faltam` (sem massa válida: só esses podem ir ao banco) e `esgotadas` (a aba só tem massa já consumida: a busca no banco encerra, não se gera outra).
+function sincronizarMassa(dir, ids, agora, hora) {
+  const itens = massa(dir).itens, validas = {}, faltam = [], esgotadas = [];
+  for (const id of ids) {
+    const meus = itens.filter((i) => (i.cenarios || []).includes(id));
+    validas[id] = meus.filter((i) => massaValida(i, agora, hora));
+    if (validas[id].length) continue;
+    faltam.push(id);
+    if (meus.length && meus.every((i) => i.estado === 'consumida')) esgotadas.push(id);
+  }
+  return { validas, faltam, esgotadas };
+}
 function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '', origem = 'consulta', desfazer = [] }) {
   const m = massa(dir), id = `M${m.itens.reduce((n, i) => Math.max(n, Number(i.id.slice(1)) || 0), 0) + 1}`;
   m.itens.push({ id, papel: papel || '', cenarios: cens || [], dados: dados || {}, consulta: consulta || '', medidaEm: new Date().toISOString(), estado: 'valida',
@@ -360,7 +373,7 @@ const REGRAS = 'Modo não interativo, sem ninguém para aprovar permissões. Nã
 const RESPOSTAS = '.respostas.md', PAUSA = '.pausa.json';
 const citarRespostas = (dir) => (fs.existsSync(path.join(dir, RESPOSTAS)) ? `\nRespostas do humano a perguntas anteriores (use-as): ${path.join(dir, RESPOSTAS)}` : '');
 const citarDossie = (dir) => (fs.existsSync(path.join(dir, 'dossie.md')) ? `\nDossiê do ticket (fontes, confiança e lacunas): ${path.join(dir, 'dossie.md')}` : '');
-const promptMassa = (chave, cens, dir = '', banco = '', mapa = '', escreve = false) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
+const promptMassa = (chave, cens, dir = '', banco = '', mapa = '', escreve = false, naAba = []) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
   + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n`
   + `Banco: ${banco || 'NÃO configurado: não consulte banco; registre como pendência'}${mapa ? `. Consulte SOMENTE por ${mapa}/bin/mapa-db (SELECT, máx. 50 linhas, colunas sensíveis mascaradas)` : ''}.\n`
   + (escreve ? `Se não existir registro que sirva, MONTE a massa ajustando os dados: leia antes, por SELECT, os valores originais e PROPONHA o lote com ${QA_STATE} massa proposta --papel "<papel>" --cenarios CT01 `
@@ -368,6 +381,7 @@ const promptMassa = (chave, cens, dir = '', banco = '', mapa = '', escreve = fal
     + 'Você NÃO executa escrita: a extensão roda o lote depois que o humano ler e aprovar; proposta recusada ou sem WHERE por chave volta com o motivo. TERMINE em seguida. '
     + 'Mexa no mínimo de registros e nunca em registro que outro cenário usa.\n' : '')
   + cens.map((c) => `- ${c.id} · ${c.titulo}${c.resumo ? ` (${c.resumo})` : ''}`).join('\n')
+  + (naAba.length ? `\nJá válidos na aba Massa (NÃO consulte nem registre de novo estes registros; escolha outros): ${JSON.stringify(naAba.map((i) => ({ id: i.id, papel: i.papel, cenarios: i.cenarios })))}.` : '')
   + `\nPara cada papel encontrado: ${QA_STATE} massa add --papel "<papel>" --cenarios CT01,CT02 --dados '<json com os campos>' --consulta "<SQL usado>". `
   + 'Traga 2 registros por papel quando der (reserva: um cenário pode consumir o registro). Cenário que não precisa de massa: não registre nada. '
   + `Se o banco não responder, termine dizendo isso. ${REGRAS}`;
@@ -585,10 +599,18 @@ function responder(dir, resposta) {
 }
 
 // Etapa 4: o Claude levanta massa para os cenários dados. `etapa: 'massa'` no estado libera o `qa-state massa add` só durante ela.
+// Trava de banco: relê a aba antes; só vai ao banco quem não tem massa válida lá, e cenário com a massa da aba toda consumida encerra a busca.
 async function levantarMassa(dir, d, amb, cens) {
+  const sync = sincronizarMassa(dir, cens.map((c) => c.id), new Date(), d.horaRefresh);
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  const naAba = Object.values(sync.validas).flat();
+  const busca = cens.filter((c) => sync.faltam.includes(c.id) && !sync.esgotadas.includes(c.id));
+  if (sync.esgotadas.length) vivo('aviso', `Massa da aba toda consumida para ${sync.esgotadas.join(', ')}: busca no banco encerrada`);
+  if (!busca.length) { if (!sync.faltam.length) vivo('fim', 'Aba Massa já tem massa válida para os cenários: banco não consultado'); return { ok: true, travado: true }; }
+  cens = busca;
   mudar(dir, { etapa: 'massa' });
   const b = d.banco, liberado = b && require('../infra/banco').liberado(b), mapa = liberado ? vagas.raiz('impl.mapa') || '' : '';
-  const opts = { prompt: promptMassa(d.chave, cens, dir, b ? require('../infra/banco').texto(b) : '', mapa, liberado), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend,
+  const opts = { prompt: promptMassa(d.chave, cens, dir, b ? require('../infra/banco').texto(b) : '', mapa, liberado, naAba), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend,
     ferramentas: FERRAMENTAS_MASSA(mapa), env: { ...(mapa ? require('../infra/banco').env(b, dir) : {}), ...(liberado ? { QA_BANCO_ESCRITA: '1' } : {}) } };
   try { return await claude(dir, opts, d); } finally { mudar(dir, { etapa: null }); }
 }
@@ -984,5 +1006,5 @@ function mapaHtml(dir, r, amb, uri) {
 }
 
 module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
-  ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, emPreCondicao, registrarPreCondicao, promptPreCondicao, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
+  ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, emPreCondicao, registrarPreCondicao, promptPreCondicao, evidencia, arquivosDe, massa, massaAdd, massaEstado, sincronizarMassa, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { healthCheck, papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };
