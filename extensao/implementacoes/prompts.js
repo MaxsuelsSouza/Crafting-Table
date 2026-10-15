@@ -25,11 +25,13 @@ const TAREFA = {
   2: (c) => `ETAPA 2 · ENTENDIMENTO. Leia ${c.dir}/dossie.md, cada arquivo que ele cita nos eixos (spec, diagnóstico, cenários, documento…), ${c.dir}/${CONTEXTO} (se existir) e o briefing do dev (${c.dir}/.briefing.md, se existir). `
     + `Grave em ${c.dir}/${ARQ[2]}, seções: "Objetivo" (o que tem que mudar, em uma ou duas frases), "Critério de pronto" (como saber que acabou; se o dossiê não traz um, PROPONHA e marque "(proposto)"), `
     + `"Escopo" e "Fora de escopo", "Origem das afirmações" (cada afirmação com a fonte e a confiança: aprovado, gerado, bruto, verbal ou inferido) e "Lacunas". `
+    + `Se o dossiê citar trabalho-existente.md, leia o resumo: o que já foi feito por outra pessoa entra no Escopo como "já feito" e não como pendente. `
     + `Se há lacuna crítica que muda o rumo e nenhuma fonte responde, PAUSE e pergunte exatamente o que falta.`,
   3: (c) => `ETAPA 3 · VARREDURA DO CÓDIGO (somente leitura). Leia ${c.dir}/${ARQ[2]} e ${c.dir}/dossie.md. Se o dossiê trouxer mapa do código (mapa-*.md) ou plano técnico, use-os como ponto de partida e confira se ainda batem com o código atual (mapa-conferir). `
     + `Nos repositórios, responda COM EVIDÊNCIA (arquivo:linha) e grave em ${c.dir}/${ARQ[3]}: "Onde isso entra" (camada, módulos, pontos de entrada), "O que já existe" (funções, telas e regras que cobrem total ou parcialmente o pedido), `
     + `"Parecido" (algo equivalente já feito: reutilizar, estender ou criar separado, e por quê), "O que pode quebrar" (chamadores, contratos, dados, fluxos e testes que cobrem o trecho), `
     + `"Conflito com as regras" (constituição e convenções do repositório) e "Sem resposta" (o que o código não resolve). `
+    + `Se o dossiê citar trabalho-existente.md, LEIA: é código que outra pessoa já fez para este ticket (branches e commits). Em "O que já existe" diga, com a branch e o arquivo, o que dele já cobre o pedido e o que falta; em "Parecido" diga se vale continuar daquela branch. `
     + `Se achar algo parecido e a decisão muda o rumo, PAUSE com as opções (ex.: "Reutilizar X", "Estender X", "Criar separado").`,
   4: (c) => `ETAPA 4 · PLANO DE MUDANÇA (não implemente). Leia ${c.dir}/${ARQ[2]} e ${c.dir}/${ARQ[3]}. Planeje a MENOR mudança que cumpre o critério de pronto sem quebrar o que a varredura marcou. `
     + `Grave em ${c.dir}/${ARQ[4]}. Logo após o título, uma linha exata: "Repositórios afetados: <camadas separadas por vírgula, ex.: backend, mobile>" (só as camadas que serão alteradas). `

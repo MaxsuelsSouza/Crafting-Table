@@ -97,4 +97,66 @@ const md = fs.readFileSync(path.join(dir, 'dossie.md'), 'utf8');
 assert.ok(md.includes('# Dossiê · T-6') && md.includes('## Lacunas') && md.includes('Executar'));
 assert.deepStrictEqual(dossie.lerGravado(dir).modo, 'executar');
 
+// 13. Trabalho já feito por alguém (git real): branch com a chave no nome, só no remoto, commit solto, integrado e não commitado
+{
+  const { execFileSync } = require('child_process');
+  const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, '-c', 'user.email=ana@x', '-c', 'user.name=Ana', ...a], { encoding: 'utf8' }).trim();
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'trab-'));
+  g(repo, 'init', '-q', '-b', 'main');
+  const commit = (arq, txt, msg) => { fs.writeFileSync(path.join(repo, arq), txt); g(repo, 'add', '.'); g(repo, 'commit', '-q', '-m', msg); };
+  commit('a.txt', '1', 'base');
+  commit('integrado.txt', 'x', 'KAN-5: ajuste pequeno já integrado');          // na principal: aparece como integrado
+  g(repo, 'checkout', '-q', '-b', 'feature/KAN-5-filtro-transportadora');
+  commit('Filtro.cs', 'class Filtro {}', 'KAN-5 filtro por transportadora (parcial)'); commit('Filtro.cs', 'class Filtro { int x; }', 'KAN-5 wip');
+  g(repo, 'checkout', '-q', 'main');
+  g(repo, 'checkout', '-q', '-b', 'feature/KAN-50-outra-coisa'); commit('outra.txt', 'y', 'KAN-50: outra coisa'); g(repo, 'checkout', '-q', 'main'); // não casa com KAN-5
+  g(repo, 'checkout', '-q', '-b', 'wip-ana'); commit('solto.txt', 'z', 'KAN-5 teste solto sem branch com a chave'); g(repo, 'checkout', '-q', 'main');
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'trab-origin-')); execFileSync('git', ['clone', '-q', '--bare', repo, bare]);
+  g(repo, 'remote', 'add', 'origin', bare); g(repo, 'fetch', '-q', 'origin');
+  g(repo, 'checkout', '-q', '-b', 'KAN-12-so-remoto'); commit('r.txt', 'r', 'KAN-12 endpoint'); g(repo, 'push', '-q', 'origin', 'KAN-12-so-remoto'); g(repo, 'checkout', '-q', 'main'); g(repo, 'branch', '-q', '-D', 'KAN-12-so-remoto'); g(repo, 'fetch', '-q', 'origin');
+  const t = novo('KAN-5', { titulo: 'Conferir por transportadora' });
+  const rp = [{ caminho: repo, camada: 'backend', branchPrincipal: 'main' }];
+  const j = { descricao: 'x'.repeat(60), comentarios: [], subtarefas: [{ key: 'KAN-12', resumo: 'Endpoint' }] };
+  const d = dossie.montar(t, { j, repos: rp });
+  assert.strictEqual(d.trabalho.length, 1);
+  const w = d.trabalho[0], nomes = w.branches.map((b) => b.nome).sort();
+  assert.deepStrictEqual(nomes, ['KAN-12-so-remoto', 'feature/KAN-5-filtro-transportadora']); // KAN-50 fora; subtarefa KAN-12 dentro
+  const fil = w.branches.find((b) => b.nome.includes('KAN-5-'));
+  assert.deepStrictEqual([fil.adiante, fil.local, fil.remoto, fil.arquivos, fil.commits.length], [2, true, true, ['Filtro.cs'], 2]); // existe local e no origin (o clone levou)
+  const rem = w.branches.find((b) => b.nome === 'KAN-12-so-remoto');
+  assert.deepStrictEqual([rem.local, rem.remoto, rem.adiante], [false, true, 1]);
+  assert.ok(w.integrados.some((c) => /já integrado/.test(c.assunto)) && !w.integrados.some((c) => /KAN-50/.test(c.assunto)));
+  assert.ok(w.foraDeBranch.some((c) => /solto/.test(c.assunto) && c.branches.includes('wip-ana')));
+  assert.ok(!w.foraDeBranch.some((c) => /KAN-50/.test(c.assunto)));
+  assert.strictEqual(w.atual.branch, 'main');
+  assert.deepStrictEqual(w.atual.alteracoes, []); // main não é do ticket: alterações dela não contam
+  // entra no eixo "onde" e nas lacunas; o arquivo é gravado com os comandos para ver o código
+  assert.ok(d.eixos.onde.some((i) => i.fonte === 'trabalho') && d.lacunas.some((l) => /Já existe trabalho/.test(l)));
+  assert.ok(!d.lacunas.some((l) => /Sem indicação de onde mexer/.test(l)));
+  const dir = tickets.pasta('KAN-5', 'impl');
+  dossie.gravar(dir, d);
+  const md = fs.readFileSync(path.join(dir, 'trabalho-existente.md'), 'utf8');
+  assert.ok(md.includes('feature/KAN-5-filtro-transportadora') && md.includes('Filtro.cs') && md.includes('só no remoto') && md.includes('local e remota') && md.includes(`mapa-git ${repo} log -p main..feature/KAN-5-filtro-transportadora`) && !md.includes('KAN-50'));
+  assert.ok(fs.readFileSync(path.join(dir, 'dossie.md'), 'utf8').includes('## Trabalho já feito'));
+  // alteração não commitada só conta na branch do ticket
+  g(repo, 'checkout', '-q', 'feature/KAN-5-filtro-transportadora'); fs.writeFileSync(path.join(repo, 'Filtro.cs'), 'mudou'); fs.writeFileSync(path.join(repo, 'novo.cs'), 'n');
+  const d2 = dossie.montar(t, { j, repos: rp });
+  assert.deepStrictEqual(d2.trabalho[0].atual.alteracoes.map((x) => x.trim().split(/\s+/).pop()).sort(), ['Filtro.cs', 'novo.cs']);
+  // sem branch principal: ainda lista as branches do ticket, sem comparação; sem trabalho some o arquivo velho
+  const d3 = dossie.montar(t, { j: {}, repos: [{ caminho: repo, camada: 'backend' }] });
+  assert.ok(d3.trabalho[0].branches.some((b) => b.nome.includes('KAN-5-')) && d3.trabalho[0].integrados.length === 0);
+  const limpo = novo('KAN-77'), dl = tickets.pasta('KAN-77', 'impl');
+  fs.mkdirSync(dl, { recursive: true }); fs.writeFileSync(path.join(dl, 'trabalho-existente.md'), 'velho');
+  const d4 = dossie.montar(limpo, { j: {}, repos: rp });
+  assert.deepStrictEqual(d4.trabalho, []); dossie.gravar(dl, d4);
+  assert.ok(!fs.existsSync(path.join(dl, 'trabalho-existente.md')));
+  // repositório que não é git ou que falha não derruba o dossiê
+  assert.deepStrictEqual(dossie.trabalhoExistente([{ caminho: '/nao/existe', camada: 'x' }], ['KAN-5']), []);
+  assert.deepStrictEqual(dossie.trabalhoExistente(rp, ['KAN-5'], () => { throw new Error('boom'); }), []);
+  // regex de chave: KAN-5 casa com "KAN-5-x" e "feature/KAN-5", não com KAN-50 nem XKAN-5
+  const re = dossie._teste.reChave(['KAN-5']);
+  assert.deepStrictEqual(['KAN-5-x', 'feature/KAN-5', 'kan-5', 'KAN-5'].map((x) => re.test(x)), [true, true, true, true]);
+  assert.deepStrictEqual(['KAN-50', 'XKAN-5', 'KAN-55'].map((x) => re.test(x)), [false, false, false]);
+}
+
 console.log('ok');
