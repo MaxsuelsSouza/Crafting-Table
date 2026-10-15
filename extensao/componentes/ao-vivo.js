@@ -86,7 +86,7 @@ const alternarExpandido = (dir) => (expandido(dir) ? fs.rmSync(path.join(dir, EX
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 // Tipos antigos (antes da padronização) caem no equivalente novo.
 const TIPO = { texto: 'fala', ferramenta: 'acao', bloqueio: 'aviso', inicio: 'etapa' };
-const ICONE = { decisao: '⚖', fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
+const ICONE = { voce: '', decisao: '⚖', fala: '✦', acao: '›', aviso: '⛔', erro: '⚠', fim: '✓', etapa: '▶' };
 const hora = (em) => new Date(em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 // Mais recente em cima: blocos por etapa (a etapa mais nova primeiro), o título da etapa no topo do bloco e as linhas dele da mais nova para a mais antiga.
 const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO[x.tipo] || x.tipo) === 'etapa' || !g.length ? g.push([x]) : g.at(-1).push(x), g), [])
@@ -110,9 +110,12 @@ const caixa = (dir, rodando, alvo, controles) => {
   return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}${conversa(controles)}${controle(rodando, controles)}</span></div>
   <div class="folha ao-vivo ${exp ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
     const tipo = TIPO[x.tipo] || x.tipo;
-    return tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
+    // Sua mensagem foi a última coisa do log e o Claude está rodando: ele ainda está lendo/analisando, então 3 pontinhos (some com a 1ª linha dele).
+    const digitando = tipo === 'voce' && rodando && l.slice(l.lastIndexOf(x) + 1).every((y) => ['aviso', 'etapa'].includes(TIPO[y.tipo] || y.tipo)) && x === l.findLast((y) => y.tipo === 'voce') ? '<div class="vivo v-digitando" title="O Claude está analisando a sua mensagem"><span class="vp"></span><span class="vp"></span><span class="vp"></span></div>' : '';
+    return digitando + (tipo === 'voce' ? `<div class="vivo v-voce"><span class="vq">${esc(hora(x.em))}</span><span class="vt">${esc(String(x.texto ?? '').slice(0, 600))}</span></div>`
+      : tipo === 'etapa' ? `<div class="vivo v-etapa"><span class="vt">${esc(x.texto)}</span><span class="vq">${esc(hora(x.em))}</span></div>`
       : `<div class="vivo v-${esc(tipo)}" ${x.detalhe ? `title="${esc(x.detalhe)}"` : ''}><span class="vi">${ICONE[tipo] || '·'}</span>
-        <span class="vt">${esc(String(x.texto ?? '').slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`;
+        <span class="vt">${esc(String(x.texto ?? '').slice(0, 220))}</span><span class="vq">${esc(hora(x.em))}</span></div>`);
   }).join('')}</div>`;
 };
 
@@ -141,6 +144,13 @@ const CSS = `
     color: var(--ia); font-weight: 600; font-size: 11.5px; }
   .v-etapa:first-child { margin-top: 0; }
   .v-acao { padding-left: 8px; } .v-acao .vt { color: var(--text-dim); }
+  .v-voce { justify-content: flex-end; } .v-voce .vt { flex: none; max-width: 80%; padding: 3px 9px; border-radius: 10px 10px 2px 10px;
+    background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .v-digitando { padding: 4px 0 4px 18px; }
+  .vp { display: inline-block; width: 5px; height: 5px; margin-right: 4px; border-radius: 50%; background: var(--text-dim); animation: pontos 1.2s infinite; }
+  .vp:nth-child(2) { animation-delay: .2s; } .vp:nth-child(3) { animation-delay: .4s; }
+  @keyframes pontos { 0%, 60%, 100% { opacity: .25; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+  .v-voce .vq { align-self: flex-end; }
   .v-fala .vt { font-style: italic; }
   .v-decisao .vi { color: var(--accent); } .v-decisao .vt { font-weight: 600; }
   .v-aviso .vt { color: var(--warn); } .v-erro .vt { color: var(--danger); }
@@ -149,8 +159,25 @@ const CSS = `
   @keyframes pulsa { 50% { opacity: .3; } }
 `;
 
+// Pasta do Ao vivo do ticket que pode receber o ⚡: a que está rodando, senão a que já rodou nesta janela.
+const alvoRaio = (s, t) => {
+  const maestro = require('../painel/maestro');
+  const dirs = [s.pasta(t.chave), s.pastaAba(t.id)].filter(Boolean);
+  return dirs.find((d) => maestro.rodando(d) && maestro.podeInstruir(d)) || dirs.find((d) => maestro.podeInstruir(d));
+};
+
 // Ver tudo / Recolher (Evidências do QA ou aba Spec); servicos vem do painel.js.
 const acoes = (s) => ({
+  // ⚡ do cabeçalho: pede a instrução e a injeta na sessão do Claude que o Ao vivo está mostrando (painel/maestro.js instruir).
+  async raio() {
+    const t = s.ticketAberto(), maestro = require('./../painel/maestro'), vscode = require('vscode');
+    if (!t) return;
+    const dir = alvoRaio(s, t);
+    if (!dir) return vscode.window.showInformationMessage('Nenhum Claude em segundo plano neste ticket para receber a instrução.');
+    const texto = await vscode.window.showInputBox({ title: '⚡ Instrução direta ao Claude', prompt: 'Vai para a sessão aberta no Ao vivo; se ele estiver rodando, é interrompido e retoma com isto.', ignoreFocusOut: true });
+    if (texto?.trim() && !(await maestro.instruir(dir, texto))) vscode.window.showWarningMessage('Não consegui enviar: o Claude deste ticket foi iniciado em outra janela.');
+    s.render();
+  },
   vivoExpandir({ id }) {
     const t = s.ticketAberto();
     if (!t || !['qa', 'spec', 'mergulho', 'esteira'].includes(id)) return;
@@ -159,4 +186,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { acoes, anotar, controle, anexarConversa, registrarDecisao, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };
+module.exports = { acoes, alvoRaio, anotar, controle, anexarConversa, registrarDecisao, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };

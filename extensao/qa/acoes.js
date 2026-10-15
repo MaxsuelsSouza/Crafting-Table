@@ -147,6 +147,13 @@ async function respostaMassaSql(s, t, dir, p, r) {
     s.render();
     return r === 'Recusar' ? undefined : acoes(s).qaIniciar();
   }
+  if (!['Aprovar e executar', 'Tentar de novo'].includes(r)) { // Responder…: texto livre nunca executa SQL; vai para o Claude, que refaz a proposta se precisar
+    qa.responder(dir, r);
+    qa.recusarProposta(dir);
+    qa.registrarDecisao(dir, 'Usuário respondeu à proposta de massa no banco (SQL não executado)', { ticket: t.chave, resposta: r });
+    s.render();
+    return acoes(s).qaIniciar();
+  }
   const prop = qa.propostaMassa(dir);
   if (!prop) return;
   const b = d.banco || {};
@@ -241,7 +248,7 @@ const acoes = (s) => ({
     const r = op !== undefined && op !== '' ? p.opcoes?.[Number(op)]
       : await vscode.window.showInputBox({ title: p.motivo === 'briefing' ? 'O que deve ser testado?' : 'Resposta ao Claude', prompt: p.pergunta, ignoreFocusOut: true });
     if (!r?.trim()) return;
-    if (['massa-sql', 'massa-sql-erro'].includes(p.motivo)) return respostaMassaSql(t, dir, p, r.trim());
+    if (['massa-sql', 'massa-sql-erro'].includes(p.motivo)) return respostaMassaSql(s, t, dir, p, r.trim());
     qa.registrarDecisao(dir, 'Usuário respondeu à pergunta do QA', { ticket: t.chave, pergunta: p.pergunta, resposta: r.trim() });
     if (p.motivo === 'briefing') { fs.appendFileSync(path.join(dir, entrada.BRIEFING), `${r.trim()}\n\n`); qa.mudar(dir, { pausa: null }); } else qa.responder(dir, r);
     s.render();

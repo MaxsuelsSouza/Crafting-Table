@@ -1,0 +1,50 @@
+// node teste-raio.js: ⚡ instrução direta mata o claude -p, retoma a sessão (--resume) com a mensagem e o fim da etapa só vale uma vez
+const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'raio-')); process.env.HOME = home; process.env.CRAFTING_VIGIA_MS = '400';
+fs.mkdirSync(path.join(home, '.local', 'bin'), { recursive: true });
+const bin = path.join(home, '.local', 'bin', 'claude'), log = path.join(home, 'args.log');
+fs.writeFileSync(bin, `#!/usr/bin/env node\nrequire('fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');\nif (!(process.argv.includes('--resume') && process.argv[3].includes('trava') && !require('fs').existsSync(require('path').join(require('os').homedir(), 'travou')))) console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sid-1' }));\nconst flag = require('path').join(require('os').homedir(), 'travou'); const resume = process.argv.includes('--resume');\nif (resume && !require('fs').existsSync(flag) && process.argv[3].includes('trava')) { require('fs').writeFileSync(flag, ''); process.stdout.write = () => true; setTimeout(() => {}, 60000); } else setTimeout(() => {}, resume ? 300 : 60000);\n`, { mode: 0o755 });
+const maestro = require('../painel/maestro'), aoVivo = require('../componentes/ao-vivo');
+const dir = path.join(home, 'ticket'); fs.mkdirSync(dir);
+const esperar = (f) => new Promise((ok) => { const t = setInterval(() => f() && (clearInterval(t), ok()), 50); });
+(async () => {
+  let fins = 0;
+  assert(!maestro.podeInstruir(dir));
+  assert(maestro.rodar(dir, { prompt: 'etapa', titulo: 'Etapa X', aoMudar: () => { if (!maestro.rodando(dir)) fins++; } }));
+  await esperar(() => fs.existsSync(path.join(dir, '.ao-vivo.sid')));
+  assert(maestro.podeInstruir(dir));
+  assert(await maestro.instruir(dir, 'pare e faça Y'));
+  await esperar(() => !maestro.rodando(dir));
+  await new Promise((ok) => setTimeout(ok, 200));
+  const chamadas = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.strictEqual(chamadas.length, 2);
+  assert(chamadas[1].includes('--resume') && chamadas[1].includes('sid-1') && /pare e faça Y/.test(chamadas[1][1]));
+  assert.strictEqual(fins, 1, 'o fim da etapa conta uma vez (a morte pelo ⚡ não avança)');
+  await esperar(() => aoVivo.linhas(dir).some((l) => l.tipo === 'voce'));
+  assert(aoVivo.caixa(dir, false, 'spec').includes('v-voce'));
+  assert(!(await maestro.instruir(path.join(home, 'outra'), 'x')));
+  // git de leitura liberado em toda execução com ferramentas (sem duplicar o que o módulo já passou)
+  fs.rmSync(log); await new Promise((ok) => setTimeout(ok, 400));
+  fs.mkdirSync(path.join(home, 'git'));
+  assert(maestro.rodar(path.join(home, 'git'), { prompt: 'x', ferramentas: ['Read', 'Bash(git log:*)'] }));
+  await esperar(() => fs.existsSync(log));
+  const permitidas = JSON.parse(fs.readFileSync(log, 'utf8').trim().split('\n')[0]);
+  const lista = permitidas.slice(permitidas.indexOf('--allowedTools') + 1);
+  assert(lista.includes('Bash(git -C * fetch:*)') && lista.includes('Bash(git branch:*)') && lista.filter((x) => x === 'Bash(git log:*)').length === 1);
+  assert(!lista.some((x) => /git (push|commit|reset|merge|rebase|clean|checkout):/.test(x)));
+  maestro.parar(path.join(home, 'git')); await new Promise((ok) => setTimeout(ok, 300));
+  // partida travada: a retomada não emite nada, o vigia refaz uma vez e avisa
+  fs.writeFileSync(path.join(dir, '.ao-vivo.jsonl'), '');
+  fs.rmSync(log); let f2 = 0;
+  assert(maestro.rodar(dir, { prompt: 'etapa', titulo: 'Etapa Y', aoMudar: () => { if (!maestro.rodando(dir)) f2++; } }));
+  await esperar(() => fs.existsSync(log));
+  assert(await maestro.instruir(dir, 'trava aqui'));
+  await esperar(() => aoVivo.linhas(dir).some((l) => l.tipo === 'voce'));
+  assert(aoVivo.caixa(dir, true, 'spec').includes('v-digitando'), 'pontinhos enquanto o Claude não respondeu');
+  await esperar(() => aoVivo.linhas(dir).some((l) => l.tipo === 'aviso'));
+  await esperar(() => !maestro.rodando(dir));
+  const c2 = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse).filter((a) => a.includes('--resume'));
+  assert.strictEqual(c2.length, 2, 'retomada refeita uma vez');
+  assert.strictEqual(aoVivo.linhas(dir).filter((l) => l.tipo === 'voce').length, 1, 'balão uma vez só');
+  console.log('ok'); process.exit(0);
+})().catch((e) => { console.error(e); process.exit(1); });

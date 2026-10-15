@@ -32,7 +32,7 @@ const MENU_CSS = `<style>
 
 // Entrega a API do VS Code para o menu e para o script da página (acquireVsCodeApi só pode ser chamado uma vez).
 //   [data-secao]           troca de seção; com data-aba/data-cmd, a principal recebe { acao: cmd || 'aba', id: aba } antes
-//   [data-painel="cmd"]    manda { acao: cmd, id } para a principal sem trocar de seção (botões da moldura)
+//   [data-painel="cmd"]    manda { acao: cmd, id, op (data-op: opção escolhida) } para a principal sem trocar de seção (botões da moldura)
 const script = (n) => `<script${n}>(() => {
     const api = acquireVsCodeApi(); window.acquireVsCodeApi = () => api;
     ${rodape.script()}
@@ -40,7 +40,7 @@ const script = (n) => `<script${n}>(() => {
       const b = e.target.closest('[data-secao],[data-painel]');
       if (!b) return;
       e.stopPropagation();
-      if (b.dataset.painel) return api.postMessage({ acao: '__painel', cmd: b.dataset.painel, id: b.dataset.id });
+      if (b.dataset.painel) return api.postMessage({ acao: '__painel', cmd: b.dataset.painel, id: b.dataset.id, op: b.dataset.op });
       if (b.classList.contains('is-on') && !b.dataset.aba && !b.dataset.cmd) return;
       window.dispatchEvent(new Event('crafting:sair')); // a página grava o que estiver pendente antes de sumir
       api.postMessage({ acao: '__secao', id: b.dataset.secao, aba: b.dataset.aba, cmd: b.dataset.cmd });
@@ -156,7 +156,7 @@ function montarGrupo(grupo, real) {
   secoes[principal]?.provider.aoPedirSecao?.((id) => trocar(id || principal));
 
   const aoReceber = (m) => {
-    if (m?.acao === '__painel') return paraPrincipal({ acao: m.cmd, id: m.id });
+    if (m?.acao === '__painel') return paraPrincipal({ acao: m.cmd, id: m.id, op: m.op });
     if (m?.acao === '__secao') {
       if (m.aba || m.cmd) paraPrincipal({ acao: m.cmd || 'aba', id: m.aba });
       return trocar(m.id);

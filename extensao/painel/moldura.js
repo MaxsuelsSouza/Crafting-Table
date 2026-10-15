@@ -54,6 +54,7 @@ const CSS_MOLDURA = `<style>
   .ct-ico.ct-pausa { color: var(--warn); }
   .ct-dar { flex: none; height: 26px; padding: 0 10px; border: 0; border-radius: var(--r-md); background: var(--ia); color: var(--on-cor); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
     animation: ct-chama 1.4s infinite; }
+  .ct-ico:disabled { opacity: .35; cursor: default; }
   .ct-dar:disabled { background: color-mix(in srgb, var(--ia) 35%, transparent); animation: none; cursor: default; font-weight: 400; }
   @keyframes ct-chama { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ia) 30%, transparent); } }
   /* Modo refinamento: borda roxa em volta da view inteira */
@@ -68,6 +69,10 @@ const CSS_MOLDURA = `<style>
   ${require('../componentes/folha-documento').CSS}
 </style>`;
 
+// ⚡ Instrução direta ao Claude do Ao vivo (maestro.instruir): ativo só quando há uma execução desta janela neste ticket.
+const raio = (t, b) => { const maestro = require('./maestro'), pode = [pastaDe(t.id), pastaAba(t.id)].some((d) => d && maestro.podeInstruir(d));
+  return `<button class="ct-ico" ${pode ? b('raio') : 'disabled'} title="${pode ? 'Instrução direta: manda uma mensagem ao Claude que está no Ao vivo' : 'Nenhum Claude em segundo plano neste ticket para receber instrução'}">${IC.raio}</button>`; };
+
 function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
@@ -81,6 +86,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
       <span class="ct-titulo">${semTicket ? 'Sem ticket' : `<span class="ct-chave">${esc(t.chave)}</span>${t.titulo ? ` · ${esc(t.titulo)}` : ''}`}</span>
       ${refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : ''}
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
+      ${semTicket ? '' : raio(t, b)}
       ${semTicket || jira.ehDocumento(t) ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no ${esc(jira.nome)}">${IC.jira}</button>`}
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })

@@ -11,12 +11,18 @@ const { spawn } = require('child_process');
 const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
 const { anotar, anexarConversa } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
+const ultimas = new Map(); // pasta -> opções da última execução (para o ⚡ retomar a sessão com uma instrução)
+const reiniciando = new Set(); // pastas cujo processo foi morto pelo ⚡: o fim dele não avança a etapa (a retomada herda o aoMudar)
 // Execução de outra janela do VS Code (ou de antes de recarregar): o pid fica em .ao-vivo.pid enquanto o claude roda.
 // Confere que o pid ainda é um claude (o executável, não um caminho com "claude" no meio): pid pode ser reaproveitado.
 const vivo = (pid) => { try { process.kill(pid, 0); return fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').slice(0, 2).some((a) => path.basename(a) === 'claude'); } catch { return false; } };
 const pidDe = (dir) => { try { return Number(fs.readFileSync(path.join(dir, PID), 'utf8')) || null; } catch { return null; } };
 const rodandoEm = (dir) => rodando.has(dir) || vivo(pidDe(dir));
 
+// Git só de leitura liberado em toda execução com lista de ferramentas (todos os módulos); as formas `git -C <repo> ...` também, que é como o Claude chama.
+// fetch entra porque conferir origin/<branch> exige atualizar as referências remotas (não toca em branch nem arquivo).
+const GIT_LEITURA = ['status', 'log', 'diff', 'show', 'branch', 'fetch', 'rev-parse', 'rev-list', 'ls-remote', 'for-each-ref', 'merge-base', 'cherry', 'describe', 'blame', 'ls-files', 'cat-file', 'name-rev']
+  .flatMap((c) => [`Bash(git ${c}:*)`, `Bash(git -C * ${c}:*)`]);
 const claudeBin = () => [path.join(os.homedir(), '.local', 'bin', 'claude'), '/usr/local/bin/claude', '/usr/bin/claude'].find((p) => fs.existsSync(p)) || 'claude';
 const curto = (s) => String(s || '').replaceAll(os.homedir(), '~').replace(/\s+/g, ' ').trim();
 const nome = (p) => path.basename(String(p || ''));
@@ -125,8 +131,10 @@ function linhas(e) {
 
 // Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
-function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} }) {
+function rodar(dir, opcoes) {
+  const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} } = opcoes;
   if (rodandoEm(dir)) return false;
+  ultimas.set(dir, opcoes);
   const gravar = (l) => anotar(dir, l);
   let sid = null, anterior = null;
   try { anterior = fs.readFileSync(path.join(dir, SID), 'utf8').trim() || null; } catch {}
@@ -134,7 +142,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
   if (continuar) sid = anterior;
   let sessaoId = null; // desta execução
   const args = ['-p', prompt + PEDIDO_DECISAO, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-    ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
+    ...(ferramentas.length ? ['--allowedTools', ...new Set([...ferramentas, ...GIT_LEITURA])] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
   try { fs.writeFileSync(path.join(dir, PID), String(p.pid)); } catch {}
@@ -142,6 +150,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
   aoMudar();
   let resto = '';
   p.stdout.on('data', (b) => {
+    p.viuSaida = true; // o claude já falou (init): o ⚡ confere isto para detectar partida travada
     const partes = (resto + b).split('\n');
     resto = partes.pop();
     for (const l of partes) {
@@ -158,6 +167,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
   p.on('close', (code) => {
     soltar();
     if (sessaoId) anexarConversa(dir, sessaoId, titulo); // terminou (ou foi pausada): vira conversa da aba, com o título da etapa
+    if (reiniciando.has(dir)) return; // morto pelo ⚡: quem segue é a retomada
     if (code && !falhou) gravar({ tipo: 'erro', texto: `O Claude parou com erro (código ${code})`, detalhe: `código ${code}${erro.trim() ? `: ${curto(erro).slice(0, 200)}` : ''}` });
     aoMudar();
   });
@@ -168,4 +178,34 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
 // Mata todas as execuções em segundo plano (claude -p); devolve quantas eram.
 const parar = (dir) => { if (rodando.has(dir)) return rodando.get(dir).kill('SIGTERM'); const pid = pidDe(dir); if (vivo(pid)) process.kill(pid, 'SIGTERM'); };
 
-module.exports = { rodar, parar, rodando: rodandoEm, vivo, claudeBin, _teste: { DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };
+// ⚡ Instrução direta: mata o claude -p desta pasta (se estiver rodando) e retoma a mesma sessão (--resume) com a mensagem, com as mesmas opções
+// e o mesmo aoMudar da etapa, então o fim dela segue o fluxo normal do módulo. Só vale para execução desta janela (as opções ficam em memória).
+const podeInstruir = (dir) => ultimas.has(dir);
+// Partida travada: depois de uma retomada o claude pode não emitir nem o init (visto: 5 min mudo, a CLI só se reiniciou sozinha); sem saída em
+// VIGIA_MS a retomada é refeita uma vez e o Ao vivo avisa.
+const VIGIA_MS = Number(process.env.CRAFTING_VIGIA_MS) || 45000;
+async function instruir(dir, texto, tentativa = 1) {
+  const o = ultimas.get(dir);
+  texto = String(texto || '').trim();
+  if (!o || !texto) return false;
+  const p = rodando.get(dir);
+  if (p) {
+    reiniciando.add(dir);
+    await new Promise((ok) => { p.once('close', ok); p.kill('SIGTERM'); });
+    reiniciando.delete(dir);
+  } else if (rodandoEm(dir)) return false; // claude de outra janela: não dá para retomar daqui
+  const ok = rodar(dir, { ...o, continuar: true, titulo: `${o.titulo || 'Claude trabalhando'} · instrução`,
+    prompt: `Instrução direta do usuário, vale mais que o que você estava fazendo; atenda e depois retome a etapa de onde parou:\n${texto}` });
+  ultimas.set(dir, o); // a próxima instrução parte das opções da etapa, não desta retomada
+  if (!ok) return false;
+  if (tentativa === 1) anotar(dir, { tipo: 'voce', texto });
+  const novo = rodando.get(dir);
+  setTimeout(() => {
+    if (rodando.get(dir) !== novo || novo.viuSaida) return;
+    if (tentativa === 1) { anotar(dir, { tipo: 'aviso', texto: 'O Claude não iniciou a tempo: tentando de novo' }); instruir(dir, texto, 2); }
+    else anotar(dir, { tipo: 'aviso', texto: 'O Claude ainda não iniciou: pause e retome, ou recarregue a janela' });
+  }, VIGIA_MS).unref?.();
+  return true;
+}
+
+module.exports = { rodar, parar, instruir, podeInstruir, rodando: rodandoEm, vivo, claudeBin, _teste: { GIT_LEITURA, VIGIA_MS, DECISOES_DE_TESTE, falas, linhas, linhaFerramenta, fraseSdd } };

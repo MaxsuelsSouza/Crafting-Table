@@ -318,6 +318,22 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     assert.deepStrictEqual([sqlRodado.length - antes, qa.estado(dr).pausa, !!qa.propostaMassa(dr)], [0, null, false]);
     assert.ok(JSON.parse(fs.readFileSync(path.join(dr, qa.LOG_SQL), 'utf8').trim().split('\n').at(-1)).tipo === 'recusar');
 
+    // cliques do cartão (acoes.qaResponder): o botão chega à execução (antes o argumento `s` faltava e nada acontecia) e texto livre nunca executa SQL
+    {
+      const f2 = path.join(home, 'regras-massa.md'); fs.writeFileSync(f2, '# R');
+      const t2 = prov.criarPorDocumento(f2, { listas: ['qa'] }), dc = tickets.pasta(t2.chave, 'qa'); fs.mkdirSync(dc, { recursive: true });
+      const sc = { secrets: {}, cacheJira: {}, render: () => {}, ticketAberto: () => t2, pastaAba: () => dc, pedirSecao: () => {}, reposDe: () => [] };
+      const proposta = () => (qa.proporMassa(dc, { papel: 'p', cenarios: ['CT01'], sql: 'UPDATE t SET a = 1 WHERE id = 1', desfazer: 'UPDATE t SET a = 2 WHERE id = 1', porque: 'x' }), qa.absorverPausa(dc));
+      const antesSql = sqlRodado.length;
+      proposta();
+      await acoes(sc).qaResponder({ op: '0' }); // Aprovar e executar → modal (mock: confirma) → executa; sem banco configurado o banco recusa
+      assert.strictEqual(qa.estado(dc).pausa?.motivo, 'massa-sql-erro');
+      qa.recusarProposta(dc); proposta();
+      resposta = 'aprovo';
+      await acoes(sc).qaResponder({}); // Responder…: texto livre
+      assert.deepStrictEqual([!!qa.propostaMassa(dc), sqlRodado.length - antesSql, fs.readFileSync(path.join(dc, '.respostas.md'), 'utf8').includes('aprovo')], [false, 0, true]);
+    }
+
     // produção (ou sem ambiente): a IA nem recebe a escrita; o qa-state recusa e o executor padrão também
     const dp = await novo(); veio.length = 0;
     let recusouCli = '';
