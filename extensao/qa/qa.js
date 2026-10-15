@@ -195,9 +195,10 @@ function ultimoRefresh(agora, hora = '06:00') {
 }
 const massaValida = (i, agora, hora) => i.estado === 'valida' && new Date(i.medidaEm) >= ultimoRefresh(agora, hora);
 const semMassa = (dir, ids, agora, hora) => ids.filter((id) => !massa(dir).itens.some((i) => (i.cenarios || []).includes(id) && massaValida(i, agora, hora)));
-function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '' }) {
+function massaAdd(dir, { papel, cenarios: cens, dados, consulta = '', origem = 'consulta', desfazer = [] }) {
   const m = massa(dir), id = `M${m.itens.reduce((n, i) => Math.max(n, Number(i.id.slice(1)) || 0), 0) + 1}`;
-  m.itens.push({ id, papel: papel || '', cenarios: cens || [], dados: dados || {}, consulta: consulta || '', medidaEm: new Date().toISOString(), estado: 'valida' });
+  m.itens.push({ id, papel: papel || '', cenarios: cens || [], dados: dados || {}, consulta: consulta || '', medidaEm: new Date().toISOString(), estado: 'valida',
+    ...(origem === 'sql' ? { origem, desfazer } : {}) });
   gravarJson(path.join(dir, MASSA), m);
   return id;
 }
@@ -354,14 +355,18 @@ const QA_STATE = path.join(__dirname, 'qa-state');
 const REGRAS = 'Modo não interativo, sem ninguém para aprovar permissões. Não invente dado nem regra: o que não consta nas fontes você pergunta. '
   + `Para perguntar ao humano: ${QA_STATE} pausa --motivo "<curto>" --pergunta "<o que falta, em uma frase>" [--opcoes "A|B"] e TERMINE em seguida, sem concluir o cenário. `
   + 'Falha de ambiente ou ferramenta (não de informação): conclua como bloqueado com a nota do que aconteceu. '
-  + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE/DDL, liberar usuário ou permissão), publicar no provedor, commit, push, merge e rebase. '
+  + 'Proibido: escrever no banco por conta própria (INSERT/UPDATE/DELETE/DDL, liberar usuário ou permissão; a alteração de massa só vai por qa-state massa proposta, que o humano aprova antes de rodar), publicar no provedor, commit, push, merge e rebase. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
 const RESPOSTAS = '.respostas.md', PAUSA = '.pausa.json';
 const citarRespostas = (dir) => (fs.existsSync(path.join(dir, RESPOSTAS)) ? `\nRespostas do humano a perguntas anteriores (use-as): ${path.join(dir, RESPOSTAS)}` : '');
 const citarDossie = (dir) => (fs.existsSync(path.join(dir, 'dossie.md')) ? `\nDossiê do ticket (fontes, confiança e lacunas): ${path.join(dir, 'dossie.md')}` : '');
-const promptMassa = (chave, cens, dir = '', banco = '', mapa = '') => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
+const promptMassa = (chave, cens, dir = '', banco = '', mapa = '', escreve = false) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
   + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n`
   + `Banco: ${banco || 'NÃO configurado: não consulte banco; registre como pendência'}${mapa ? `. Consulte SOMENTE por ${mapa}/bin/mapa-db (SELECT, máx. 50 linhas, colunas sensíveis mascaradas)` : ''}.\n`
+  + (escreve ? `Se não existir registro que sirva, MONTE a massa ajustando os dados: leia antes, por SELECT, os valores originais e PROPONHA o lote com ${QA_STATE} massa proposta --papel "<papel>" --cenarios CT01 `
+    + `--dados '<json do registro que vai ficar>' --sql "<INSERT/UPDATE/DELETE separados por ;>" --desfazer "<instruções que devolvem os valores originais>" --porque "<por que esse ajuste>". `
+    + 'Você NÃO executa escrita: a extensão roda o lote depois que o humano ler e aprovar; proposta recusada ou sem WHERE por chave volta com o motivo. TERMINE em seguida. '
+    + 'Mexa no mínimo de registros e nunca em registro que outro cenário usa.\n' : '')
   + cens.map((c) => `- ${c.id} · ${c.titulo}${c.resumo ? ` (${c.resumo})` : ''}`).join('\n')
   + `\nPara cada papel encontrado: ${QA_STATE} massa add --papel "<papel>" --cenarios CT01,CT02 --dados '<json com os campos>' --consulta "<SQL usado>". `
   + 'Traga 2 registros por papel quando der (reserva: um cenário pode consumir o registro). Cenário que não precisa de massa: não registre nada. '
@@ -433,10 +438,10 @@ const claude = (dir, opts, d) => new Promise((ok) => {
   if (d.timeoutMin > 0) timer = setTimeout(() => { estourou = true; aoVivo.anotar(dir, { tipo: 'aviso', texto: `Passou de ${d.timeoutMin} min: parando o Claude` }); maestro.parar(dir); }, d.timeoutMin * 60000);
 });
 // Pausa de verdade, pedida pelo Claude (qa-state pausa → .pausa.json) ou pela extensão (briefing): fica em .qa.json e aparece como pergunta no cartão.
-const pausaPendente = (dir) => { const p = lerJson(path.join(dir, PAUSA), null); return p?.pergunta ? { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [], etapa: p.etapa || '' } : null; };
-function registrarPausa(dir, { motivo = '', pergunta, opcoes = [], etapa = '' }) {
+const pausaPendente = (dir) => { const p = lerJson(path.join(dir, PAUSA), null); return p?.pergunta ? { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [], etapa: p.etapa || '', detalhe: p.detalhe ? String(p.detalhe) : '' } : null; };
+function registrarPausa(dir, { motivo = '', pergunta, opcoes = [], etapa = '', detalhe = '' }) {
   if (!String(pergunta || '').trim()) throw new Error('a pergunta é obrigatória');
-  gravarJson(path.join(dir, PAUSA), { motivo, pergunta: String(pergunta).trim(), opcoes, etapa, em: new Date().toISOString() });
+  gravarJson(path.join(dir, PAUSA), { motivo, pergunta: String(pergunta).trim(), opcoes, etapa, detalhe, em: new Date().toISOString() });
 }
 // A extensão, ao ver o .pausa.json depois da etapa: tira da pasta e guarda no estado; execução vira pausado até a resposta.
 function absorverPausa(dir) {
@@ -446,6 +451,54 @@ function absorverPausa(dir) {
   mudar(dir, { pausa: p, execucao: 'pausado' });
   aoVivo.anotar(dir, { tipo: 'aviso', texto: `O Claude perguntou: ${p.pergunta}` });
   return p;
+}
+// ── Massa por SQL: a IA PROPÕE o lote (qa-state massa proposta); você lê e aprova no cartão; a extensão executa numa transação só e registra a massa.
+// Nada de escrita sai da IA: só o lote aprovado, pela conexão configurada, nunca produção. O SQL de desfazer fica no item da massa.
+const PROPOSTA = '.massa-proposta.json', LOG_SQL = '.massa-sql.log.jsonl';
+const propostaMassa = (dir) => lerJson(path.join(dir, PROPOSTA), null);
+function proporMassa(dir, { papel, cenarios: cens = [], dados = {}, sql, desfazer, porque = '' }) {
+  const b = require('../infra/banco'), v = b.validarAlteracao(sql), u = b.validarAlteracao(desfazer);
+  if (!v.ok) throw new Error(`--sql recusado: ${v.erro}`);
+  if (!u.ok) throw new Error(`--desfazer obrigatório e válido: ${u.erro}`);
+  if (!cens.length) throw new Error('--cenarios é obrigatório');
+  const p = { papel: papel || '', cenarios: cens, dados, sql: v.stmts, desfazer: u.stmts, porque: String(porque).trim(), em: new Date().toISOString() };
+  gravarJson(path.join(dir, PROPOSTA), p);
+  registrarPausa(dir, { motivo: 'massa-sql', pergunta: `Alterar o banco para montar a massa de ${cens.join(', ')}? Leia o SQL abaixo antes de aprovar.`, opcoes: ['Aprovar e executar', 'Recusar'], etapa: 'Massa', detalhe: p.porque });
+  return p;
+}
+const logSql = (dir, o) => { try { fs.appendFileSync(path.join(dir, LOG_SQL), `${JSON.stringify({ em: new Date().toISOString(), ...o })}\n`); } catch { /* o log não derruba o fluxo */ } };
+/** Executa o lote aprovado. d: { banco, executarSql(banco, stmts) }. Erro: nada é gravado (rollback) e a pausa vira pergunta com as saídas. */
+async function aplicarProposta(dir, d) {
+  const p = propostaMassa(dir);
+  if (!p) return { ok: false, erro: 'não há proposta de massa' };
+  const b = d.banco || {}, vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  const r = await (d.executarSql || require('../infra/banco').executar)(b, p.sql);
+  logSql(dir, { tipo: 'aplicar', conexao: b.conexao || '', ambiente: b.ambiente || '', cenarios: p.cenarios, sql: p.sql, desfazer: p.desfazer, ok: r.ok, saida: String(r.saida || '').slice(0, 500) });
+  if (!r.ok) {
+    vivo('erro', `A alteração de massa falhou (nada foi gravado): ${String(r.saida).split('\n')[0].slice(0, 160)}`);
+    mudar(dir, { pausa: { motivo: 'massa-sql-erro', pergunta: `O banco recusou o lote e nada foi gravado: ${String(r.saida).slice(0, 300)}`, opcoes: ['Tentar de novo', 'Seguir sem essa massa'], etapa: 'Massa' } });
+    return { ok: false, erro: r.saida };
+  }
+  const id = massaAdd(dir, { papel: p.papel, cenarios: p.cenarios, dados: p.dados, consulta: p.sql.join(';\n'), origem: 'sql', desfazer: p.desfazer });
+  fs.rmSync(path.join(dir, PROPOSTA), { force: true });
+  mudar(dir, { pausa: null });
+  vivo('fim', `Massa ${id} montada por SQL (${p.sql.length} instrução(ões)) para ${p.cenarios.join(', ')}; o SQL de desfazer está na aba Massa`);
+  return { ok: true, id };
+}
+function recusarProposta(dir) {
+  fs.rmSync(path.join(dir, PROPOSTA), { force: true });
+  logSql(dir, { tipo: 'recusar' });
+  mudar(dir, { pausa: null });
+}
+/** Desfaz a alteração de um item de massa montado por SQL (o humano confirma antes). */
+async function desfazerMassa(dir, id, d) {
+  const m = massa(dir), i = m.itens.find((x) => x.id === id);
+  if (!i?.desfazer?.length) throw new Error(`massa ${id} não tem SQL de desfazer`);
+  const r = await (d.executarSql || require('../infra/banco').executar)(d.banco || {}, i.desfazer);
+  logSql(dir, { tipo: 'desfazer', massa: id, sql: i.desfazer, ok: r.ok, saida: String(r.saida || '').slice(0, 500) });
+  if (!r.ok) throw new Error(String(r.saida).split('\n')[0].slice(0, 200) || 'o banco recusou');
+  massaEstado(dir, id, 'invalida');
+  return true;
 }
 // Resposta do humano: vai para .respostas.md (os prompts citam) e libera a retomada.
 function responder(dir, resposta) {
@@ -460,8 +513,8 @@ function responder(dir, resposta) {
 async function levantarMassa(dir, d, amb, cens) {
   mudar(dir, { etapa: 'massa' });
   const b = d.banco, liberado = b && require('../infra/banco').liberado(b), mapa = liberado ? vagas.raiz('impl.mapa') || '' : '';
-  const opts = { prompt: promptMassa(d.chave, cens, dir, b ? require('../infra/banco').texto(b) : '', mapa), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend,
-    ferramentas: FERRAMENTAS_MASSA(mapa), ...(mapa ? { env: require('../infra/banco').env(b, dir) } : {}) };
+  const opts = { prompt: promptMassa(d.chave, cens, dir, b ? require('../infra/banco').texto(b) : '', mapa, liberado), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend,
+    ferramentas: FERRAMENTAS_MASSA(mapa), env: { ...(mapa ? require('../infra/banco').env(b, dir) : {}), ...(liberado ? { QA_BANCO_ESCRITA: '1' } : {}) } };
   try { return await claude(dir, opts, d); } finally { mudar(dir, { etapa: null }); }
 }
 // ▶ do QA: tudo em ordem. d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, gravarTela(dir), pararTela(), avisar(texto) }.
@@ -781,7 +834,11 @@ function html(dir, uri = () => '') {
     : !e.fase ? '<div class="qa-card"><b>QA não iniciado</b><p>Clique em ▶ no topo: a Crafting Table procura o planejamento de QA do ticket.</p></div>' : '';
   const aprovado = e.fase === 'plano_aprovado';
   // Pergunta do Claude (ou da extensão, quando o ticket só tem título): o cartão é a pausa; a resposta retoma sozinha.
-  const pausaCard = e.pausa ? `<div class="qa-card bloq"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>
+  const prop = e.pausa?.motivo === 'massa-sql' ? propostaMassa(dir) : null;
+  const sqlHtml = prop ? `<p><b>Por quê:</b> ${esc(prop.porque || e.pausa.detalhe || '—')} · <b>Papel:</b> ${esc(prop.papel)} · <b>Cenários:</b> ${esc(prop.cenarios.join(', '))}</p>
+    <details open><summary>SQL que vai rodar (${prop.sql.length})</summary><pre>${esc(prop.sql.join(';\n'))};</pre></details>
+    <details><summary>SQL de desfazer (${prop.desfazer.length})</summary><pre>${esc(prop.desfazer.join(';\n'))};</pre></details>` : '';
+  const pausaCard = e.pausa ? `<div class="qa-card bloq"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
     <div class="acoes-passo">${(e.pausa.opcoes || []).map((o, i) => `<button data-painel="qaResponder" data-op="${i}">${esc(o)}</button>`).join('')}
     <button data-painel="qaResponder" class="aprovar">Responder…</button></div></div>` : '';
   // Plano já aprovado: o cartão dele desce para baixo do Ao vivo (em cima ficam execução e ambiente).
@@ -827,6 +884,7 @@ function massaHtml(dir, hora = '06:00') {
     <div>Cenários: ${esc((i.cenarios || []).join(', ') || '—')} · medida ${esc(dataBr(i.medidaEm))}</div>
     <div class="papel-massa">${Object.entries(i.dados || {}).map(([k, v]) => `<div class="campo"><span class="k">${esc(k)}</span><span class="v">${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span><button class="copiar" data-acao="qaMassaCopiar" data-id="${esc(i.id)}" data-key="${esc(k)}" title="Copiar ${esc(k)}">⧉</button></div>`).join('') || '<span class="k">sem campos</span>'}</div>
     ${i.consulta ? `<details><summary>Consulta</summary><pre>${esc(i.consulta)}</pre></details>` : ''}
+    ${i.origem === 'sql' && i.desfazer?.length ? `<details><summary>Montada por SQL · desfazer</summary><pre>${esc(i.desfazer.join(';\n'))};</pre><button data-acao="qaMassaDesfazer" data-id="${esc(i.id)}" title="Roda o SQL de desfazer no banco (pede confirmação)">Desfazer no banco</button></details>` : ''}
     ${i.estado === 'valida' ? `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="invalida">Marcar inválida</button>` : `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="valida">Marcar válida</button>`}
     </div></div>`; }).join('');
   return `${CSS}<div class="qa-card"><b>Massa de dados</b><p>Vale até o refresh do banco (último: ${esc(dataBr(ref.toISOString()))}; horário em Configurações → craftingTable.qaHoraRefresh).
@@ -843,6 +901,6 @@ function mapaHtml(dir, r, amb, uri) {
     <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
-module.exports = { proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
+module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
   ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

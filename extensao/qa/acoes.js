@@ -91,6 +91,7 @@ const depsQa = (s, t) => {
   return {
     chave: t.chave, backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho, filhos: filhosDe(s, t),
     horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: s.render, timeoutMin: Number(cfg().get('qaTimeoutCenarioMin') ?? 30), banco: banco.daConfig(cfg()),
+    executarSql: (b, stmts) => banco.executar(b, stmts),
     extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir,
       ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
     // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
@@ -136,6 +137,26 @@ async function dispensarCenario(s, id, tipo) {
   if (!motivo?.trim() || !qa.dispensar(dir, id, motivo, tipo)) return;
   qa.registrarDecisao(dir, `${ajuste ? 'Ajuste pedido' : 'Cenário excluído'}: ${id} não será executado`, { ticket: t.chave, motivo: motivo.trim() });
   s.render();
+}
+// Lote de SQL proposto para a massa: você leu o cartão; o modal confirma a conexão e o ambiente; só então a extensão executa (nunca a IA).
+async function respostaMassaSql(s, t, dir, p, r) {
+  const d = depsQa(s, t);
+  if (r === 'Recusar' || r === 'Seguir sem essa massa') {
+    qa.recusarProposta(dir);
+    qa.registrarDecisao(dir, r === 'Recusar' ? 'Usuário recusou a alteração de massa no banco' : 'Usuário seguiu sem a massa por SQL', { ticket: t.chave });
+    s.render();
+    return r === 'Recusar' ? undefined : acoes(s).qaIniciar();
+  }
+  const prop = qa.propostaMassa(dir);
+  if (!prop) return;
+  const b = d.banco || {};
+  const ok = await vscode.window.showWarningMessage(`Executar ${prop.sql.length} instrução(ões) em "${b.conexao || '?'}" (${b.ambiente || 'ambiente não definido'})? Roda numa transação só: erro desfaz tudo.`,
+    { modal: true, detail: `${prop.sql.join(';\n')};` }, 'Executar');
+  if (!ok) return;
+  qa.registrarDecisao(dir, 'Usuário aprovou a alteração de massa no banco', { ticket: t.chave, cenarios: prop.cenarios.join(','), instrucoes: prop.sql.length });
+  const res = await qa.aplicarProposta(dir, d);
+  s.render();
+  if (res.ok) return acoes(s).qaIniciar();
 }
 const acoes = (s) => ({
   // ▶ do QA: abre Evidências (Ao vivo) e confere o planejamento no Jira (qa.js). Sem plano, o cartão bloqueia e oferece criar.
@@ -220,6 +241,7 @@ const acoes = (s) => ({
     const r = op !== undefined && op !== '' ? p.opcoes?.[Number(op)]
       : await vscode.window.showInputBox({ title: p.motivo === 'briefing' ? 'O que deve ser testado?' : 'Resposta ao Claude', prompt: p.pergunta, ignoreFocusOut: true });
     if (!r?.trim()) return;
+    if (['massa-sql', 'massa-sql-erro'].includes(p.motivo)) return respostaMassaSql(t, dir, p, r.trim());
     qa.registrarDecisao(dir, 'Usuário respondeu à pergunta do QA', { ticket: t.chave, pergunta: p.pergunta, resposta: r.trim() });
     if (p.motivo === 'briefing') { fs.appendFileSync(path.join(dir, entrada.BRIEFING), `${r.trim()}\n\n`); qa.mudar(dir, { pausa: null }); } else qa.responder(dir, r);
     s.render();
@@ -287,6 +309,18 @@ const acoes = (s) => ({
     const v = i.dados[key];
     await vscode.env.clipboard.writeText(typeof v === 'object' ? JSON.stringify(v) : String(v));
     vscode.window.setStatusBarMessage(`${key} copiado`, 2000);
+  },
+  // Desfazer no banco uma massa montada por SQL: roda o SQL de desfazer que a IA propôs e você aprovou junto, depois de um modal.
+  async qaMassaDesfazer({ id }) {
+    const t = s.ticketAberto();
+    if (!t || typeof id !== 'string') return;
+    const dir = s.pastaAba(t.id), i = qa.massa(dir).itens.find((x) => x.id === id);
+    if (!i?.desfazer?.length) return;
+    const ok = await vscode.window.showWarningMessage(`Desfazer a massa ${id} no banco (${i.desfazer.length} instrução(ões))?`, { modal: true, detail: `${i.desfazer.join(';\n')};` }, 'Desfazer');
+    if (!ok) return;
+    try { await qa.desfazerMassa(dir, id, depsQa(s, t)); qa.registrarDecisao(dir, `Usuário desfez a massa ${id} no banco`, { ticket: t.chave }); }
+    catch (e) { vscode.window.showErrorMessage(`Não consegui desfazer: ${e.message}`); }
+    s.render();
   },
   qaMassaEditar() {
     const t = s.ticketAberto();

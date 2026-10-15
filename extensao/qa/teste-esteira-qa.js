@@ -242,5 +242,92 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     assert.strictEqual(qa.estado(dir).pausa, null);
     assert.deepStrictEqual(rede, []);
   }
+  // ── Massa por SQL: a IA propõe, você lê e aprova, a extensão executa numa transação; nunca produção; com SQL de desfazer.
+  {
+    const bancoMod = require('../infra/banco');
+    const v = (sql) => bancoMod.validarAlteracao(sql);
+    assert.ok(v("UPDATE pedido SET status = 'F' WHERE id = 10; INSERT INTO log_nota (id) VALUES (1)").ok && v('update t set a = 1 where b = 2').stmts.length === 1);
+    for (const ruim of ['UPDATE pedido SET status = 1', 'DELETE FROM pedido', 'DROP TABLE pedido', "UPDATE t SET a = 1 WHERE b = 2; COMMIT", 'SELECT * FROM t', 'BEGIN x; END',
+      'UPDATE t SET a = 1 WHERE b IN (SELECT 1 FROM x@link)', 'INSERT INTO t VALUES (dbms_random.value)', 'MERGE INTO t USING s ON (1=1) WHEN MATCHED THEN UPDATE SET a = 1', '']) assert.ok(!v(ruim).ok, ruim);
+    assert.ok(v("UPDATE t SET a = 'sem where depois' WHERE id = 1").ok && !v("UPDATE t SET a = ' where '").ok); // WHERE dentro de string não conta
+
+    // Executor: SQLcl falso lê o script do stdin. Produção e conexão sem ambiente não chegam nem a chamar o SQLcl.
+    const fake = (corpo) => { const f = path.join(home, `sql-${Math.random().toString(36).slice(2)}`); fs.writeFileSync(f, `#!/bin/sh\ncat > "$SAIDA"\n${corpo}\n`); fs.chmodSync(f, 0o755); return f; };
+    const saida = path.join(home, 'script-sql.txt'); process.env.SAIDA = saida;
+    const bom = { conexao: 'qas-wms', ambiente: 'copia-producao', sqlcl: fake('echo "1 row updated."') };
+    const r1 = await bancoMod.executar(bom, ["UPDATE t SET a = 1 WHERE id = 5"]);
+    const script = fs.readFileSync(saida, 'utf8');
+    assert.ok(r1.ok && /connect -name qas-wms\nwhenever sqlerror exit failure rollback/.test(script) && script.includes('UPDATE t SET a = 1 WHERE id = 5;') && script.trimEnd().endsWith('commit;\nexit'));
+    fs.rmSync(saida);
+    assert.ok(!(await bancoMod.executar({ ...bom, ambiente: 'producao' }, ['UPDATE t SET a = 1 WHERE id = 5'])).ok && !fs.existsSync(saida));
+    assert.ok(!(await bancoMod.executar({ ...bom, ambiente: '' }, ['UPDATE t SET a = 1 WHERE id = 5'])).ok && !fs.existsSync(saida));
+    assert.ok(!(await bancoMod.executar(bom, ['DROP TABLE t'])).ok && !fs.existsSync(saida));
+    assert.ok(!(await bancoMod.executar({ ...bom, sqlcl: fake('echo "ORA-00001: unique constraint violated"') }, ['INSERT INTO t (a) VALUES (1)'])).ok);
+
+    // Fluxo na esteira: massa → proposta → cartão → aprovar → massa registrada → cenários passam; recusar, erro e produção.
+    const back = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-back-')); fs.mkdirSync(path.join(back, 'testes-funcionais'));
+    fs.writeFileSync(path.join(back, 'testes-funcionais', 'preparar-ambiente.py'), 'import json\nprint(json.dumps({"ref":"v1","backend":"","mobile":"","parou_em":None,"pendentes":0,"itens":[]}))\n');
+    const apiPlano = async () => [{ key: 'K-9', resumo: '[QA] Planejamento dos Casos de Testes', updated: 'x', md: '#### CT01 – A\n\n#### CT02 – B' }];
+    const novo = async () => { const d = novoDir(); await qa.verificarPlano(d, 'K-1', apiPlano); qa.aprovar(d); return d; };
+    const sqlRodado = []; let respostaSql = { ok: true, saida: '2 rows updated.' };
+    const deps = { chave: 'K-1', backend: back, filhos: apiPlano, horaRefresh: '06:00', confirmar: async () => true,
+      banco: { conexao: 'qas-wms', ambiente: 'copia-producao', sqlcl: '', sensiveis: [] }, executarSql: async (b, stmts) => { sqlRodado.push({ b, stmts }); return respostaSql; } };
+    const veio = []; let fazer = async () => {};
+    maestro.rodando = () => false; maestro.parar = () => {};
+    maestro.rodar = (dir, o) => { veio.push(o); Promise.resolve(fazer(dir, o)).then(() => o.aoMudar()); return true; };
+    const cliEnv = (dir, env, ...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+    const propor = (dir, o) => cliEnv(dir, o.env, 'massa', 'proposta', '--papel', 'pedido faturado', '--cenarios', 'CT01,CT02', '--dados', '{"NUMPEDIDO":77,"STATUS":"F"}',
+      '--sql', "UPDATE pedido SET status = 'F' WHERE numpedido = 77; INSERT INTO log_nota (id, nota) VALUES (1, 77)", '--desfazer', "UPDATE pedido SET status = 'A' WHERE numpedido = 77; DELETE FROM log_nota WHERE id = 1 AND nota = 77", '--porque', 'nenhum pedido faturado na cópia');
+    const passa = (dir, id) => { const ev = path.join(os.tmpdir(), `s-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); cliEnv(dir, {}, 'evidencia', id, ev); cliEnv(dir, {}, 'cenario', id, 'concluir', '--status', 'passou'); };
+
+    const d = await novo();
+    fazer = async (dir, o) => { if (/massa/.test(o.titulo)) propor(dir, o); };
+    await qa.executar(d, deps);
+    assert.ok(veio[0].prompt.includes('PROPONHA o lote') && veio[0].env.QA_BANCO_ESCRITA === '1');
+    assert.deepStrictEqual([qa.estado(d).pausa.motivo, qa.estado(d).pausa.opcoes, qa.estado(d).execucao, sqlRodado.length], ['massa-sql', ['Aprovar e executar', 'Recusar'], 'pausado', 0]);
+    const h = qa.html(d);
+    assert.ok(h.includes("UPDATE pedido SET status = &#39;F&#39; WHERE numpedido = 77") && h.includes('SQL de desfazer (2)') && h.includes('nenhum pedido faturado na cópia') && h.includes('data-op="0"'));
+    // erro do banco: nada gravado, proposta continua, pausa vira pergunta
+    respostaSql = { ok: false, saida: 'ORA-02291: integrity constraint violated' };
+    assert.strictEqual((await qa.aplicarProposta(d, deps)).ok, false);
+    assert.deepStrictEqual([qa.estado(d).pausa.motivo, qa.massa(d).itens.length, !!qa.propostaMassa(d)], ['massa-sql-erro', 0, true]);
+    // aprovado: executa o lote (SQL e conexão) e registra a massa com origem e desfazer
+    respostaSql = { ok: true, saida: '2 rows updated.' };
+    const ap = await qa.aplicarProposta(d, deps);
+    assert.ok(ap.ok && sqlRodado.at(-1).b.conexao === 'qas-wms' && sqlRodado.at(-1).stmts.length === 2);
+    const item = qa.massa(d).itens[0];
+    assert.deepStrictEqual([item.origem, item.estado, item.cenarios, item.desfazer.length, item.dados.NUMPEDIDO, qa.estado(d).pausa, !!qa.propostaMassa(d)], ['sql', 'valida', ['CT01', 'CT02'], 2, 77, null, false]);
+    const log = fs.readFileSync(path.join(d, qa.LOG_SQL), 'utf8').trim().split('\n').map((x) => JSON.parse(x));
+    assert.deepStrictEqual(log.map((x) => [x.tipo, x.ok]), [['aplicar', false], ['aplicar', true]]);
+    assert.ok(log[1].sql.length === 2 && log[1].desfazer.length === 2 && log[1].conexao === 'qas-wms');
+    assert.ok(qa.massaHtml(d).includes('Desfazer no banco') && qa.massaHtml(d).includes('data-acao="qaMassaDesfazer"'));
+    // retomada: a massa já existe, os cenários rodam sem nova busca
+    veio.length = 0; fazer = async (dir, o) => passa(dir, o.titulo.match(/CT\d+/)[0]);
+    await qa.executar(d, deps);
+    assert.deepStrictEqual([veio.map((x) => x.titulo), qa.cenarios(d).cenarios.map((c) => c.status)], [['QA · CT01 · A', 'QA · CT02 · B'], ['passou', 'passou']]);
+    // desfazer: roda o SQL de desfazer e invalida o item
+    assert.ok(await qa.desfazerMassa(d, 'M1', deps));
+    assert.deepStrictEqual([sqlRodado.at(-1).stmts[0].startsWith("UPDATE pedido SET status = 'A'"), qa.massa(d).itens[0].estado], [true, 'invalida']);
+    assert.throws(() => cliEnv(d, { QA_BANCO_ESCRITA: '1' }, 'massa', 'proposta', '--cenarios', 'CT01', '--sql', 'x', '--desfazer', 'y'), /só vale na Etapa 4/);
+
+    // recusar: nada executa, a proposta some
+    const dr = await novo(); const antes = sqlRodado.length; veio.length = 0;
+    fazer = async (dir, o) => { if (/massa/.test(o.titulo)) propor(dir, o); };
+    await qa.executar(dr, deps);
+    qa.recusarProposta(dr);
+    assert.deepStrictEqual([sqlRodado.length - antes, qa.estado(dr).pausa, !!qa.propostaMassa(dr)], [0, null, false]);
+    assert.ok(JSON.parse(fs.readFileSync(path.join(dr, qa.LOG_SQL), 'utf8').trim().split('\n').at(-1)).tipo === 'recusar');
+
+    // produção (ou sem ambiente): a IA nem recebe a escrita; o qa-state recusa e o executor padrão também
+    const dp = await novo(); veio.length = 0;
+    let recusouCli = '';
+    fazer = async (dir, o) => { if (/massa/.test(o.titulo)) { try { propor(dir, o); } catch (e) { recusouCli = String(e.stderr || e.message); } } };
+    await qa.executar(dp, { ...deps, banco: { conexao: 'x', ambiente: 'producao', sqlcl: '', sensiveis: [] } });
+    assert.ok(!veio[0].prompt.includes('PROPONHA o lote') && !veio[0].env.QA_BANCO_ESCRITA && /não está liberada/.test(recusouCli));
+    fs.writeFileSync(path.join(dp, qa.PROPOSTA), JSON.stringify({ papel: 'p', cenarios: ['CT01'], dados: {}, sql: ['UPDATE t SET a = 1 WHERE id = 1'], desfazer: ['UPDATE t SET a = 2 WHERE id = 1'], porque: '' }));
+    const bloq = await qa.aplicarProposta(dp, { banco: { conexao: 'x', ambiente: 'producao', sqlcl: '' } }); // executor padrão
+    assert.deepStrictEqual([bloq.ok, qa.massa(dp).itens.length], [false, 0]);
+    assert.deepStrictEqual(rede, []);
+  }
   console.log('ok esteira qa');
 })().catch((e) => { console.error(e); process.exit(1); });
