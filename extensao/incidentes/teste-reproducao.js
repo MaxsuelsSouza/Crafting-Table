@@ -15,7 +15,7 @@ assert.ok(!travaDml('  ', real).ok);
 
 const mk = () => fs.mkdtempSync(path.join(os.tmpdir(), 'rep-'));
 const ler = (dir, f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
-const base = (dir, ordem, falha) => ({
+const base = (dir, ordem, falha, aprovada = true) => ({
   semPadrao: true, banco: { ambiente: 'copia-producao' }, esperar: async (teste) => teste(),
   comandos: { lista: () => [{ nome: 'API', comando: 'dotnet run' }, { nome: 'Metro', comando: 'yarn react-native start' }, { nome: 'Start', comando: 'yarn android' }],
     rodar: (n) => ordem.push(`cmd:${n}`) },
@@ -28,7 +28,7 @@ const base = (dir, ordem, falha) => ({
   claude: async ({ titulo }) => {
     ordem.push(titulo);
     if (/fluxo/.test(titulo)) require('./fluxo').plano(dir, [{ titulo: 'Abrir a tela', texto: 'x' }, { titulo: 'Finalizar sem completar', texto: 'y' }]);
-    if (/massa/.test(titulo)) fs.writeFileSync(path.join(dir, 'massa-teste.sql'), "insert into tarefa (id_tarefa) values (111111);");
+    if (/massa/.test(titulo)) { fs.writeFileSync(path.join(dir, 'massa-teste.sql'), "insert into tarefa (id_tarefa) values (111111);"); if (aprovada) rep.aprovarMassa(dir); } // aprovada: o dev já leu e aprovou
     if (/emulador/.test(titulo)) { fs.mkdirSync(path.join(dir, 'evidencias'), { recursive: true }); fs.writeFileSync(path.join(dir, 'evidencias', '01-tela.png'), 'x'); fs.writeFileSync(path.join(dir, '.reproducao-claude.json'), JSON.stringify({ ok: true, acao: 'repetiu', prints: [{ arquivo: '01-tela.png', legenda: 'Tela' }] })); }
     if (/resumo/.test(titulo)) fs.writeFileSync(path.join(dir, 'resumo.md'), '# ok');
     return true;

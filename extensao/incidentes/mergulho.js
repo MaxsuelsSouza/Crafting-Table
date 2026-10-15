@@ -1,6 +1,6 @@
 // @ts-check
 // Aba Mergulho dos Incidentes, etapas 1 a 4 (triagem, artefatos/PO, dados e logs, diagnóstico). A 5 (reprodução) é do reproducao.js.
-// Contrato dos artefatos: ~/.claude/documentos/*/incidentes-mergulho-contrato.md. Estado em <aba>/.mergulho.json.
+// Contrato dos artefatos: incidentes/CONTRATO.md. Estado em <aba>/.mergulho.json.
 // Cada etapa é um `claude -p` (maestro.rodar) que grava o seu arquivo; a extensão confere o arquivo e segue para a próxima.
 // Pausa: o Claude grava .pausa.json ({ motivo, pergunta, opcoes }); a extensão guarda no estado, mostra na aba e retoma com a resposta (.respostas.md).
 const fs = require('fs');
@@ -13,6 +13,7 @@ const controle = require('./controle');
 const fluxo = require('./fluxo');
 const reproducao = require('./reproducao'); // etapa 5 e as suas subetapas
 const vagas = require('../agentes/etapas'); // plugin de cada etapa (Configurações > Plugins)
+const dossie = require('../implementacoes/dossie'); // entrada do incidente: mesma régua de confiança da Implementação
 
 const ESTADO = '.mergulho.json', PAUSA = '.pausa.json', RESPOSTAS = '.respostas.md', CONTEXTO = '.jira-contexto.md';
 const ETAPAS = [
@@ -43,7 +44,7 @@ const situacao = (dir) => {
 const controlesDe = (sit) => ({ pausar: 'mergulhoPausar', dicaPausar: 'Pausar o Mergulho: o Claude para e a etapa recomeça ao retomar',
   retomar: ['parado', 'erro'].includes(sit.fase) || (sit.fase === 'pausado' && sit.e.pausa?.motivo === 'manual') ? 'mergulhoRetomar' : null,
   dicaRetomar: 'Retomar o Mergulho da etapa em que parou' });
-const existe = (dir, n) => fs.existsSync(path.join(dir, ETAPAS[n - 1].arq));
+const existe = (dir, n) => { try { return fs.statSync(path.join(dir, ETAPAS[n - 1].arq)).size > 0; } catch { return false; } }; // vazio conta como não gravado
 
 // ── Gatekeeper da etapa 2: anexos do Jira ainda não baixados (mesma conta da aba Docs) ──
 const ehDocumento = (t) => require('../provedores/documento').ehDocumento(t);
@@ -62,9 +63,9 @@ const FERRAMENTAS = (mapa) => ['Read', 'Glob', 'Grep', `Bash(${GRAVAR}:*)`, `Bas
 const contextoJira = (j, t) => require('../infra/contexto').contextoDoTicket(j, t);
 
 const TAREFA = {
-  1: (d) => `ETAPA 1 · TRIAGEM. Leia ${CONTEXTO} (descrição do ticket). Identifique Módulo, Submódulo e Fluxo do WMS e explique em qual etapa específica do fluxo o problema ocorreu. Use o código dos repositórios só para confirmar nomes de módulo/fluxo. Grave em ${d}/${ETAPAS[0].arq}, seções: Módulo, Submódulo, Fluxo, Etapa do fluxo em que o problema ocorreu (com a justificativa).`,
+  1: (d, o) => `ETAPA 1 · TRIAGEM. Leia ${CONTEXTO} (descrição do ticket)${o ? ` e a explicação do dev/PO: "${o}"` : ''}. Identifique Módulo, Submódulo e Fluxo do WMS e explique em qual etapa específica do fluxo o problema ocorreu. Use o código dos repositórios só para confirmar nomes de módulo/fluxo. Grave em ${d}/${ETAPAS[0].arq}, seções: Módulo, Submódulo, Fluxo, Etapa do fluxo em que o problema ocorreu (com a justificativa).`,
   2: (d, o) => `ETAPA 2 · ARTEFATOS E INPUT DO PO. Leia ${CONTEXTO} (todos os comentários), os arquivos baixados do ticket (pasta ${d}/.. e ${d}) e a observação do PO: ${o ? `"${o}"` : '(nenhuma)'}. Grave em ${d}/${ETAPAS[1].arq}: resumo dos comentários, dos anexos e da observação do PO, mais duas seções: "Massa de dados" (IDs, números de pedido/tarefa, payloads citados, literalmente como aparecem) e "Comportamento relatado" (o que o usuário disse que fez/viu, ex.: "app crashou"). Vídeos (.mp4/.webm): não dá para abri-los com Read; extraia quadros com: ffmpeg -i <video> -vf fps=1/2 -frames:v 12 /tmp/mergulho-${path.basename(path.dirname(d))}/quadro-%02d.png (crie a pasta antes com mkdir -p) e leia os PNGs com Read; descreva o que o vídeo mostra. Imagens (.png/.jpg) leia direto com Read. Não invente: o que não está nas fontes fica fora. Se algum anexo não puder ser lido, liste-o em "Não analisado" no arquivo com o motivo.`,
-  3: (d) => `ETAPA 3 · DADOS E LOGS (base de BKP). Leia ${d}/${ETAPAS[0].arq} e ${d}/${ETAPAS[1].arq}. (a) MASSA: prioridade 1 é a massa já citada no ticket/comentários/anexos (seção "Massa de dados"). Só se ela não estiver no ticket, procure a massa na base de BKP com mapa-db (somente SELECT; nunca altere nem grave nada no banco). Grave as consultas/estrutura da massa real em ${d}/massa-real.sql. (b) LOGS: no código dos repositórios, identifique as tabelas de log ligadas a essa massa/módulo e o caminho do código que grava nelas. No banco, consulte a tabela de log e confira se há registros recentes. Se a tabela achada NÃO tiver uso recente (ou houver mais de uma candidata e você não souber qual), PAUSE e pergunte ao usuário qual tabela consultar. Se estiver ativa, busque a movimentação específica da massa do incidente. Grave em ${d}/${ETAPAS[2].arq}: onde a massa foi achada (ticket ou BKP), tabelas de log (com o caminho do código) e os registros de movimentação encontrados.`,
+  3: (d) => `ETAPA 3 · DADOS E LOGS (base de BKP). Leia ${d}/${ETAPAS[0].arq} e ${d}/${ETAPAS[1].arq}. (a) MASSA: prioridade 1 é a massa já citada no ticket/comentários/anexos (seção "Massa de dados"). Só se ela não estiver no ticket, procure a massa na base de BKP com mapa-db (somente SELECT; nunca altere nem grave nada no banco). Grave as consultas/estrutura da massa real em ${d}/massa-real.sql. Se não achar a massa (ticket e BKP) ou não houver banco, NÃO deixe o arquivo vazio: registre a seção "Pendência: massa real" em ${d}/${ETAPAS[2].arq}, dizendo o que faltou. (b) LOGS: no código dos repositórios, identifique as tabelas de log ligadas a essa massa/módulo e o caminho do código que grava nelas. No banco, consulte a tabela de log e confira se há registros recentes. Se a tabela achada NÃO tiver uso recente (ou houver mais de uma candidata e você não souber qual), PAUSE e pergunte ao usuário qual tabela consultar. Se estiver ativa, busque a movimentação específica da massa do incidente. Grave em ${d}/${ETAPAS[2].arq}: onde a massa foi achada (ticket ou BKP), tabelas de log (com o caminho do código) e os registros de movimentação encontrados.`,
   4: (d) => `ETAPA 4 · DIAGNÓSTICO. Leia ${d}/${ETAPAS[0].arq}, ${d}/${ETAPAS[1].arq}, ${d}/${ETAPAS[2].arq} e ${d}/massa-real.sql. Cruze o estado da massa, o log e o relato do PO e defina a ação exata do usuário, ou a falha de ambiente, que gerou a anomalia (ex.: "tentou finalizar a tarefa sem completar todos os cards"; "app crashou no meio da requisição e o usuário reiniciou o celular"). Grave em ${d}/${ETAPAS[3].arq}: a ação/falha, as evidências que a sustentam (cite arquivo e registro) e o grau de certeza. Se não houver base para concluir, PAUSE e pergunte exatamente o que falta.`
 };
 // Ticket por documento (só etapas 1 e 2): onde estão o original, o texto extraído, as páginas e os anexos extras do incidente.
@@ -72,11 +73,12 @@ const BLOCO_DOC = (t, n) => {
   const { EXTRAIDO, PAGINAS } = require('../infra/contexto'), d = require('../infra/tickets').pasta(t.chave), arq = path.join(d, t.documento?.arquivo || '');
   return `\n\nTicket por documento (sem ferramenta de gestão): o documento original é ${arq}; texto extraído em ${path.join(d, EXTRAIDO)} (se existir); para PDF escaneado as páginas estão em ${path.join(d, PAGINAS)}/ (leia as imagens com Read). Comentários = os da aba Ticket do documento (no ${CONTEXTO}). Anexos extras do incidente (prints, vídeos) estão em ${path.join(d, '.anexos')}/ (pasta oculta: liste com ls, o Glob não a enxerga)${n === 2 ? ' e devem ser analisados todos; vídeos: extraia os quadros como indicado acima' : ''}. Documento escrito à mão ou imagem: leia direto com Read e transcreva o que entender no arquivo da etapa, marcando o que estiver ilegível em vez de inventar. PDF paginado: pdftotext/pdftoppm; docx: unzip -p arquivo word/document.xml (somente leitura).`;
 };
-const REGRAS = (d) => `\n\nRegras: português; você roda em segundo plano, SEM ninguém para aprovar permissões: ação que pede aprovação é negada, então nunca diga que algo "precisa de aprovação" — use outra ferramenta ou registre a limitação no arquivo; só leia em ${d} (e no código dos repositórios). ESCRITA: Write/Edit são bloqueados nesta pasta; para gravar qualquer arquivo dela ("Grave em ${d}/NOME") use ${GRAVAR} NOME <<'FIM' … FIM (texto pela entrada padrão, só o nome do arquivo, sem a pasta); no Bash use um comando simples por vez (sem ; && | encadeados: pedem aprovação e são bloqueados), prefira Read/Glob/Grep; banco SOMENTE SELECT via mapa-db; não invente nada que não esteja nas fontes. Grave o arquivo da etapa só quando ela estiver pronta. Para PAUSAR e perguntar ao usuário (sem AskUserQuestion), grave ${d}/${PAUSA} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio) e NÃO grave o arquivo da etapa; termine em seguida.`;
+const REGRAS = (d) => `\n\nRegras: português; você roda em segundo plano, SEM ninguém para aprovar permissões: ação que pede aprovação é negada, então nunca diga que algo "precisa de aprovação" — use outra ferramenta ou registre a limitação no arquivo; só leia em ${d} (e no código dos repositórios). ESCRITA: Write/Edit são bloqueados nesta pasta; para gravar qualquer arquivo dela ("Grave em ${d}/NOME") use ${GRAVAR} NOME <<'FIM' … FIM (texto pela entrada padrão, só o nome do arquivo, sem a pasta); no Bash use um comando simples por vez (sem ; && | encadeados: pedem aprovação e são bloqueados), prefira Read/Glob/Grep; banco SOMENTE SELECT via mapa-db; proibido: commit, push, merge, rebase, INSERT/UPDATE/DELETE/DDL e publicar na ferramenta de tickets; não invente nada que não esteja nas fontes. Grave o arquivo da etapa só quando ela estiver pronta. Para PAUSAR e perguntar ao usuário (sem AskUserQuestion), grave ${d}/${PAUSA} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio) e NÃO grave o arquivo da etapa; termine em seguida.`;
 
+const ORIGEM = (d) => `\n\nTermine o arquivo da etapa com duas seções: "Origem das afirmações" (cada afirmação com a fonte: arquivo, comentário, consulta ao banco ou código arquivo:linha; e a confiança: aprovado, gerado, bruto, verbal ou inferido) e "Lacunas" (o que não conseguiu confirmar). A entrada do incidente, com a confiança de cada fonte, está em ${path.join(d, dossie.ENTRADA.md)} (se existir).`;
 const prompt = (t, dir, n, repos, banco, ajuste = false) => {
   const resp = fs.existsSync(path.join(dir, RESPOSTAS)) ? `\nRespostas do usuário a perguntas anteriores (use-as): ${path.join(dir, RESPOSTAS)}` : '';
-  return `[segundo plano] [Crafting Table · Incidente ${t.chave}] Mergulho no incidente ${t.link || t.chave}.\nPasta de trabalho: ${dir}\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}`).join(' · ') || 'nenhum configurado'}\nBanco: ${banco}${resp}\n\n${TAREFA[n](dir, estado(dir).obsPO)}${n <= 2 && ehDocumento(t) ? BLOCO_DOC(t, n) : ''}${ajuste ? `\n\nAJUSTE: ${path.join(dir, ETAPAS[n - 1].arq)} já existe e o usuário pediu mudança: leia a ÚLTIMA entrada de ${path.join(dir, RESPOSTAS)}, aplique o pedido e regrave o arquivo completo, sem refazer o que já está certo.` : ''}${REGRAS(dir)}`;
+  return `[segundo plano] [Crafting Table · Incidente ${t.chave}] Mergulho no incidente ${t.link || t.chave}.\nPasta de trabalho: ${dir}\nRepositórios de código: ${repos.map((r) => `${r.camada}: ${r.caminho}`).join(' · ') || 'nenhum configurado'}\nBanco: ${banco}${resp}\n\n${TAREFA[n](dir, estado(dir).obsPO)}${ORIGEM(dir)}${n <= 2 && ehDocumento(t) ? BLOCO_DOC(t, n) : ''}${ajuste ? `\n\nAJUSTE: ${path.join(dir, ETAPAS[n - 1].arq)} já existe e o usuário pediu mudança: leia a ÚLTIMA entrada de ${path.join(dir, RESPOSTAS)}, aplique o pedido e regrave o arquivo completo, sem refazer o que já está certo.` : ''}${REGRAS(dir)}`;
 };
 
 // ── Branch dos repositórios (etapa 3) ──
@@ -101,9 +103,17 @@ const sincronizarRepos = (repos, anotar = () => {}) => repos.flatMap((r) => {
     return [];
   } catch (x) { return [`${nome} (${esperada}): ${String(x.stderr || x.message).trim().split('\n')[0]}`]; }
 });
-const TROCAR = 'Trocar para a branch correta e continuar', SEGUIR = 'Continuar assim mesmo', TENTAR = 'Tentar de novo';
+const TROCAR = 'Trocar para a branch correta e continuar', SEGUIR = 'Continuar assim mesmo', TENTAR = 'Tentar de novo', SEM_MASSA = 'Continuar sem a massa real';
 
 // ── Execução ──
+// Entrada do incidente (entrada.json/md na pasta da aba): relê o ticket e a explicação do dev/PO (obsPO) a cada começo da etapa 1.
+const montarEntrada = (s, t, dir, j) => {
+  const { cfg } = require('../configuracao/configuracao'), c = cfg();
+  const d = dossie.montarIncidente(t, { j: j && !j.erro ? j : undefined, obsPO: estado(dir).obsPO,
+    banco: { conexao: c.get('bancoConexao') || '', ambiente: c.get('bancoAmbiente') || '' }, repos: s.reposDe(t) });
+  dossie.gravarEntrada(dir, d);
+  return d;
+};
 const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   const dir = s.pastaAba(t.id), { cfg } = require('../configuracao/configuracao');
   if (n <= 2) { // gatekeeper: todos os anexos do ticket precisam estar baixados
@@ -136,7 +146,21 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
     }
   }
   const j = s.cacheJira[t.id];
+  if (n <= 2 && j?.erro) { // não segue com um .jira-contexto.md velho: o Claude investigaria o incidente errado
+    mudar(dir, { etapa: n, fase: 'pausado', pausa: { motivo: 'ticket', pergunta: `Não consegui ler o ticket: ${String(j.erro).slice(0, 160)}. Verifique a conexão com a ferramenta de tickets e tente de novo.`, opcoes: [TENTAR] } });
+    aoVivo.anotar(dir, { tipo: 'aviso', texto: 'Mergulho pausado: não foi possível ler o ticket' });
+    return s.render();
+  }
   if (j && !j.erro) fs.writeFileSync(path.join(dir, CONTEXTO), contextoJira(j, t));
+  if (n === 1 && !ajuste) { // entrada do incidente: modo e prontidão; só o título vira pergunta, nunca invenção
+    const d = montarEntrada(s, t, dir, j);
+    aoVivo.anotar(dir, { tipo: 'fala', texto: `Entrada do incidente: ${dossie.ROTULO_MODO_INC[d.modo]}, prontidão ${d.prontidao}.`, detalhe: d.lacunas.join('\n') });
+    if (d.modo === 'perguntar') {
+      mudar(dir, { etapa: 1, fase: 'pausado', pausa: { motivo: 'briefing', pergunta: 'O ticket não tem descrição nem documento: só o título. Explique o que aconteceu (o que o usuário fez, o que viu, em que tela ou fluxo, quando). O que você escrever vira a fonte "verbal" do incidente.', opcoes: [] } });
+      aoVivo.anotar(dir, { tipo: 'aviso', texto: 'Mergulho pausado: o ticket só tem o título; explique o incidente' });
+      return s.render();
+    }
+  }
   const mapa = vagas.raiz('incidentes.mapa') || '', conexao = cfg().get('bancoConexao') || '', amb = cfg().get('bancoAmbiente') || '';
   const repos = s.reposDe(t), banco = conexao && amb && amb !== 'producao' ? `configurado (${amb === 'qas' ? 'QAS' : 'cópia de produção'}): mapa-db, só leitura` : 'NÃO configurado: não consulte banco; registre como pendência';
   const arqEtapa = path.join(dir, ETAPAS[n - 1].arq), antes = ajuste && fs.existsSync(arqEtapa) ? fs.statSync(arqEtapa).mtimeMs : 0;
@@ -166,10 +190,24 @@ const aposEtapa = async (s, t, n, rodada, mtimeAntes = 0) => {
   } else if (!existe(dir, n) || (mtimeAntes && fs.statSync(path.join(dir, ETAPAS[n - 1].arq)).mtimeMs <= mtimeAntes)) {
     mudar(dir, { fase: 'erro' });
     aoVivo.anotar(dir, { tipo: 'erro', texto: `A etapa ${n} terminou sem ${mtimeAntes ? 'atualizar' : 'gravar'} ${ETAPAS[n - 1].arq}` });
-  } else aguardarAprovacao(s, t, n);
+  } else if (n === 3 && !existeMassaReal(dir) && !estado(dir).massaOk && !/pend[êe]ncia/i.test(lerTxt(path.join(dir, ETAPAS[2].arq)))) {
+    mudar(dir, { etapa: 3, fase: 'pausado', pausa: { motivo: 'massa', pergunta: 'A etapa 3 terminou sem massa-real.sql e sem registrar a pendência da massa em 3-dados-logs.md. Sem a Massa Real a reprodução não consegue proteger a prova (a trava de DML fica vazia).', opcoes: [TENTAR, SEM_MASSA] } });
+    aoVivo.anotar(dir, { tipo: 'aviso', texto: 'Mergulho pausado na etapa 3: sem massa real e sem pendência registrada' });
+  } else await avancarEtapa(s, t, n);
   s.render();
 };
 
+const lerTxt = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+const existeMassaReal = (dir) => !!lerTxt(path.join(dir, 'massa-real.sql')).trim();
+// Etapa pronta: pede aprovação quando a entrada tem lacuna (prontidão abaixo de alta) ou é a 4 (base da reprodução); com entrada boa as
+// etapas 1 a 3 seguem sozinhas. Sem entrada gravada (ticket antigo) vale o comportamento de sempre: aprovar.
+const avancarEtapa = async (s, t, n) => {
+  const dir = s.pastaAba(t.id), entrada = dossie.lerEntrada(dir);
+  if (n >= 4 || !entrada || entrada.exigeAprovacaoInicial) return aguardarAprovacao(s, t, n);
+  aoVivo.anotar(dir, { tipo: 'fim', texto: `Etapa ${n} concluída: ${ETAPAS[n - 1].arq} criado (entrada completa: segue sozinho)` });
+  mudar(dir, { etapa: n + 1, fase: 'parado', pausa: null, aprovacao: null });
+  return seguir(s, t);
+};
 // Documento da etapa criado: como no refinamento, o Mergulho para e espera você abrir, aprovar (segue sozinho para a próxima) ou pedir ajuste.
 const aguardarAprovacao = (s, t, n) => {
   const dir = s.pastaAba(t.id);
@@ -195,7 +233,7 @@ const reproduzir = async (s, t, rodada) => {
 const seguir = (s, t) => {
   const dir = s.pastaAba(t.id), e = estado(dir);
   if (maestro.rodando(dir) || e.fase === 'aguardando') return; // aguardando: a saída é Aprovar ou Pedir ajuste no card
-  if (e.etapa <= 4 && e.fase === 'rodando' && !situacao(dir).rodando && existe(dir, e.etapa)) return aguardarAprovacao(s, t, e.etapa); // interrompida depois de gravar o documento
+  if (e.etapa <= 4 && e.fase === 'rodando' && !situacao(dir).rodando && existe(dir, e.etapa)) return avancarEtapa(s, t, e.etapa); // interrompida depois de gravar o documento
   const rodada = controle.nova(dir);
   return e.etapa >= 5 ? reproduzir(s, t, rodada) : rodarEtapa(s, t, e.etapa, rodada);
 };
@@ -224,6 +262,24 @@ const responder = (s, t, resposta) => {
       mudar(dir, { pausa: null });
     } else if (resposta === SEGUIR) mudar(dir, { pausa: null, branchOk: true });
     else return; // texto livre não resolve a pausa de branch
+    return seguir(s, t);
+  }
+  if (e.pausa.motivo === 'briefing') { // a explicação vira a fonte verbal (obsPO), que o Claude já lê nas etapas 1 e 2
+    const obs = [e.obsPO, String(resposta).trim()].filter(Boolean).join('\n\n');
+    mudar(dir, { pausa: null, obsPO: obs });
+    return seguir(s, t);
+  }
+  if (resposta === reproducao.ACEITAR) { // 5.4 terminou sem resultado do Claude e o dev aceita como não reproduzido
+    reproducao.aceitarSemResultado(dir);
+    aoVivo.anotar(dir, { tipo: 'aviso', texto: 'Reprodução aceita como não reproduzida (sem resultado do Claude)' });
+    mudar(dir, { pausa: null });
+    return seguir(s, t);
+  }
+  if (e.pausa.motivo === 'ticket') { if (resposta !== TENTAR) return; mudar(dir, { pausa: null }); s.cacheJira[t.id] = undefined; return seguir(s, t); }
+  if (e.pausa.motivo === 'massa') {
+    if (resposta === TENTAR) mudar(dir, { pausa: null });
+    else if (resposta === SEM_MASSA) { mudar(dir, { pausa: null, massaOk: true }); return avancarEtapa(s, t, 3); }
+    else return;
     return seguir(s, t);
   }
   if (e.pausa.motivo === 'sync') {
@@ -264,7 +320,8 @@ const corpo = (t, d, dir) => {
       : e.pausa.motivo === 'anexos' ? `<div class="mg-barra">${btn('↓ Baixar todos', 'anexoTodos')}${btn('Continuar', 'mergulhoContinuar', '', 'bt bt-principal')}</div>`
       : `${e.pausa.opcoes.length ? `<div class="mg-barra">${e.pausa.opcoes.map((o, i) => btn(esc(o), 'mergulhoResponder', ` data-op="${i}"`)).join('')}</div>` : ''}
       <textarea class="mg-obs" data-texto placeholder="Sua resposta…" style="margin-top:8px"></textarea><div class="mg-barra">${btn('Responder e continuar', 'mergulhoResponder', '', 'bt bt-principal')}</div>`}</div></div>` : '';
-  const et = ETAPAS[e.etapa - 1], lido = !!e.aprovacao?.lido;
+  const et0 = ETAPAS[e.etapa - 1], lido = !!e.aprovacao?.lido;
+  const et = et0 && e.aprovacao?.arq ? { ...et0, arq: e.aprovacao.arq, nome: e.aprovacao.nome || et0.nome } : et0; // portão da massa de teste (5.2): outro arquivo, mesmo cartão
   // Mesmo visual do refinamento (refinamento/spec.js): cartão "Agora" com o título e o texto, "Abrir <arquivo>" e os botões Aprovar (verde, travado até ler) e Pedir ajuste.
   const aprovacao = fase === 'aguardando' && et ? `<div class="agora"><div class="atitulo">Revise a etapa ${et.n} · ${esc(et.nome)}</div>
     <div class="atexto">Abra <b>${esc(et.arq)}</b>, leia e clique em <b>Aprovar</b> ou <b>Pedir ajuste</b>.</div>
@@ -294,20 +351,27 @@ const acoes = (s) => ({
   mergulhoAbrir({ id }) {
     const t = s.ticketAberto(), n = Number(id), et = ETAPAS[n - 1];
     if (!t || !et) return;
-    const dir = s.pastaAba(t.id), arq = path.join(dir, et.arq), vscode = require('vscode');
+    const dir = s.pastaAba(t.id), ap = estado(dir).aprovacao, nome = ap?.etapa === n && ap.arq ? ap.arq : et.arq, arq = path.join(dir, nome), vscode = require('vscode');
     if (!fs.existsSync(arq)) return vscode.window.showWarningMessage(`O arquivo ainda não existe: ${arq}`);
-    mudar(dir, { aprovacao: { etapa: n, lido: true } });
-    vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arq));
+    mudar(dir, { aprovacao: { ...(ap?.etapa === n ? ap : {}), etapa: n, lido: true } });
+    vscode.commands.executeCommand(nome.endsWith('.md') ? 'markdown.showPreview' : 'vscode.open', vscode.Uri.file(arq));
     s.render();
   },
   async mergulhoAprovar() {
     const t = s.ticketAberto(), vscode = require('vscode');
     if (!t) return;
-    const dir = s.pastaAba(t.id), e = estado(dir), et = ETAPAS[e.etapa - 1];
+    const dir = s.pastaAba(t.id), e = estado(dir), et = ETAPAS[e.etapa - 1], massa = !!e.aprovacao?.arq;
     if (e.fase !== 'aguardando' || !et) return;
     if (!e.aprovacao?.lido) return vscode.window.showWarningMessage('Abra e leia o documento antes de aprovar.');
-    const ok = await vscode.window.showInformationMessage(`Aprovar a etapa ${et.n} (${et.nome})?`, { modal: true, detail: 'Depois de aprovada, o Mergulho segue sozinho para a próxima etapa.' }, 'Aprovar');
+    const ok = await vscode.window.showInformationMessage(massa ? 'Aprovar a massa de teste?' : `Aprovar a etapa ${et.n} (${et.nome})?`,
+      { modal: true, detail: massa ? 'A extensão vai executar o massa-teste.sql na base (INSERT e commit) e o Mergulho segue sozinho.' : 'Depois de aprovada, o Mergulho segue sozinho para a próxima etapa.' }, 'Aprovar');
     if (!ok) return;
+    if (massa) {
+      reproducao.aprovarMassa(dir);
+      aoVivo.anotar(dir, { tipo: 'fim', texto: 'Massa de teste aprovada por você' });
+      mudar(dir, { fase: 'parado', aprovacao: null });
+      return seguir(s, t);
+    }
     aoVivo.anotar(dir, { tipo: 'fim', texto: `Etapa ${et.n} aprovada por você` });
     mudar(dir, { etapa: et.n + 1, fase: 'parado', aprovacao: null });
     await seguir(s, t);
@@ -317,10 +381,16 @@ const acoes = (s) => ({
     if (!t) return;
     const dir = s.pastaAba(t.id), e = estado(dir), et = ETAPAS[e.etapa - 1];
     if (e.fase !== 'aguardando' || !et) return;
-    const texto = await vscode.window.showInputBox({ title: `Ajuste na etapa ${et.n} (${et.nome})`, prompt: 'O que o Claude deve mudar?', ignoreFocusOut: true });
+    const massa = e.aprovacao?.arq, arq = massa || et.arq;
+    const texto = await vscode.window.showInputBox({ title: `Ajuste ${massa ? 'na massa de teste' : `na etapa ${et.n} (${et.nome})`}`, prompt: 'O que o Claude deve mudar?', ignoreFocusOut: true });
     if (!texto?.trim()) return;
-    fs.appendFileSync(path.join(dir, RESPOSTAS), `## Ajuste pedido na etapa ${et.n} (${et.arq})\n${texto.trim()}\n\n`);
-    aoVivo.anotar(dir, { tipo: 'aviso', texto: `Ajuste pedido na etapa ${et.n}: ${texto.trim().slice(0, 120)}` });
+    fs.appendFileSync(path.join(dir, RESPOSTAS), `## Ajuste pedido na etapa ${et.n} (${arq})\n${texto.trim()}\n\n`);
+    aoVivo.anotar(dir, { tipo: 'aviso', texto: `Ajuste pedido ${massa ? 'na massa de teste' : `na etapa ${et.n}`}: ${texto.trim().slice(0, 120)}` });
+    if (massa) { // a massa é refeita pelo Claude (5.2) a partir do pedido e volta ao portão
+      fs.rmSync(path.join(dir, 'massa-teste.sql'), { force: true });
+      mudar(dir, { fase: 'parado', aprovacao: null });
+      return seguir(s, t);
+    }
     await rodarEtapa(s, t, et.n, controle.nova(dir), true);
   },
   mergulhoPausar() { const t = s.ticketAberto(); if (t) pausarManual(s, t); },

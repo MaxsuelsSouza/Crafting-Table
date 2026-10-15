@@ -1,5 +1,5 @@
 // @ts-check
-// Etapa 5 do Mergulho (ambiente, massa de teste, emulador, captura) e fecho da etapa 6 (resumo.md). Contrato: incidentes-mergulho-contrato.md.
+// Etapa 5 do Mergulho (ambiente, massa de teste, emulador, captura) e fecho da etapa 6 (resumo.md). Contrato: incidentes/CONTRATO.md.
 // Prova preservada: só INSERT em linhas novas (Massa de Teste); a trava recusa DML que cite chave da Massa Real.
 const fs = require('fs');
 const path = require('path');
@@ -10,14 +10,17 @@ const maestro = require('../painel/maestro');
 const banco = require('../plugins/mapa/lib/banco');
 
 const MERG = '.mergulho.json', EVID = 'evidencias', CLAUDE_JSON = '.reproducao-claude.json';
-const FERRAMENTAS = ['Bash', 'Read', 'Glob', 'Grep', 'Skill'];
 // ~/.claude é bloqueada para Write/Edit no claude -p: os arquivos do incidente são gravados por mergulho-gravar.
 const GRAVAR = path.join(__dirname, 'mergulho-gravar');
 const FLUXO = path.join(__dirname, 'mergulho-fluxo');
+// Ferramentas por prefixo (nada de Bash livre): só os bins do incidente, o banco por mapa-db (leitura), adb e maestro para o emulador e leitura de arquivos.
+const FERRAMENTAS = (mapa = '', adb = 'adb') => ['Read', 'Glob', 'Grep', 'Skill', `Bash(${GRAVAR}:*)`, `Bash(${FLUXO}:*)`, ...(mapa ? [`Bash(${mapa}/bin/mapa-db:*)`] : []),
+  'Bash(adb:*)', ...(adb !== 'adb' ? [`Bash(${adb}:*)`] : []), 'Bash(maestro:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(grep:*)'];
 const ESCRITA = ` ESCRITA: Write/Edit são bloqueados na pasta do incidente; grave por ${GRAVAR} NOME <<'FIM' … FIM (só o nome do arquivo, texto pela entrada padrão) ou ${GRAVAR} evidencias/NOME.png --de /tmp/arquivo.png.`;
 const REGRAS = 'Modo não interativo: não pergunte, registre e siga. Proibido: INSERT/UPDATE/DELETE/DDL no banco, alterar qualquer registro da Massa Real, '
-  + 'publicar na ferramenta de tickets, commit e push. Consultas ao banco só de leitura.' + ESCRITA;
+  + 'publicar na ferramenta de tickets, commit, push, merge e rebase. Consultas ao banco só de leitura, por mapa-db. Não invente: o que não consta nas fontes vira "não identificado".' + ESCRITA;
 
+const TENTAR = 'Tentar de novo', ACEITAR = 'Aceitar como não reproduzido';
 const lerTxt = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
 const lerJson = (f, pad) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return pad; } };
 
@@ -46,6 +49,7 @@ function travaDml(sqlTeste, sqlReal) {
   for (const s of stmts) {
     const verbo = s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').trim().match(/^\w+/)?.[0]?.toLowerCase();
     if (!['insert', 'update', 'delete'].includes(verbo)) return { ok: false, erro: `comando "${verbo}" não é permitido na Massa de Teste (só INSERT/UPDATE/DELETE em linhas novas)` };
+    if (verbo !== 'insert' && !/\bwhere\b/i.test(s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ').replace(/'(?:[^']|'')*'/g, "''"))) return { ok: false, erro: `${verbo.toUpperCase()} sem WHERE mexeria em linhas que não são suas: ${s.slice(0, 80)}` };
     const c = citaChave(s, chaves);
     if (c) return { ok: false, erro: `o comando mexe na chave ${c} da Massa Real (prova preservada): ${s.slice(0, 80)}` };
   }
@@ -90,8 +94,11 @@ function depsPadrao(s, t, dir) {
       return { ok: !r.estourou && !/ORA-\d|SP2-\d/.test(saida), saida };
     },
     claude: (opts) => new Promise((ok) => {
+      const mapa = vagas.raiz('incidentes.mapa') || '';
       const extras = ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir, ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])];
-      const foi = maestro.rodar(dir, { ferramentas: FERRAMENTAS, extras, ...opts, env: { MERGULHO_DIR: dir, ...(opts.env || {}) }, aoMudar: () => { s.render?.(); if (!maestro.rodando(dir)) ok(true); } });
+      const foi = maestro.rodar(dir, { ferramentas: FERRAMENTAS(mapa, adb), extras: [...extras, ...vagas.pluginDirs('incidentes.mapa')], ...opts,
+        env: { MERGULHO_DIR: dir, MAPA_DB_CONEXAO: cfg().get('bancoConexao') || '', MAPA_DB_AMBIENTE: cfg().get('bancoAmbiente') || '', MAPA_DB_SQLCL: cfg().get('bancoSqlcl') || '',
+          MAPA_DB_SENSIVEIS: (cfg().get('bancoColunasSensiveis') || []).join(','), MAPA_DB_LOG: path.join(dir, '.mapa-db.jsonl'), ...(opts.env || {}) }, aoMudar: () => { s.render?.(); if (!maestro.rodando(dir)) ok(true); } });
       if (!foi) ok(false);
     }),
     gravarTela: (destino) => { if (emu.emuladorRodando()) require('../modulos/evidencias').gravar?.({ destino, chave: t.chave, continuo: true }); },
@@ -105,8 +112,8 @@ function depsPadrao(s, t, dir) {
 const vagas = require('../agentes/etapas');
 const SKILL = () => vagas.pastaSkill('incidentes.reproducao') || '';
 const lista = (dir) => ['1-triagem.md', '2-artefatos.md', '3-dados-logs.md', '4-diagnostico.md'].map((f) => path.join(dir, f)).join(', ');
-const promptMassa = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Prepare a MASSA DE TESTE do incidente. Leia ${lista(dir)}, ${path.join(dir, 'fluxo.json')} (o fluxo já planejado: a massa tem de dar ao fluxo tudo o que ele precisa em cada passo) e ${path.join(dir, 'massa-real.sql')} (a Massa Real: prova, intocável). `
-  + `Consulte a cópia de produção (só leitura, skill testes-funcionais: ${SKILL()}/SKILL.md) e escreva em ${path.join(dir, 'massa-teste.sql')} os comandos INSERT que criam registros NOVOS e DISTINTOS `
+const promptMassa = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Prepare a MASSA DE TESTE do incidente. ${fs.existsSync(path.join(dir, '.respostas.md')) ? `Aplique também os pedidos do usuário em ${path.join(dir, '.respostas.md')} (a última entrada vale). ` : ''}Leia ${lista(dir)}, ${path.join(dir, 'fluxo.json')} (o fluxo já planejado: a massa tem de dar ao fluxo tudo o que ele precisa em cada passo) e ${path.join(dir, 'massa-real.sql')} (a Massa Real: prova, intocável). `
+  + `Consulte a cópia de produção (só leitura, por mapa-db; skill testes-funcionais: ${SKILL()}/SKILL.md) e escreva em ${path.join(dir, 'massa-teste.sql')} os comandos INSERT que criam registros NOVOS e DISTINTOS `
   + '(ids e códigos diferentes dos reais, copiando a estrutura) deixando o banco no estado ANTERIOR ao erro, pronto para repetir a ação do diagnóstico. '
   + `Um comando por instrução, terminado em ";". NÃO execute o arquivo: a extensão confere e executa. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`;
 const promptPlano = (chave, dir) => `[segundo plano · Crafting Table · Incidente ${chave}] Monte o FLUXO da reprodução: todos os passos que serão necessários para replicar NO EMULADOR a ação do diagnóstico com a Massa de Teste. `
@@ -172,6 +179,13 @@ const exigir = (dir, x) => {
   if (!ant && !lerTxt(path.join(dir, '4-diagnostico.md')).trim()) throw new Error(`${x.n} ${x.nome} precisa de 4-diagnostico.md (etapa 4 aprovada)`);
 };
 
+// Aprovação da massa de teste: .massa-aprovada guarda o hash do SQL aprovado; editar o arquivo depois exige aprovar de novo.
+const hashSql = (sql) => require('crypto').createHash('sha1').update(String(sql).trim()).digest('hex');
+const massaAprovada = (dir, sql) => lerTxt(path.join(dir, '.massa-aprovada')).trim() === hashSql(sql);
+const aprovarMassa = (dir) => fs.writeFileSync(path.join(dir, '.massa-aprovada'), hashSql(lerTxt(path.join(dir, 'massa-teste.sql'))));
+// "Aceitar como não reproduzido": o dev decide seguir sem resultado do Claude; fica registrado como tal, nunca como resultado dele.
+const aceitarSemResultado = (dir) => { gravarReproducao(dir, false, 'Aceito pelo dev sem resultado registrado: o Claude não registrou o resultado da reprodução.'); marcarSub(dir, 'reproducao', 'concluida'); };
+
 // Pausa: o A mostra motivo/pergunta/opções; a retomada chama executar de novo.
 function pausar(dir, motivo, pergunta, opcoes = ['Tentar de novo']) {
   aoVivo.anotar(dir, { tipo: 'aviso', texto: `${motivo}. ${pergunta}` });
@@ -235,43 +249,60 @@ async function executar(s, t, d = {}) {
     // Preservação de prova: ambiente do banco tem de estar definido e não ser produção.
     const b = d.banco || {};
     if (b.ambiente === 'producao') return pausar(dir, 'A conexão do banco está marcada como PRODUÇÃO', 'Troque para a cópia de produção em Configurações → Banco de dados e tente de novo.');
+    if (!b.ambiente) return pausar(dir, 'O ambiente do banco não está definido', 'Defina em Configurações → Banco de dados se a conexão é QAS ou cópia de produção, e tente de novo.');
     const arqTeste = path.join(dir, 'massa-teste.sql'), real = lerTxt(path.join(dir, 'massa-real.sql'));
     if (!lerTxt(arqTeste).trim()) { vivo('acao', 'Claude monta a massa de teste (registros novos, estado anterior ao erro, o que o fluxo precisa)'); await d.claude({ prompt: promptMassa(t.chave, dir), titulo: 'Incidente · Preparando a massa de teste' }); }
     ponto();
     const sqlTeste = lerTxt(arqTeste), trava = travaDml(sqlTeste, real);
     if (!trava.ok) return pausar(dir, `Massa de Teste recusada: ${trava.erro}`, 'Ajuste o massa-teste.sql (só registros novos) e tente de novo.');
     if (!fs.existsSync(path.join(dir, '.massa-teste.ok'))) {
+      if (!massaAprovada(dir, sqlTeste)) { // única ação irreversível do Mergulho (INSERT + commit): abrir e ler antes de aprovar
+        mudar(dir, { etapa: 5, fase: 'aguardando', pausa: null, aprovacao: { etapa: 5, lido: false, arq: 'massa-teste.sql', nome: 'Massa de teste (executa no banco)' } });
+        vivo('fim', 'Massa de teste pronta (massa-teste.sql): aguardando sua aprovação antes de executar no banco');
+        return;
+      }
       vivo('acao', 'Executando massa-teste.sql no banco (só linhas novas)');
       const r = await d.executarSql(sqlTeste);
       if (!r.ok) return pausar(dir, 'O banco recusou a massa de teste', `${String(r.saida).slice(0, 200)}. Corrigir e tentar de novo?`);
       fs.writeFileSync(path.join(dir, '.massa-teste.ok'), new Date().toISOString());
     }
     concluirSub(S2);
-    // 5.3 Subir o ambiente (idempotente: o que já está de pé segue). Na retomada roda de novo, pois o ambiente pode ter caído.
-    ponto(); comecar(S3);
-    const falha = await subirAmbiente(dir, d);
-    if (falha) return pausar(dir, falha.motivo, falha.pergunta);
-    fs.writeFileSync(path.join(dir, '.ambiente.ok'), new Date().toISOString());
-    concluirSub(S3);
-    // 5.4 Reproduzir
-    ponto(); comecar(S4);
-    fluxo.descartarEmAndamento(dir); // passo cortado por pausa/queda volta para a fila
-    fs.mkdirSync(path.join(dir, EVID), { recursive: true });
-    fs.rmSync(path.join(dir, CLAUDE_JSON), { force: true });
-    d.gravarTela(path.join(dir, EVID));
-    const rodou = await d.claude({ prompt: promptReproduzir(t.chave, dir), titulo: 'Incidente · Reproduzindo no emulador' });
-    d.pararTela();
-    ponto();
-    if (!rodou) return pausar(dir, 'Já há um Claude em segundo plano nesta pasta', 'Aguarde ele terminar e tente de novo.');
-    await d.esperar(async () => true, 0);
-    const rep = gravarReproducao(dir, false, 'O Claude não registrou o resultado da reprodução.');
-    vivo(rep.ok ? 'fim' : 'aviso', rep.ok ? 'Problema reproduzido no emulador' : 'O problema não foi reproduzido (ou o Claude não registrou)');
-    concluirSub(S4);
+    if (estadoSubs(dir).reproducao !== 'concluida') { // já concluída (ex.: aceita sem resultado): não sobe nem reproduz de novo
+      // 5.3 Subir o ambiente (idempotente: o que já está de pé segue). Na retomada roda de novo, pois o ambiente pode ter caído.
+      ponto(); comecar(S3);
+      const falha = await subirAmbiente(dir, d);
+      if (falha) return pausar(dir, falha.motivo, falha.pergunta);
+      fs.writeFileSync(path.join(dir, '.ambiente.ok'), new Date().toISOString());
+      concluirSub(S3);
+      // 5.4 Reproduzir
+      ponto(); comecar(S4);
+      fluxo.descartarEmAndamento(dir); // passo cortado por pausa/queda volta para a fila
+      fs.mkdirSync(path.join(dir, EVID), { recursive: true });
+      fs.rmSync(path.join(dir, CLAUDE_JSON), { force: true });
+      d.gravarTela(path.join(dir, EVID));
+      const registrou = () => lerJson(path.join(dir, CLAUDE_JSON), null) !== null;
+      let rodou = await d.claude({ prompt: promptReproduzir(t.chave, dir), titulo: 'Incidente · Reproduzindo no emulador' });
+      if (rodou && !registrou() && controle.valida(dir, d.rodada)) { // uma segunda tentativa: os passos feitos são refeitos rápido pela ação registrada
+        vivo('aviso', 'O Claude terminou a reprodução sem registrar o resultado: tentando mais uma vez');
+        rodou = await d.claude({ prompt: promptReproduzir(t.chave, dir), titulo: 'Incidente · Reproduzindo no emulador (nova tentativa)' });
+      }
+      d.pararTela();
+      ponto();
+      if (!rodou) return pausar(dir, 'Já há um Claude em segundo plano nesta pasta', 'Aguarde ele terminar e tente de novo.');
+      await d.esperar(async () => true, 0);
+      if (!registrou()) return pausar(dir, 'O Claude não registrou o resultado da reprodução', 'Não sei dizer se o problema foi reproduzido: veja o Ao vivo e os passos do fluxo. Tentar de novo ou aceitar como não reproduzido?', [TENTAR, ACEITAR]);
+      const rep = gravarReproducao(dir, false, '');
+      vivo(rep.ok ? 'fim' : 'aviso', rep.ok ? 'Problema reproduzido no emulador' : 'O problema não foi reproduzido (resultado registrado pelo Claude)');
+      concluirSub(S4);
+    }
 
     vivo('etapa', 'Incidente · 6. Resumo analítico');
     ponto();
     await d.claude({ prompt: promptResumo(t.chave, dir), titulo: 'Incidente · Escrevendo o resumo analítico' });
-    if (!lerTxt(path.join(dir, 'resumo.md')).trim()) fs.writeFileSync(path.join(dir, 'resumo.md'), resumoBasico(dir, t));
+    if (!lerTxt(path.join(dir, 'resumo.md')).trim()) {
+      fs.writeFileSync(path.join(dir, 'resumo.md'), `> Resumo montado pela extensão, sem IA: o Claude não gravou o resumo.md. Revise antes de usar.\n\n${resumoBasico(dir, t)}`);
+      vivo('aviso', 'O Claude não gravou o resumo.md: a extensão montou um resumo básico (revise)');
+    }
     mudar(dir, { etapa: 6, fase: 'concluido', pausa: null });
     vivo('fim', 'Mergulho concluído: veja a aba Evidências');
   } catch (e) {
@@ -282,4 +313,4 @@ async function executar(s, t, d = {}) {
   } finally { s.render?.(); }
 }
 
-module.exports = { executar, SUBETAPAS, estadoSubs, proximaSub, _teste: { ARTEFATO, exigir, marcarSub, travaDml, chavesReais, subirAmbiente, gravarReproducao, acharComando, PAPEIS, promptPlano, promptReproduzir } };
+module.exports = { executar, SUBETAPAS, estadoSubs, proximaSub, aprovarMassa, aceitarSemResultado, ACEITAR, _teste: { massaAprovada, hashSql, FERRAMENTAS, ARTEFATO, exigir, marcarSub, travaDml, chavesReais, subirAmbiente, gravarReproducao, acharComando, PAPEIS, promptPlano, promptReproduzir } };
