@@ -44,17 +44,18 @@ const PLANO = '## Cenários de Teste\n\n#### CT01 – Separar pedido\n\n**Dado q
   for (let i = 0; i < 100 && qa.estado(dir).fase !== 'plano_encontrado'; i++) await new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(qa.estado(dir).fase, 'plano_encontrado', JSON.stringify(qa.estado(dir)));
   assert.ok(promptVisto.includes('DOCUMENTO') && promptVisto.includes(path.join(raiz, 'regras.md')) && !promptVisto.includes('.documento-extraido.md'));
+  // Portão: o plano fica só local até o Aprovar; nada na subtarefa local antes disso.
+  assert.ok(!fs.existsSync(path.join(raiz, '.subtarefas.json')) && qa.estado(dir).publicarPendente);
+  assert.ok(fs.existsSync(path.join(dir, 'planejamento-qa-v1.md')));
+  await acoes(s).qaPlanoAprovar();
   const subs = JSON.parse(fs.readFileSync(path.join(raiz, '.subtarefas.json'), 'utf8'));
   assert.strictEqual(subs[0].key, 'DOC-001-1'); assert.strictEqual(subs[0].resumo, '[QA] Planejamento dos Casos de Testes');
-  assert.ok(fs.existsSync(path.join(dir, 'planejamento-qa-v1.md')) && qa.estado(dir).subtarefa === 'DOC-001-1');
+  assert.deepStrictEqual([qa.estado(dir).fase, qa.estado(dir).subtarefa], ['plano_aprovado', 'DOC-001-1']);
   // com o texto extraído presente, o prompt cita
   fs.writeFileSync(path.join(raiz, '.documento-extraido.md'), 'texto');
   assert.ok(qa.promptCriar(dir).includes('.documento-extraido.md'));
 
-  // verificarPlano de novo encontra e segue; aprovar gera CT01…
-  await acoes(s).qaPlay();
-  assert.strictEqual(qa.estado(dir).fase, 'plano_encontrado');
-  assert.ok(qa.aprovar(dir));
+  // ▶ de novo com o plano aprovado não pede aprovação outra vez; cenários CT01…
   assert.deepStrictEqual(qa.cenarios(dir).cenarios.map((c) => c.id), ['CT01', 'CT02']);
 
   // Publicar: comentário local + evidência em .publicado/

@@ -125,7 +125,7 @@ function linhas(e) {
 
 // Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
-function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} }) {
+function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} }) {
   if (rodandoEm(dir)) return false;
   const gravar = (l) => anotar(dir, l);
   let sid = null, anterior = null;
@@ -134,7 +134,7 @@ function rodar(dir, { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramen
   if (continuar) sid = anterior;
   let sessaoId = null; // desta execução
   const args = ['-p', prompt + PEDIDO_DECISAO, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-    ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
+    ...(ferramentas.length ? ['--allowedTools', ...ferramentas] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
   try { fs.writeFileSync(path.join(dir, PID), String(p.pid)); } catch {}

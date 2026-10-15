@@ -7,6 +7,8 @@ const canaisLog = new Map(); // arquivo de log -> OutputChannel
 const maestro = require('../painel/maestro');
 const { areaIA } = require('../infra/area-ia');
 const aoVivo = require('../componentes/ao-vivo');
+const entrada = require('./entrada');
+const banco = require('../infra/banco');
 const sessao = require('../infra/sessao');
 const { IC } = require('../componentes/icones');
 const { cfg } = require('../configuracao/configuracao');
@@ -40,7 +42,15 @@ async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
     const j = s.cacheJira[t.id] && !s.cacheJira[t.id].erro ? s.cacheJira[t.id] : await jira.buscar(s.secrets, { key: t.chave, site: t.site });
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, qa.CONTEXTO), qa.contextoTicket(j, t));
+    // Dossiê do ticket: sem nenhuma fonte (só o título), pergunta ao dev em vez de deixar a IA inventar.
+    const ent = entrada.preparar(t, dir, j);
+    if (ent.pergunta && !mudanca) {
+      qa.mudar(dir, { fase: 'sem_plano', pausa: { motivo: 'briefing', pergunta: ent.pergunta, opcoes: [], etapa: 'Planejamento' } });
+      vivo('aviso', 'Ticket só com título: preciso que você explique o que testar antes de planejar');
+      return false;
+    }
     fs.mkdirSync(rasc, { recursive: true });
+    fs.rmSync(path.join(rasc, qa.PAUSA), { force: true });
     if (mudanca && fs.existsSync(noDir)) fs.copyFileSync(noDir, noRasc); else fs.rmSync(noRasc, { force: true });
   } catch (e) {
     vivo('erro', `Não consegui ler o ticket no ${provNome(t)}: ${e.message}`);
@@ -55,23 +65,24 @@ async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
       s.render();
       if (maestro.rodando(dir) || tratou) return;
       tratou = true; // publica uma vez só (aoMudar dispara mais de uma vez ao terminar)
-      (async () => {
-        try {
-          const depois = ler(noRasc);
-          if (depois === null) throw new Error(`O Claude não gravou ${qa.PLANO_LOCAL}`);
-          if (mudanca && depois === antes) throw new Error('O Claude não alterou o plano');
-          fs.writeFileSync(noDir, depois);
-          vivo('acao', docLocal(t) ? 'Salvando o plano no documento' : `Publicando o plano no ${jira.nome}`);
-          const r = await qa.publicarPlano(dir, depsPublicar(s, t));
-          vivo('fim', r.modo === 'criada' ? `Subtarefa ${r.key} criada com o plano` : r.modo === 'atualizada' ? `Descrição de ${r.key} atualizada com o plano` : `Plano publicado como comentário no ${r.key} (o ${provNome(t)} não tem subtarefas)`);
-        } catch (e) {
-          vivo('erro', `Plano não publicado: ${e.message}`);
-          qa.mudar(dir, { fase: 'erro', erro: e.message });
-          return s.render();
+      try {
+        // Pergunta da IA (.pausa.json na área dela): vira pausa no cartão e a resposta refaz o plano.
+        const pergunta = ler(path.join(rasc, qa.PAUSA));
+        if (pergunta) {
+          const p = JSON.parse(pergunta);
+          if (p?.pergunta) { qa.mudar(dir, { fase: mudanca ? 'plano_encontrado' : 'sem_plano', pausa: { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [], etapa: 'Planejamento' } }); vivo('aviso', `O Claude perguntou: ${p.pergunta}`); return s.render(); }
         }
-        await qa.verificarPlano(dir, t.chave, filhosDe(s, t));
-        s.render();
-      })();
+        const depois = ler(noRasc);
+        if (depois === null) throw new Error(`O Claude não gravou ${qa.PLANO_LOCAL}`);
+        if (mudanca && depois === antes) throw new Error('O Claude não alterou o plano');
+        fs.writeFileSync(noDir, depois);
+        qa.conferirPlano(depois).forEach((a) => vivo('aviso', a));
+        qa.proporPlano(dir, t.chave); // fica local: o provedor só recebe quando você aprovar
+      } catch (e) {
+        vivo('erro', `Plano não gravado: ${e.message}`);
+        qa.mudar(dir, { fase: 'erro', erro: e.message });
+      }
+      s.render();
     } });
 }
 
@@ -79,7 +90,7 @@ const depsQa = (s, t) => {
   const dir = s.pastaAba(t.id), emu = require('../modulos/emulador');
   return {
     chave: t.chave, backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho, filhos: filhosDe(s, t),
-    horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: s.render,
+    horaRefresh: cfg().get('qaHoraRefresh') || '06:00', aoMudar: s.render, timeoutMin: Number(cfg().get('qaTimeoutCenarioMin') ?? 30), banco: banco.daConfig(cfg()),
     extras: ['--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }), '--add-dir', dir,
       ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])],
     // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
@@ -97,9 +108,8 @@ const depsQa = (s, t) => {
 };
 
 // Botão ▶/⏸ do cabeçalho do ticket na lista QA (b = data-acao/data-painel já montado pelo cabecalho()).
-const botaoPlay = (dir, b) => (qa.rodando(dir)
-  ? `<button class="ct-ico ct-pausa" ${b('qaParar')} title="Pausar o QA: o cenário em andamento é descartado e volta na retomada">${IC.pausa}</button>`
-  : `<button class="ct-ico ct-play" ${b('qaPlay')} title="Executar QA: planejamento, ambiente, massa e cenários pendentes (Ao vivo em Evidências)">${IC.play}</button>`);
+const botaoPlay = (dir, b) => aoVivo.controle(qa.rodando(dir), { pausar: 'qaParar', retomar: 'qaPlay', dicaPausar: 'Pausar o QA: o cenário em andamento é descartado e volta na retomada',
+  dicaRetomar: 'Executar QA: planejamento, ambiente, massa e cenários pendentes (Ao vivo em Evidências)' }, b);
 
 // Caixa do ambiente no rodapé (depois de Comandos). Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise.
 // Nada rodando: sem emulador e sem nenhum Comando (API, Metro) ligado.
@@ -124,7 +134,7 @@ async function dispensarCenario(s, id, tipo) {
   const ajuste = tipo === 'ajuste', dir = s.pastaAba(t.id);
   const motivo = await vscode.window.showInputBox({ title: `${ajuste ? 'Pedir ajuste do' : 'Excluir o'} cenário ${id}`, prompt: 'Motivo (obrigatório): o cenário deixa de ser executado por decisão sua', ignoreFocusOut: true, validateInput: (v) => (v.trim() ? null : 'Informe o motivo') });
   if (!motivo?.trim() || !qa.dispensar(dir, id, motivo, tipo)) return;
-  aoVivo.registrarDecisao(dir, { texto: `${ajuste ? 'Ajuste pedido' : 'Cenário excluído'}: ${id} não será executado`, detalhe: motivo.trim(), etapa: 'QA' });
+  qa.registrarDecisao(dir, `${ajuste ? 'Ajuste pedido' : 'Cenário excluído'}: ${id} não será executado`, { ticket: t.chave, motivo: motivo.trim() });
   s.render();
 }
 const acoes = (s) => ({
@@ -184,7 +194,47 @@ const acoes = (s) => ({
     s.render();
   },
   qaPlanoMencionar() { const t = s.ticketAberto(), v = t && qa.versaoAtual(s.pastaAba(t.id)); if (v) require('../infra/claude').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`); },
-  qaPlanoAprovar() { const t = s.ticketAberto(); if (t) { if (qa.aprovar(s.pastaAba(t.id))) qa.registrarDecisao(s.pastaAba(t.id), 'Usuário aprovou o planejamento', { ticket: t.chave }); s.render(); } },
+  // Aprovar: plano só local (publicarPendente) é publicado agora, depois do modal; plano que já veio do provedor só aprova.
+  async qaPlanoAprovar() {
+    const t = s.ticketAberto();
+    if (!t) return;
+    const dir = s.pastaAba(t.id), e = qa.estado(dir);
+    if (e.publicarPendente) {
+      const ok = await vscode.window.showWarningMessage(`Aprovar o planejamento v${e.versao} e ${docLocal(t) ? 'salvar no documento' : `publicar no ${jira.nome}`}? Cria ou atualiza a subtarefa de QA.`, { modal: true }, 'Aprovar e publicar');
+      if (!ok) return;
+      try { await qa.aprovarPublicando(dir, depsPublicar(s, t)); } catch (x) {
+        aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar o plano: ${x.message}` });
+        qa.mudar(dir, { erro: x.message });
+        return s.render();
+      }
+    } else if (!qa.aprovar(dir)) return;
+    qa.registrarDecisao(dir, 'Usuário aprovou o planejamento', { ticket: t.chave });
+    s.render();
+  },
+  // Resposta à pergunta do Claude (cartão da pausa): botão da opção ou texto livre. Briefing e plano refazem o planejamento; massa e cenário retomam o QA.
+  async qaResponder({ op } = {}) {
+    const t = s.ticketAberto();
+    if (!t) return;
+    const dir = s.pastaAba(t.id), p = qa.estado(dir).pausa;
+    if (!p) return;
+    const r = op !== undefined && op !== '' ? p.opcoes?.[Number(op)]
+      : await vscode.window.showInputBox({ title: p.motivo === 'briefing' ? 'O que deve ser testado?' : 'Resposta ao Claude', prompt: p.pergunta, ignoreFocusOut: true });
+    if (!r?.trim()) return;
+    qa.registrarDecisao(dir, 'Usuário respondeu à pergunta do QA', { ticket: t.chave, pergunta: p.pergunta, resposta: r.trim() });
+    if (p.motivo === 'briefing') { fs.appendFileSync(path.join(dir, entrada.BRIEFING), `${r.trim()}\n\n`); qa.mudar(dir, { pausa: null }); } else qa.responder(dir, r);
+    s.render();
+    if (p.etapa === 'Planejamento') {
+      const e = qa.estado(dir), v = qa.versaoAtual(dir); // pergunta feita durante um pedido de ajuste: refaz o ajuste, não o plano do zero
+      if (e.pedido && v) {
+        fs.writeFileSync(path.join(dir, qa.PLANO_LOCAL), qa.mdDaVersao(dir, v));
+        const ok = await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptMudanca(dir, e.pedido, rasc), titulo: `QA · Aplicando mudança no planejamento (${v.subtarefa})`, mudanca: true });
+        if (ok) qa.mudar(dir, { fase: 'alterando' });
+        return s.render();
+      }
+      return acoes(s).qaCriarPlano();
+    }
+    return acoes(s).qaIniciar();
+  },
   // Pedir mudança: o Claude edita o qa-plano.md local e a extensão republica no provedor; ao terminar, a versão nova volta para aprovação.
   async qaPlanoMudar() {
     const t = s.ticketAberto();
@@ -252,7 +302,7 @@ const acoes = (s) => ({
     const dir = s.pastaAba(t.id);
     fs.rmSync(path.join(dir, qa.PLANO_LOCAL), { force: true });
     const ok = await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptCriar(dir, rasc), titulo: 'QA · Criando o planejamento' });
-    if (ok) qa.mudar(dir, { fase: 'criando' });
+    if (ok) qa.mudar(dir, { fase: 'criando', pausa: null });
     s.render();
   },
   // Pedir ajuste / Excluir (card do cenário): pede o motivo, marca "não executado por decisão do usuário" e registra na aba Decisões.

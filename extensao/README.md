@@ -97,6 +97,18 @@ Todos os AVDs da máquina.
 - **▶** liga com janela, **■** desliga, **🧹** wipe data (apaga os dados e liga do zero)
 - **⋯** lista os processos do emulador, com PID, e permite matar
 
+## Esteira de QA
+
+Mesmo desenho da esteira de Implementação, em `extensao/qa/`. Estado em dotfiles na pasta `qa/` do ticket.
+
+1. **Planejamento**: o dossiê (`entrada.js`, reaproveita `implementacoes/dossie.js`) junta descrição, spec, tarefas, incidente, o que a Implementação entregou e o briefing do dev, cada fonte com a confiança (aprovado, gerado, bruto, verbal). Ticket só com título **pergunta** o que testar (`.briefing.md`) em vez de inventar. O Claude escreve `qa-plano.md` na área da IA; o plano **fica só local** (aba Docs, `planejamento-qa-vN.md`) até você abrir, ler e **Aprovar**: só então a extensão cria ou atualiza a subtarefa `[QA]`.
+2. **Cenários**, **Ambiente**, **Massa** e **Execução** como antes. A massa roda sem `Bash` livre: consulta o banco só por `mapa-db` (SELECT, recusa produção, log em `.mapa-db.jsonl`) e só quando o banco está configurado. Todo `claude -p` do QA leva `--disallowedTools` (commit, push, merge, rebase, reset, clean, tag).
+3. **Pergunta**: o Claude pergunta com `qa-state pausa` (vira `.pausa.json`); o cartão mostra a pergunta e as opções, a resposta vai para `.respostas.md` e o QA retoma citando-a.
+4. **Evidência obrigatória**: `qa-state cenario CTnn concluir --status passou` é recusado sem evidência anexada (`qa-state evidencia`). Se o plano de mudança ou o `implementacao.md` grava em uma tabela e o cenário a cita, a evidência precisa incluir a consulta `.sql` (com o nome da tabela) e o arquivo `resultado-*` dela.
+5. **Controle**: ▶/⏸ pelo mesmo componente do Ao vivo; execução interrompida (janela fechada, queda) é reconciliada ao retomar (cenário preso volta à fila); `craftingTable.qaTimeoutCenarioMin` (padrão 30) bloqueia o cenário que não termina.
+
+Testes: `node extensao/qa/teste-qa.js`, `node extensao/qa/teste-esteira-qa.js`, `node extensao/qa/teste-documento.js`, `node extensao/testes/teste-ponta-a-ponta-documento.js`, `node extensao/testes/teste-acoes.js`, `node extensao/testes/teste-area-ia.js`. Claude simulado (`maestro.rodar` trocado; os argumentos reais do `claude -p` conferidos com um `claude` falso), `qa-state` real, rede bloqueada. Não cobrem o `claude -p` e a skill reais, nem o Jira real.
+
 ## Integração com a skill `testes-funcionais`
 
 Sem modificar a skill. O hook `~/.claude/hooks/crafting-testes.py` observa os comandos Bash do Claude:
@@ -141,7 +153,7 @@ O vigia olha os comentários dos tickets com spec a cada 5 min. Cada comentário
 3. **Decisão**: caixa de borda vermelha acima do Ao vivo, passos e cards afetados ficam laranja com ⚠, e Aprovar/Continuar ficam travados (também no `sdd-state`). Opções: *aplicar* (snapshot + o Claude regride a spec), *manter*, *consultar* (vira dúvida para o PO) e **Não prosseguir** (descarta; depois de aplicar, **Desfazer** restaura o snapshot).
 4. **Teams**: o card "Mudança pedida" sai para quem iniciou o refinamento (médio/alto). Como criar o `TEAMS_WEBHOOK`: [README da raiz](../README.md#avisos-no-teams-opcional) ou **⚙ Configurações → Teams → ⓘ**.
 
-Testes: `node extensao/testes/teste-teams.js`, `node extensao/configuracao/teste-configuracao.js`, `node extensao/refinamento/teste-mudancas.js`, `node extensao/refinamento/teste-orquestrador.js`, `node extensao/refinamento/teste-esteira-refinamento.js`, `node extensao/implementacoes/teste-implementacoes.js`, `node extensao/implementacoes/teste-dossie.js`, `node extensao/implementacoes/teste-esteira.js`, `node plugin/plugins/sdd/teste-triagem.js`.
+Testes: `node extensao/testes/teste-teams.js`, `node extensao/configuracao/teste-configuracao.js`, `node extensao/refinamento/teste-mudancas.js`, `node extensao/refinamento/teste-orquestrador.js`, `node extensao/refinamento/teste-esteira-refinamento.js`, `node extensao/implementacoes/teste-implementacoes.js`, `node extensao/implementacoes/teste-dossie.js`, `node extensao/implementacoes/teste-esteira.js`, `node extensao/qa/teste-esteira-qa.js`, `node plugin/plugins/sdd/teste-triagem.js`.
 
 ## Limitações conhecidas
 

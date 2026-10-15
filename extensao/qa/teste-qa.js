@@ -180,7 +180,11 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
       if (/massa/.test(o.titulo)) execFileSync(path.join(__dirname, 'qa-state'), ['massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'], { env });
       const id = o.titulo.match(/CT\d+/)?.[0];
       if (id && id === pausarNo) qa.pausar(dir);
-      else if (id) execFileSync(path.join(__dirname, 'qa-state'), ['cenario', id, 'concluir', '--status', 'passou'], { env });
+      else if (id) {
+        const ev = path.join(os.tmpdir(), `ev-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); // passou exige evidência anexada
+        execFileSync(path.join(__dirname, 'qa-state'), ['evidencia', id, ev], { env });
+        execFileSync(path.join(__dirname, 'qa-state'), ['cenario', id, 'concluir', '--status', 'passou'], { env });
+      }
       o.aoMudar();
     }, 5);
     return true;
@@ -213,7 +217,7 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
       const id = o.titulo.match(/CT\d+/)?.[0];
       if (/massa/.test(o.titulo)) { qs({}, 'massa', 'add', '--papel', 'p', '--cenarios', 'CT01,CT02', '--dados', '{}'); massaAdds++; }
       else if (id === 'CT01' && invalidar-- > 0) { for (const i of qa.massa(dir).itens) if (qa.massaValida(i, new Date(), '06:00')) qs({}, 'massa', i.id, 'invalida'); qs({}, 'cenario', id, 'concluir', '--status', 'sem-massa', '--nota', 'registro mudou'); }
-      else qs({}, 'cenario', id, 'concluir', '--status', 'passou');
+      else { const ev = path.join(os.tmpdir(), `ev-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); qs({}, 'evidencia', id, ev); qs({}, 'cenario', id, 'concluir', '--status', 'passou'); }
       o.aoMudar();
     }, 5);
     return true;

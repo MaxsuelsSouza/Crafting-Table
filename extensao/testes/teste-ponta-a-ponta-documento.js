@@ -193,9 +193,11 @@ const ultimo = () => pedidos[pedidos.length - 1];
     const pq = pedidos.find((p) => /Planejamento de testes de QA/.test(p.prompt)).prompt;
     assert.ok(pq.includes(path.join(raiz, t.documento.arquivo)), 'prompt do plano cita o original');
     if (ts.docx) assert.ok(pq.includes('.documento-extraido.md'), 'prompt do plano cita o texto extraído do docx');
+    assert.ok(!fs.existsSync(path.join(raiz, '.subtarefas.json')), 'o plano só vai ao provedor depois do Aprovar');
+    assert.ok(fs.existsSync(path.join(dir, 'planejamento-qa-v1.md')));
+    await acoes(s).qaPlanoAprovar();
     const subs = JSON.parse(fs.readFileSync(path.join(raiz, '.subtarefas.json'), 'utf8'));
-    assert.match(subs[0].resumo, /\[QA\]/); assert.ok(fs.existsSync(path.join(dir, 'planejamento-qa-v1.md')));
-    assert.ok(qa.aprovar(dir));
+    assert.match(subs[0].resumo, /\[QA\]/); assert.strictEqual(qa.estado(dir).fase, 'plano_aprovado');
     assert.deepStrictEqual(qa.cenarios(dir).cenarios.map((c) => c.id), ['CT01', 'CT02', 'CT03']);
     // execução simulada (o executor real chama claude -p) + publicação real
     const ev = path.join(dir, 'evidencia-CT01.png'); fs.copyFileSync(fonte.png, ev);

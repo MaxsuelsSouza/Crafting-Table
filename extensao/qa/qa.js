@@ -22,7 +22,8 @@ const INDICE = '.planejamento.json';
 // { fase: procurando | sem_plano | criando | erro | plano_encontrado (espera aprovação) | alterando | plano_aprovado, execucao: rodando | pausado | parado }
 const ESTADO = '.qa.json';
 const lerJson = (arq, padrao) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return padrao; } };
-const gravarJson = (arq, v) => { fs.mkdirSync(path.dirname(arq), { recursive: true }); fs.writeFileSync(arq, JSON.stringify(v, null, 2)); };
+// Atômico (tmp + rename): o qa-state do Claude e a extensão gravam os mesmos arquivos de processos diferentes e ninguém pode ler um arquivo pela metade.
+const gravarJson = (arq, v) => { fs.mkdirSync(path.dirname(arq), { recursive: true }); fs.writeFileSync(`${arq}.${process.pid}.tmp`, JSON.stringify(v, null, 2)); fs.renameSync(`${arq}.${process.pid}.tmp`, arq); };
 
 // "QA", "qa", "[QA]", "Q.A." como palavra (não pega "quadro", "aqa").
 const ehQA = (resumo) => /(^|[^a-z0-9])q\.?a([^a-z0-9]|$)/i.test(resumo || '');
@@ -135,10 +136,31 @@ function concluirCenario(dir, id, status, nota = '') {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id), ex = c?.execucoes?.at(-1);
   if (!c || c.status !== 'executando' || !ex) throw new Error(`${id} não está em execução`);
   if (![...RESULTADOS, ...VOLTAM].includes(status)) throw new Error(`status inválido: ${status} (use ${[...RESULTADOS, 'sem-massa'].join(', ')})`);
+  if (status === 'passou') { const falta = faltaEvidencia(dir, c, ex); if (falta) throw new Error(falta); }
   Object.assign(ex, { status, nota, fim: new Date().toISOString() });
   c.status = VOLTAM.includes(status) ? (c.statusAntes || 'pendente') : status;
   delete c.statusAntes;
   gravarJson(path.join(dir, CENARIOS), r);
+}
+// Passou só com evidência anexada por `qa-state evidencia` nesta execução. Se a implementação grava em tabela (plano de mudança / implementacao.md),
+// o cenário que cita a tabela precisa também da consulta SQL e do resultado dela.
+const tabelasDe = (texto) => [...new Set([...String(texto).matchAll(/\btabela\s+[`"']?([A-Za-z_][\w.]*)[`"']?/gi)].map((m) => m[1].toLowerCase()).filter((n) => n.length > 2))];
+function exigenciasDe(dir, c) {
+  const raiz = path.dirname(dir);
+  let tx = ''; for (const f of ['plano-mudanca.md', 'implementacao.md']) { try { tx += `\n${fs.readFileSync(path.join(raiz, 'impl', f), 'utf8')}`; } catch { /* sem implementação */ } }
+  const gravam = tx.split('\n').filter((l) => /\b(grav|insert|registr|log|auditor|hist[óo]rico)/i.test(l));
+  return tabelasDe(gravam.join('\n')).filter((tb) => `${c.titulo} ${c.texto}`.toLowerCase().includes(tb));
+}
+function faltaEvidencia(dir, c, ex) {
+  const anexos = ex.anexos || [];
+  if (!anexos.length) return `${c.id} não pode passar sem evidência: anexe prints, logs ou o resultado com qa-state evidencia ${c.id} <arquivo...> e conclua de novo`;
+  const tabelas = exigenciasDe(dir, c);
+  for (const tb of tabelas) {
+    const sql = anexos.find((n) => /\.sql$/i.test(n) && fs.readFileSync(path.join(dir, ex.evidencias, n), 'utf8').toLowerCase().includes(tb));
+    const res = anexos.find((n) => /resultado|result/i.test(n) && !/\.sql$/i.test(n));
+    if (!sql || !res) return `${c.id} grava na tabela ${tb} (implementação): anexe a consulta SQL (arquivo .sql com a tabela) e o resultado dela (arquivo resultado-*.txt|csv) com qa-state evidencia ${c.id} <arquivo...>`;
+  }
+  return '';
 }
 // Cenário que ficou sem massa válida mesmo depois de refazer a Etapa 4: bloqueado, com a nota dizendo por quê (a execução já está fechada como sem-massa).
 function bloquearSemMassa(dir, id, nota) {
@@ -151,7 +173,13 @@ function bloquearSemMassa(dir, id, nota) {
 function evidencia(dir, id, arquivos) {
   const ex = cenarios(dir).cenarios.find((x) => x.id === id)?.execucoes?.at(-1);
   if (!ex || ex.status !== 'executando') throw new Error(`${id} não está em execução`);
-  return arquivos.map((a) => { const destino = path.join(dir, ex.evidencias, path.basename(a)); fs.copyFileSync(a, destino); return destino; });
+  return arquivos.map((a) => {
+    const nome = path.basename(a), destino = path.join(dir, ex.evidencias, nome);
+    fs.copyFileSync(a, destino);
+    const r = cenarios(dir), x = r.cenarios.find((y) => y.id === id)?.execucoes?.at(-1);
+    if (x && !(x.anexos ||= []).includes(nome)) { x.anexos.push(nome); gravarJson(path.join(dir, CENARIOS), r); }
+    return destino;
+  });
 }
 const arquivosDe = (dir, ex) => { try { return fs.readdirSync(path.join(dir, ex.evidencias)).filter((n) => !n.startsWith('.')).map((n) => path.join(dir, ex.evidencias, n)); } catch { return []; } };
 
@@ -321,26 +349,40 @@ async function viaComandos(dir, d) {
 
 // ── Prompts do Claude em segundo plano (execução). A skill testes-funcionais é o método; as paradas dela viram registro.
 const QA_STATE = path.join(__dirname, 'qa-state');
-const REGRAS = 'Modo não interativo: onde a skill manda parar e confirmar, não pergunte; registre e siga, ou conclua como bloqueado. '
-  + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE, liberar usuário ou permissão), publicar no provedor, commit e push. '
+// Falta informação que só o humano tem (qual usuário, regra ambígua) e nenhuma fonte responde: o Claude PERGUNTA (qa-state pausa) em vez de inventar.
+// A extensão mostra a pergunta no cartão e retoma com a resposta (.respostas.md).
+const REGRAS = 'Modo não interativo, sem ninguém para aprovar permissões. Não invente dado nem regra: o que não consta nas fontes você pergunta. '
+  + `Para perguntar ao humano: ${QA_STATE} pausa --motivo "<curto>" --pergunta "<o que falta, em uma frase>" [--opcoes "A|B"] e TERMINE em seguida, sem concluir o cenário. `
+  + 'Falha de ambiente ou ferramenta (não de informação): conclua como bloqueado com a nota do que aconteceu. '
+  + 'Proibido: escrever no banco (INSERT/UPDATE/DELETE/DDL, liberar usuário ou permissão), publicar no provedor, commit, push, merge e rebase. '
   + `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
-const promptMassa = (chave, cens) => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
-  + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}\n`
+const RESPOSTAS = '.respostas.md', PAUSA = '.pausa.json';
+const citarRespostas = (dir) => (fs.existsSync(path.join(dir, RESPOSTAS)) ? `\nRespostas do humano a perguntas anteriores (use-as): ${path.join(dir, RESPOSTAS)}` : '');
+const citarDossie = (dir) => (fs.existsSync(path.join(dir, 'dossie.md')) ? `\nDossiê do ticket (fontes, confiança e lacunas): ${path.join(dir, 'dossie.md')}` : '');
+const promptMassa = (chave, cens, dir = '', banco = '', mapa = '') => `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método `
+  + `de massa da skill testes-funcionais (${SKILL()}/SKILL.md; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n`
+  + `Banco: ${banco || 'NÃO configurado: não consulte banco; registre como pendência'}${mapa ? `. Consulte SOMENTE por ${mapa}/bin/mapa-db (SELECT, máx. 50 linhas, colunas sensíveis mascaradas)` : ''}.\n`
   + cens.map((c) => `- ${c.id} · ${c.titulo}${c.resumo ? ` (${c.resumo})` : ''}`).join('\n')
   + `\nPara cada papel encontrado: ${QA_STATE} massa add --papel "<papel>" --cenarios CT01,CT02 --dados '<json com os campos>' --consulta "<SQL usado>". `
   + 'Traga 2 registros por papel quando der (reserva: um cenário pode consumir o registro). Cenário que não precisa de massa: não registre nada. '
   + `Se o banco não responder, termine dizendo isso. ${REGRAS}`;
-const promptCenario = (chave, c, amb, itens) => `[segundo plano · Crafting Table · QA de ${chave}] Execute SÓ o cenário ${c.id} do planejamento de QA, `
-  + `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md).${vagas.aviso('qa.execucao')}\n\nCenário ${c.id} · ${c.titulo}\n${c.texto}\n\n`
+const promptCenario = (chave, c, amb, itens, dir = '', exige = []) => `[segundo plano · Crafting Table · QA de ${chave}] Execute SÓ o cenário ${c.id} do planejamento de QA, `
+  + `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md).${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n\nCenário ${c.id} · ${c.titulo}\n${c.texto}\n\n`
   + `Ambiente já preparado (não rode preparar-ambiente): backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · API http://localhost:5111 · Metro 8081 · emulador ligado.\n`
   + `Massa válida para este cenário: ${itens.length ? JSON.stringify(itens.map((i) => ({ id: i.id, papel: i.papel, dados: i.dados }))) : 'nenhuma registrada'}. `
   + `Use SÓ essa massa (a da Etapa 4): nunca procure nem registre massa nova (massa add é recusado aqui). Antes de usar, confira que o registro ainda está no estado esperado; `
   + `se não estiver, ${QA_STATE} massa <ID> invalida e use outro item válido da lista; se não houver outro, NÃO falhe o cenário: conclua com --status sem-massa --nota "<o que mudou no registro>" `
   + `(a extensão refaz o levantamento e volta aqui). Cenário que não precisa de massa segue sem ela. `
   + `Se o cenário alterar o registro, ${QA_STATE} massa <ID> consumida.\n`
-  + `Evidências: a tela do emulador já está sendo gravada. Prints e arquivos de resultado (log Robot, junit, relatório): ${QA_STATE} evidencia ${c.id} <arquivo...>.\n`
+  + `Evidências (OBRIGATÓRIAS para passou: a extensão recusa passou sem ao menos um arquivo anexado): a tela do emulador já está sendo gravada; anexe também prints e arquivos de resultado (log Robot, junit, relatório): ${QA_STATE} evidencia ${c.id} <arquivo...>.\n`
+  + (exige.length ? `Este cenário exercita gravação em tabela (${exige.join(', ')}) da implementação: anexe a consulta SQL (arquivo .sql com o nome da tabela) e o resultado dela (arquivo resultado-<tabela>.txt ou .csv), consultando só por SELECT.\n` : '')
   + `OBRIGATÓRIO ao final: ${QA_STATE} cenario ${c.id} concluir --status passou|falhou|bloqueado|sem-massa --nota "<1 frase: o que foi visto>". ${REGRAS}`;
 const FERRAMENTAS_EXEC = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Skill'];
+// Massa: só leitura do código, as consultas pelo mapa-db (SELECT, recusa produção, log e máscara) e o qa-state para gravar. Sem Bash livre.
+const FERRAMENTAS_MASSA = (mapa) => ['Read', 'Glob', 'Grep', `Bash(${QA_STATE}:*)`, ...(mapa ? [`Bash(${mapa}/bin/mapa-db:*)`] : []),
+  'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(grep:*)'];
+// Nunca na execução do QA, qualquer que seja a etapa: o prompt pede, a extensão garante (--disallowedTools).
+const PROIBIDAS = ['Bash(git commit:*)', 'Bash(git push:*)', 'Bash(git merge:*)', 'Bash(git rebase:*)', 'Bash(git reset:*)', 'Bash(git clean:*)', 'Bash(git tag:*)'];
 // Ambiente parou: o Claude lê o log e o diagnóstico da skill (só leitura) e grava a análise com `qa-state analise`.
 const promptAnalise = (chave, dir, a) => `[segundo plano · Crafting Table · QA de ${chave}] O preparo do ambiente de testes (preparar-ambiente.py da skill `
   + `testes-funcionais) parou na etapa "${a.parou_em}"${a.erro ? ` (${a.erro})` : ''}. Descubra por quê.\nLog completo do preparo: ${path.join(dir, LOG_AMB)}\n`
@@ -381,23 +423,54 @@ function gravarAnalise(dir, texto) {
   gravarJson(path.join(dir, AMBIENTE), { ...a, analise: { texto: String(texto).trim(), em: new Date().toISOString() } });
 }
 
-// Claude em segundo plano até terminar (maestro.rodar). d.extras/d.aoMudar vêm do painel.
+// Claude em segundo plano até terminar (maestro.rodar). d.extras/d.aoMudar vêm do painel. Resolve { estourou } (limite de tempo: d.timeoutMin).
 const claude = (dir, opts, d) => new Promise((ok) => {
-  const foi = maestro.rodar(dir, { ferramentas: FERRAMENTAS_EXEC, ...opts, env: { QA_DIR: dir, ...(opts.env || {}) }, extras: [...(d.extras || []), ...(opts.extras || [])],
-    aoMudar: () => { d.aoMudar?.(); if (!maestro.rodando(dir)) ok(); } });
-  if (!foi) ok();
+  let estourou = false, timer = null;
+  const fim = () => { clearTimeout(timer); ok({ estourou }); };
+  const foi = maestro.rodar(dir, { ferramentas: FERRAMENTAS_EXEC, proibidas: PROIBIDAS, ...opts, env: { QA_DIR: dir, ...(opts.env || {}) }, extras: [...(d.extras || []), ...(opts.extras || [])],
+    aoMudar: () => { d.aoMudar?.(); if (!maestro.rodando(dir)) fim(); } });
+  if (!foi) return fim();
+  if (d.timeoutMin > 0) timer = setTimeout(() => { estourou = true; aoVivo.anotar(dir, { tipo: 'aviso', texto: `Passou de ${d.timeoutMin} min: parando o Claude` }); maestro.parar(dir); }, d.timeoutMin * 60000);
 });
+// Pausa de verdade, pedida pelo Claude (qa-state pausa → .pausa.json) ou pela extensão (briefing): fica em .qa.json e aparece como pergunta no cartão.
+const pausaPendente = (dir) => { const p = lerJson(path.join(dir, PAUSA), null); return p?.pergunta ? { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [], etapa: p.etapa || '' } : null; };
+function registrarPausa(dir, { motivo = '', pergunta, opcoes = [], etapa = '' }) {
+  if (!String(pergunta || '').trim()) throw new Error('a pergunta é obrigatória');
+  gravarJson(path.join(dir, PAUSA), { motivo, pergunta: String(pergunta).trim(), opcoes, etapa, em: new Date().toISOString() });
+}
+// A extensão, ao ver o .pausa.json depois da etapa: tira da pasta e guarda no estado; execução vira pausado até a resposta.
+function absorverPausa(dir) {
+  const p = pausaPendente(dir);
+  if (!p) return null;
+  fs.rmSync(path.join(dir, PAUSA), { force: true });
+  mudar(dir, { pausa: p, execucao: 'pausado' });
+  aoVivo.anotar(dir, { tipo: 'aviso', texto: `O Claude perguntou: ${p.pergunta}` });
+  return p;
+}
+// Resposta do humano: vai para .respostas.md (os prompts citam) e libera a retomada.
+function responder(dir, resposta) {
+  const e = estado(dir), r = String(resposta || '').trim();
+  if (!e.pausa || !r) return false;
+  fs.appendFileSync(path.join(dir, RESPOSTAS), `## ${e.pausa.etapa || 'QA'} · ${e.pausa.pergunta}\n${r}\n\n`);
+  mudar(dir, { pausa: null });
+  return true;
+}
 
 // Etapa 4: o Claude levanta massa para os cenários dados. `etapa: 'massa'` no estado libera o `qa-state massa add` só durante ela.
 async function levantarMassa(dir, d, amb, cens) {
   mudar(dir, { etapa: 'massa' });
-  try { await claude(dir, { prompt: promptMassa(d.chave, cens), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend }, d); } finally { mudar(dir, { etapa: null }); }
+  const b = d.banco, liberado = b && require('../infra/banco').liberado(b), mapa = liberado ? vagas.raiz('impl.mapa') || '' : '';
+  const opts = { prompt: promptMassa(d.chave, cens, dir, b ? require('../infra/banco').texto(b) : '', mapa), titulo: 'QA · Levantando massa de dados', cwd: amb.backend || d.backend,
+    ferramentas: FERRAMENTAS_MASSA(mapa), ...(mapa ? { env: require('../infra/banco').env(b, dir) } : {}) };
+  try { return await claude(dir, opts, d); } finally { mudar(dir, { etapa: null }); }
 }
 // ▶ do QA: tudo em ordem. d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, gravarTela(dir), pararTela(), avisar(texto) }.
 const ativos = new Set();
 const pausado = (dir) => estado(dir).execucao === 'pausado';
 async function executar(dir, d) {
   if (rodando(dir)) return;
+  if (estado(dir).pausa) return aoVivo.anotar(dir, { tipo: 'aviso', texto: `Responda a pergunta antes de retomar: ${estado(dir).pausa.pergunta}` });
+  reconciliar(dir);
   ativos.add(dir); mudar(dir, { execucao: 'rodando', host: process.pid }); d.aoMudar?.();
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   try {
@@ -418,15 +491,23 @@ async function executar(dir, d) {
     if (falta.length) {
       vivo('acao', `Sem massa válida para ${falta.join(', ')} (refresh do banco às ${d.horaRefresh || '06:00'}): levantando`);
       await levantarMassa(dir, d, amb, pend.filter((c) => falta.includes(c.id)));
-      if (pausado(dir)) return;
+      if (absorverPausa(dir) || pausado(dir)) return;
     } else vivo('fim', 'Massa de hoje ainda válida: reaproveitada');
     const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª fica bloqueado)
     while (!pausado(dir) && (pend = fila(cenarios(dir))).length) {
       const c = pend[0], ex = iniciarCenario(dir, c.id, amb.sha);
       const itens = massa(dir).itens.filter((i) => (i.cenarios || []).includes(c.id) && massaValida(i, new Date(), d.horaRefresh));
       d.gravarTela?.(path.join(dir, ex.evidencias));
-      await claude(dir, { prompt: promptCenario(d.chave, c, amb, itens), titulo: `QA · ${c.id} · ${c.titulo}`, cwd: amb.backend || d.backend }, d);
+      const exige = exigenciasDe(dir, c);
+      const { estourou } = await claude(dir, { prompt: promptCenario(d.chave, c, amb, itens, dir, exige), titulo: `QA · ${c.id} · ${c.titulo}`, cwd: amb.backend || d.backend }, d);
       d.pararTela?.();
+      if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && absorverPausa(dir)) {
+        concluirCenario(dir, c.id, 'descartado', 'O Claude perguntou antes de concluir: volta à fila depois da resposta');
+        return;
+      }
+      if (estourou && cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') {
+        concluirCenario(dir, c.id, 'bloqueado', `Passou de ${d.timeoutMin} min sem concluir`); vivo('aviso', `${c.id}: estourou o tempo (bloqueado)`); continue;
+      }
       if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && itens.length && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) {
         concluirCenario(dir, c.id, 'sem-massa', 'Massa invalidada e o Claude não registrou o resultado'); // invalidou tudo e parou: é falta de massa, não falha
       }
@@ -436,6 +517,7 @@ async function executar(dir, d) {
         retentou.add(c.id);
         vivo('aviso', `Etapa 5 → voltando para a Etapa 4: massa de ${c.id} inválida`); vivo('etapa', 'QA · Massa de dados');
         await levantarMassa(dir, d, amb, [c]);
+        if (absorverPausa(dir)) return;
         if (!pausado(dir) && semMassa(dir, [c.id], new Date(), d.horaRefresh).length) { bloquearSemMassa(dir, c.id, 'A Etapa 4 não achou massa válida para o cenário'); vivo('aviso', `${c.id}: a Etapa 4 não achou massa válida (bloqueado)`); }
         else vivo('fim', `Etapa 4 refeita para ${c.id}: retomando a Etapa 5`);
         vivo('etapa', 'QA · Execução');
@@ -482,12 +564,27 @@ const vivoPid = (pid) => { try { process.kill(pid, 0); return true; } catch { re
 const qaRodando = (dir) => rodando(dir); // html() tem uma variável local chamada rodando
 const rodando = (dir) => { if (ativos.has(dir) || maestro.rodando(dir)) return true; const e = estado(dir); return e.execucao === 'rodando' && e.host !== process.pid && vivoPid(e.host); };
 
+// Rodada que morreu sem o finally (janela fechada, crash): estado diz rodando mas ninguém roda. Vira parado e o cenário preso volta à fila.
+function reconciliar(dir) {
+  if (rodando(dir)) return false;
+  const e = estado(dir), r = cenarios(dir), presos = r.cenarios.filter((c) => c.status === 'executando');
+  if (e.execucao !== 'rodando' && !presos.length) return false;
+  for (const c of presos) { try { concluirCenario(dir, c.id, 'descartado', 'Execução interrompida (janela fechada ou queda): volta à fila'); } catch { /* sem execução aberta */ } }
+  if (e.execucao === 'rodando') mudar(dir, { execucao: 'parado' });
+  aoVivo.anotar(dir, { tipo: 'aviso', texto: `Execução anterior interrompida${presos.length ? `: ${presos.map((c) => c.id).join(', ')} volta(m) à fila` : ''}` });
+  return true;
+}
 const estado = (dir) => lerJson(path.join(dir, ESTADO), {});
 const mudar = (dir, e) => gravarJson(path.join(dir, ESTADO), { ...estado(dir), ...e, em: new Date().toISOString() });
 
 // ▶ do QA: acha o plano no provedor (ou em qa-plano.md) e versiona em Docs. Plano novo (ou mudado) espera a aprovação do humano; já aprovado, lista os cenários.
 async function verificarPlano(dir, chave, filhos) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  reconciliar(dir);
+  if (estado(dir).publicarPendente && versaoAtual(dir) && estado(dir).fase === 'plano_encontrado') { // plano local à espera do seu Aprovar: o provedor ainda não o tem
+    vivo('aviso', `Aguardando você: abra o planejamento v${versaoAtual(dir).v} no cartão acima, peça mudanças ou aprove (aprovar publica no ${onde(dir)})`);
+    return;
+  }
   vivo('etapa', 'QA · 1. Planejamento');
   vivo('acao', `Lendo as subtarefas do ${chave} no ${onde(dir)}`);
   mudar(dir, { fase: 'procurando', erro: null, chave });
@@ -531,13 +628,43 @@ function aprovar(dir) {
   vivo('fim', `Planejamento v${v.v} aprovado`);
   vivo('fim', `${m.total} cenário(s) listados abaixo${m.mudaram ? ` · ${m.mudaram} mudaram desde a última versão` : ''}${m.sairam ? ` · ${m.sairam} saíram do plano` : ''}`);
   vivo('acao', 'Clique em Dar início para subir o ambiente e executar os cenários');
-  mudar(dir, { fase: 'plano_aprovado', aprovado: { versao: v.v, subtarefa: v.subtarefa, em: new Date().toISOString() } });
+  mudar(dir, { fase: 'plano_aprovado', publicarPendente: false, aprovado: { versao: v.v, subtarefa: v.subtarefa, em: new Date().toISOString() } });
   return true;
+}
+// O plano que a IA escreveu fica só local (versão nova na aba Docs) até o humano abrir, ler e aprovar: o provedor só recebe depois.
+function proporPlano(dir, chave) {
+  const p = planoLocal(dir);
+  if (!p) throw new Error(`O Claude não gravou ${PLANO_LOCAL} com cenários (CT01…)`);
+  const v = versionar(dir, { key: chave, resumo: `Plano de QA (${PLANO_LOCAL}, ainda não publicado)`, updated: new Date(p.mtime).toISOString(), md: p.md });
+  aoVivo.anotar(dir, { tipo: 'fim', texto: `Plano v${v.v} pronto, só local: ${v.nova ? `salvo como ${v.arquivo}` : 'mesmo texto da versão anterior'}` });
+  aoVivo.anotar(dir, { tipo: 'aviso', texto: `Aguardando você: abra o planejamento v${v.v}, leia e aprove (aprovar publica no ${onde(dir)})` });
+  mudar(dir, { fase: 'plano_encontrado', subtarefa: chave, versao: v.v, publicarPendente: true, erro: null, pedido: null, pausa: null });
+  return v;
+}
+// Aprovar um plano local: publica no provedor (portão passou), reconcilia a versão com o texto que o provedor guardou e aprova.
+async function aprovarPublicando(dir, deps) {
+  const e = estado(dir);
+  if (e.fase !== 'plano_encontrado' || !e.publicarPendente || !versaoAtual(dir)) return aprovar(dir);
+  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  vivo('acao', ehLocal(dir) ? 'Salvando o plano no documento' : `Publicando o plano aprovado no ${nomeProvedor()}`);
+  const r = await publicarPlano(dir, deps);
+  vivo('fim', r.modo === 'criada' ? `Subtarefa ${r.key} criada com o plano` : r.modo === 'atualizada' ? `Descrição de ${r.key} atualizada com o plano` : `Plano publicado como comentário no ${r.key}`);
+  // A versão aprovada passa a ser a do provedor (ele pode normalizar o texto); sem isso o próximo ▶ pediria a aprovação de novo.
+  const ind = lerJson(path.join(dir, INDICE), { versoes: [] }), ult = ind.versoes.at(-1);
+  if (ult) { ult.subtarefa = r.key; gravarJson(path.join(dir, INDICE), ind); }
+  const achado = await procurar(deps.filhos, deps.chave).catch(() => null);
+  const v = achado?.plano ? versionar(dir, achado.plano) : versaoAtual(dir);
+  mudar(dir, { fase: 'plano_encontrado', subtarefa: v.subtarefa, versao: v.v });
+  return aprovar(dir);
 }
 
 // ── Planejamento: a IA só escreve o plano em Markdown numa pasta local (qa-plano.md); quem publica no provedor é a extensão (publicarPlano).
 // Sem ferramentas do provedor (MCP): o contexto do ticket vai num arquivo (.ticket-contexto.md, buscado pelo provedor).
 const PLANO_LOCAL = 'qa-plano.md', CONTEXTO = '.ticket-contexto.md';
+// Confere o contrato do plano (a extensão não confia na fala da IA): avisos, sem bloquear. Vira linha 'aviso' no Ao vivo.
+const conferirPlano = (md) => [
+  ...(/crit[ée]rios de aceite cobertos/i.test(md) ? [] : ['O plano não tem a seção "Critérios de aceite cobertos" (rastreio critério → cenário)']),
+  ...(/\b(aprovado|gerado|bruto|verbal|inferido)\b/i.test(md) ? [] : ['O plano não diz a fonte e a confiança (aprovado, gerado, bruto, verbal, inferido) dos critérios'])];
 const TITULO_SUBTAREFA = '[QA] Planejamento dos Casos de Testes'; // convenção que procurar() reconhece
 // Nome do provedor para os rótulos (fora do VS Code, nos testes, cai no Jira).
 const nomeProvedor = () => { try { return require('../infra/ticket').jira.nome || 'Jira'; } catch { return 'Jira'; } };
@@ -563,12 +690,15 @@ const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os coment
   + 'em cada caso, o passo a passo em Gherkin, uma linha por item em negrito no início: **Dado que** …, **Quando** …, **Então** … (**E** … para continuar); '
   + 'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. '
   + 'Casos que dependem de exploração livre vão ao final como "#### Exploratório 1 – …". Termine com "## Critérios de aceite cobertos" (tabela CA × CT) e "## Riscos e pré-requisitos" '
-  + '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos).';
+  + '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos). '
+  + 'Na tabela de critérios use as colunas Critério | Cenários | Fonte (arquivo ou campo do ticket) | Confiança (aprovado, gerado, bruto, verbal ou inferido): critério que você deduziu é "inferido". '
+  + 'Se a implementação (impl/implementacao.md, impl/plano-mudanca.md) grava em uma tabela (log, auditoria, histórico), crie um cenário que consulte essa tabela e cite o nome dela no título ou no corpo.';
 const REGRAS_PLANO = (dir, rasc = dir) => `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${onde(dir)}). `
   + `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). `
-  + `${blocoDocumento(dir)}Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica depois.`;
+  + `${citarDossie(dir)}${citarRespostas(dir)}\n${blocoDocumento(dir)}Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica só depois de o humano ler e aprovar. `
+  + `Se faltar algo que só o humano sabe e nenhuma fonte responde, NÃO invente: grave ${path.join(rasc, PAUSA)} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio), não grave o plano e termine.`;
 // Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/area-ia.js); a extensão copia para dir.
-const promptCriar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano já aprovou ao clicar em "Criar planejamento": não peça confirmação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}`
+const promptCriar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano pediu o plano ao clicar em "Criar planejamento" e vai ler e aprovar o arquivo antes de qualquer publicação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}`
   + ' Termine dizendo em uma frase quantos casos montou.';
 // Pedir mudança: a IA edita o arquivo local; a extensão republica.
 const promptMudanca = (dir, pedido, rasc = dir) => `[segundo plano · Crafting Table] O humano pediu esta mudança no planejamento de QA, que está em ${path.join(rasc, PLANO_LOCAL)}: "${pedido}".\n`
@@ -639,10 +769,10 @@ function html(dir, uri = () => '') {
   const lido = ult && e.lido === ult.v;
   const card = e.fase === 'sem_plano' || (e.fase === 'criando' && !rodando)
     ? `<div class="qa-card bloq"><b>Sem planejamento de QA</b><p>O QA só começa com o planejamento.${e.subtarefas?.length ? ` A subtarefa ${esc(e.subtarefas.join(', '))} não tem cenários.` : ''}
-       O Claude escreve o plano e a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
-    : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar, a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`} e procura de novo.</p></div>`
+       O Claude escreve o plano; você lê e aprova, e só então a Crafting Table ${ehLocal(dir) ? 'salva no documento' : `publica no ${nomeProvedor()}`}.</p><button data-painel="qaCriarPlano">Criar planejamento</button></div>`
+    : e.fase === 'criando' ? `<div class="qa-card"><b><span class="vivo-bola"></span>Criando o planejamento</b><p>O Claude está escrevendo o plano; ao terminar ele aparece aqui para você ler e aprovar (nada é publicado antes).</p></div>`
     : e.fase === 'alterando' && rodando ? `<div class="qa-card"><b><span class="vivo-bola"></span>Aplicando sua mudança no planejamento</b><p>“${esc(e.pedido || '')}”. Ao terminar, a versão nova aparece aqui para aprovar.</p></div>`
-    : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.</p>
+    : ['plano_encontrado', 'alterando'].includes(e.fase) && ult ? `<div class="qa-card"><b>Planejamento encontrado · ${plano}</b><p>${esc(ult.resumo)} · ${cenariosDo(mdDaVersao(dir, ult)).length} cenário(s). Leia e aprove para listar os cenários.${e.publicarPendente ? ` O plano ainda está só aqui: aprovar o publica no ${esc(onde(dir))}.` : ''}${e.erro ? ` <span class="dim">Última tentativa: ${esc(e.erro)}</span>` : ''}</p>
        ${abrir}${e.fase === 'alterando' ? '' : `<div class="acoes-passo"><button class="aprovar ${lido ? '' : 'travado'}" data-painel="qaPlanoAprovar" ${lido ? '' : 'disabled'}
          title="${lido ? 'Aprovar o planejamento e listar os cenários' : 'Abra o arquivo antes de aprovar: nunca aprove sem ler'}">Aprovar</button>
          <button data-painel="qaPlanoMudar" title="Descreva o ajuste: o Claude aplica na subtarefa e gera a versão nova">Pedir ajuste</button></div>`}</div>`
@@ -650,9 +780,13 @@ function html(dir, uri = () => '') {
     : e.fase === 'erro' ? `<div class="qa-card bloq"><b>Não consegui conferir o planejamento</b><p>${esc(e.erro)}</p><button data-painel="qaPlay">Tentar de novo</button></div>`
     : !e.fase ? '<div class="qa-card"><b>QA não iniciado</b><p>Clique em ▶ no topo: a Crafting Table procura o planejamento de QA do ticket.</p></div>' : '';
   const aprovado = e.fase === 'plano_aprovado';
+  // Pergunta do Claude (ou da extensão, quando o ticket só tem título): o cartão é a pausa; a resposta retoma sozinha.
+  const pausaCard = e.pausa ? `<div class="qa-card bloq"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>
+    <div class="acoes-passo">${(e.pausa.opcoes || []).map((o, i) => `<button data-painel="qaResponder" data-op="${i}">${esc(o)}</button>`).join('')}
+    <button data-painel="qaResponder" class="aprovar">Responder…</button></div></div>` : '';
   // Plano já aprovado: o cartão dele desce para baixo do Ao vivo (em cima ficam execução e ambiente).
   // O ambiente fica só no rodapé do painel (status, log ao vivo e a análise do Claude num modal).
-  return CSS + (aprovado ? '' : card) + (aprovado ? execucaoHtml(dir, e, rodando) : '')
+  return CSS + pausaCard + (aprovado || e.pausa ? '' : card) + (aprovado && !e.pausa ? execucaoHtml(dir, e, rodando) : '')
     + etapasQa(dir, e, rodando) + aoVivo.caixa(dir, rodando, 'qa') + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
 }
 // Publicar só com todos os cenários não arquivados em 'passou' (e ao menos um).
@@ -709,6 +843,6 @@ function mapaHtml(dir, r, amb, uri) {
     <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
-module.exports = { statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
+module.exports = { proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
   ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, evidencia, arquivosDe, massa, massaAdd, massaEstado, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

@@ -130,6 +130,12 @@
           "pattern": "^\\d{1,2}:\\d{2}$",
           "description": "Horário (HH:MM) em que o banco de cópia de produção é renovado. A massa de dados do QA medida antes do último refresh vence e é levantada de novo."
         },
+        "craftingTable.qaTimeoutCenarioMin": {
+          "type": "number",
+          "default": 30,
+          "minimum": 0,
+          "description": "Minutos que o Claude pode levar em um cenário do QA (ou na massa). Estourou: o cenário fica bloqueado com a nota. 0 desliga o limite."
+        },
         "craftingTable.avdPadrao": {
           "type": "string",
           "default": "Small_Phone",
