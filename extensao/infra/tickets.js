@@ -97,4 +97,22 @@ function arquivar(chave) {
   fs.renameSync(pasta(chave), path.join(ARQUIVADOS, `${nomeSeguro(chave)}-${Date.now()}`));
 }
 
-module.exports = { RAIZ, REFINAMENTO, modulo, chaveDo, nomeSeguro, existe, alvo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, abaDaPasta, vincularPorPasta, arquivar };
+// Excluir os registros do ticket SÓ de um módulo (lista): documentos, notas, decisões, evidências e o estado daquele módulo vão para
+// _arquivados/<chave>-<lista>-<ts>/ (mesma regra do arquivar: nada é apagado). O .ticket.json e os outros módulos ficam. As conversas
+// vinculadas àquele módulo voltam a ser avulsas.
+function arquivarRegistros(chave, lista) {
+  const t = ler(chave), base = pasta(chave, lista);
+  if (!t || !fs.existsSync(base)) return false;
+  const raiz = !SUBPASTAS.includes(lista), nome = nomeSeguro(chave);
+  for (const sid of t.conversas) if (ticketDa(sid) === nome && listaDa(sid) === (raiz ? REFINAMENTO : lista)) fs.rmSync(path.join(VINCULOS, sid), { force: true });
+  const destino = path.join(ARQUIVADOS, `${nome}-${raiz ? REFINAMENTO : lista}-${Date.now()}`);
+  fs.mkdirSync(ARQUIVADOS, { recursive: true });
+  if (!raiz) fs.renameSync(base, destino);
+  else { // Refinamento é a raiz da pasta: leva os arquivos dela, menos o .ticket.json e as subpastas dos outros módulos.
+    fs.mkdirSync(destino);
+    for (const f of fs.readdirSync(base).filter((n) => n !== '.ticket.json' && !SUBPASTAS.includes(n))) fs.renameSync(path.join(base, f), path.join(destino, f));
+  }
+  return true;
+}
+
+module.exports = { arquivarRegistros, RAIZ, REFINAMENTO, modulo, chaveDo, nomeSeguro, existe, alvo, pasta, listasDe, ler, gravar, criar, listar, ticketDa, listaDa, vincular, abaDaPasta, vincularPorPasta, arquivar };

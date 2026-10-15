@@ -214,6 +214,23 @@ exports.provider = (ctx) => {
     },
     atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
     vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
+    // 🗑 do cabeçalho: tira o ticket deste módulo (a pasta do ticket só vai para _arquivados se não estiver em outro) ou, na 2ª opção,
+    // também leva os registros dele neste módulo (documentos, notas, decisões, evidências, estado). Nada é apagado de verdade.
+    async excluirTicket() {
+      const t = ticketAberto();
+      if (!t || t.id === SEM_TICKET) return;
+      const foco = sessao.focoLista(), nomeModulo = require('../componentes/menu-modulos').nome(foco), outros = tickets.listasDe(tickets.ler(t.id) || t).length > 1;
+      const tudo = `Excluir e apagar registros de ${nomeModulo}`;
+      const r = await vscode.window.showWarningMessage(`Excluir o ticket ${t.chave}?`, { modal: true,
+        detail: `Excluir: sai da lista de ${nomeModulo}${outros ? ' (continua nos outros módulos)' : ' e a pasta inteira vai para _arquivados'}.\n${tudo}: além disso, os documentos, notas, decisões e evidências do ticket em ${nomeModulo} também vão para ${path.join(tickets.RAIZ, '_arquivados')}. Nada é apagado de verdade.` }, 'Excluir', tudo);
+      if (!r) return;
+      if (r === tudo) tickets.arquivarRegistros(t.chave, foco);
+      const reg = tickets.ler(t.id);
+      if (reg && outros) tickets.gravar({ ...reg, listas: tickets.listasDe(reg).filter((l) => l !== foco), lista: undefined, implementacao: undefined });
+      else if (reg) tickets.arquivar(t.id);
+      aberto = null; sessao.focar(null);
+      render();
+    },
     jira() { const t = ticketAberto(); if (t && jira.ehDocumento(t)) return vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); if (t?.link) vscode.env.openExternal(vscode.Uri.parse(t.link)); }
   };
 

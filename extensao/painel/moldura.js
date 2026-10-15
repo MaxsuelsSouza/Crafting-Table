@@ -88,6 +88,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
       <button class="ct-ico" ${b('claude')} title="Abrir a conversa do Claude${semTicket ? '' : ' deste ticket'}">${IC.claude}</button>
       ${semTicket ? '' : raio(t, b)}
       ${semTicket || jira.ehDocumento(t) ? '' : `<button class="ct-ico" ${b('jira')} title="Ver o ticket no ${esc(jira.nome)}">${IC.jira}</button>`}
+      ${semTicket ? '' : `<button class="ct-ico perigo" ${b('excluirTicket')} title="Excluir o ticket (ou o ticket e os registros dele neste módulo)">${IC.lixo}</button>`}
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
       : `${jira.ehDocumento(t) ? pill.pill(t.status || 'Documento', { cor: 'novo', grande: true, dica: 'Status do ticket (editável na aba Ticket)' }) : pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
