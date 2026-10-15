@@ -106,6 +106,40 @@ function refazer(dir, id) {
   return true;
 }
 
+// ↻ Refazer (lote): os cenários que falharam ou ficaram bloqueados viram uma fila de perguntas (3 opções + outra resposta). Cada resposta
+// devolve o cenário para a fila com a instrução do humano (c.instrucao), que o prompt de execução cita. Estado: .qa.json → refazerLote { ids, idx }.
+const PARA_REFAZER = ['falhou', 'bloqueado'];
+const opcoesRefazer = (c) => [
+  'Refazer do jeito que está',
+  'Refazer com massa nova (levantar de novo)',
+  c.status === 'bloqueado' ? 'Refazer seguindo outro caminho na tela (descreva o bloqueio ao responder)' : 'Refazer conferindo com mais cuidado o resultado esperado',
+];
+const loteRefazer = (dir) => {
+  const l = estado(dir).refazerLote;
+  if (!l?.ids?.length) return null;
+  const r = cenarios(dir), c = r.cenarios.find((x) => x.id === l.ids[l.idx || 0]);
+  return c ? { ...l, idx: l.idx || 0, cenario: c, opcoes: opcoesRefazer(c) } : null;
+};
+function iniciarRefazerLote(dir) {
+  const ids = cenarios(dir).cenarios.filter((c) => !c.arquivado && PARA_REFAZER.includes(c.status)).map((c) => c.id);
+  if (!ids.length || estado(dir).execucao === 'rodando') return 0;
+  mudar(dir, { refazerLote: { ids, idx: 0 } });
+  return ids.length;
+}
+// Responde o cenário atual: instrução = texto da opção ou texto livre. Devolve { fim } quando era o último.
+function responderRefazer(dir, instrucao) {
+  const l = loteRefazer(dir), t = String(instrucao || '').trim();
+  if (!l || !t) return null;
+  const r = cenarios(dir), c = r.cenarios.find((x) => x.id === l.cenario.id);
+  c.instrucao = t;
+  gravarJson(path.join(dir, CENARIOS), r);
+  refazer(dir, c.id);
+  const fim = l.idx + 1 >= l.ids.length;
+  mudar(dir, { refazerLote: fim ? null : { ids: l.ids, idx: l.idx + 1 } });
+  return { fim, id: c.id };
+}
+const cancelarRefazerLote = (dir) => mudar(dir, { refazerLote: null });
+
 // Não executado por decisão do usuário (Pedir ajuste / Excluir): sai da fila e não conta como pendente; guarda motivo, data e o tipo. ↻ Refazer devolve.
 function dispensar(dir, id, motivo, tipo = 'excluir') {
   const r = cenarios(dir), c = r.cenarios.find((x) => x.id === id && !x.arquivado);
@@ -387,6 +421,7 @@ const promptMassa = (chave, cens, dir = '', banco = '', mapa = '', escreve = fal
   + `Se o banco não responder, termine dizendo isso. ${REGRAS}`;
 const promptCenario = (chave, c, amb, itens, dir = '', exige = []) => `[segundo plano · Crafting Table · QA de ${chave}] Execute SÓ o cenário ${c.id} do planejamento de QA, `
   + `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md).${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n\nCenário ${c.id} · ${c.titulo}\n${c.texto}\n\n`
+  + (c.instrucao ? `INSTRUÇÃO DO HUMANO para esta nova tentativa (siga): ${c.instrucao}\n\n` : '')
   + `Ambiente já preparado (não rode preparar-ambiente): backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · API http://localhost:5111 · Metro 8081 · emulador ligado.\n`
   + `Massa válida para este cenário: ${itens.length ? JSON.stringify(itens.map((i) => ({ id: i.id, papel: i.papel, dados: i.dados }))) : 'nenhuma registrada'}. `
   + `Use SÓ essa massa (a da Etapa 4): nunca procure nem registre massa nova (massa add é recusado aqui). Antes de usar, confira que o registro ainda está no estado esperado; `
@@ -944,9 +979,16 @@ function html(dir, uri = () => '') {
   const pausaCard = e.pausa ? `<div class="qa-card bloq"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
     <div class="acoes-passo">${(e.pausa.opcoes || []).map((o, i) => `<button data-painel="qaResponder" data-op="${i}">${esc(o)}</button>`).join('')}
     <button data-painel="qaResponder" class="aprovar">Responder…</button></div></div>` : '';
+  const lote = loteRefazer(dir);
+  const loteCard = lote ? (() => { const c = lote.cenario, ult = (c.execucoes || []).at(-1);
+    return `<div class="qa-card bloq"><b>Refazer · ${lote.idx + 1} de ${lote.ids.length} · ${esc(c.id)} <span class="dim">${esc(c.titulo || '')}</span></b>
+    <p>${esc(c.status === 'bloqueado' ? 'Bloqueado' : 'Não passou')}${ult?.nota ? `: ${esc(ult.nota)}` : ''}. Como refazer este cenário?</p>
+    <div class="acoes-passo">${lote.opcoes.map((o, i) => `<button data-painel="qaRefazerResponder" data-op="${i}">${esc(o)}</button>`).join('')}
+    <button class="aprovar" data-painel="qaRefazerResponder" data-op="outra">Outra resposta…</button>
+    <button class="sec" data-painel="qaRefazerCancelar">Cancelar</button></div></div>`; })() : '';
   // Plano já aprovado: o cartão dele desce para baixo do Ao vivo (em cima ficam execução e ambiente).
   // O ambiente fica só no rodapé do painel (status, log ao vivo e a análise do Claude num modal).
-  return CSS + pausaCard + (aprovado || e.pausa ? '' : card) + (aprovado && !e.pausa ? execucaoHtml(dir, e, rodando) : '')
+  return CSS + loteCard + pausaCard + (aprovado || e.pausa ? '' : card) + (aprovado && !e.pausa ? execucaoHtml(dir, e, rodando) : '')
     + etapasQa(dir, e, rodando) + aoVivo.caixa(dir, rodando, 'qa') + (aprovado ? card + mapaHtml(dir, cenarios(dir), ambiente(dir), uri) : '');
 }
 // Publicar só com todos os cenários não arquivados em 'passou' (e ao menos um).
@@ -1001,10 +1043,11 @@ function mapaHtml(dir, r, amb, uri) {
   if (!r.cenarios.length) return '';
   const feitos = ativos.filter((c) => c.status === 'passou').length, dispensados = ativos.filter((c) => c.status === 'dispensado').length;
   const ctx = { dir, amb, uri, arquivos: (x) => arquivosDe(dir, x) };
-  return `<div class="caixa-t">Cenários · plano v${r.planoVersao}<span>${feitos}/${ativos.length - dispensados} passaram${dispensados ? ` · ${dispensados} não executado(s) por decisão` : ''}</span></div>
+  const nRef = ativos.filter((c) => PARA_REFAZER.includes(c.status)).length;
+  return `<div class="caixa-t">Cenários · plano v${r.planoVersao}${nRef ? ` <button class="sec" data-painel="qaRefazerLote" title="Pergunta, cenário a cenário, como refazer os que falharam ou ficaram bloqueados">↻ Refazer (${nRef})</button>` : ''}<span>${feitos}/${ativos.length - dispensados} passaram${dispensados ? ` · ${dispensados} não executado(s) por decisão` : ''}</span></div>
     <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
-module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, executar, pausar, rodando, registrarDecisao,
+module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, iniciarRefazerLote, responderRefazer, cancelarRefazerLote, loteRefazer, executar, pausar, rodando, registrarDecisao,
   ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, emPreCondicao, registrarPreCondicao, promptPreCondicao, evidencia, arquivosDe, massa, massaAdd, massaEstado, sincronizarMassa, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { healthCheck, papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

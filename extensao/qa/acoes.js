@@ -351,6 +351,30 @@ const acoes = (s) => ({
   // Pedir ajuste só marca e guarda o motivo (não aciona o Claude; para ele aplicar a mudança use "Pedir ajuste" do planejamento, qaPlanoMudar).
   qaCenarioAjuste({ id }) { return dispensarCenario(s, id, 'ajuste'); },
   qaCenarioExcluir({ id }) { return dispensarCenario(s, id, 'excluir'); },
+  // ↻ Refazer (lote): abre a fila de perguntas dos cenários que falharam/bloquearam; cada resposta devolve o cenário à fila (▶ executa).
+  qaRefazerLote() {
+    const t = s.ticketAberto();
+    if (!t) return;
+    const n = qa.iniciarRefazerLote(s.pastaAba(t.id));
+    if (!n) vscode.window.showInformationMessage('Nenhum cenário falhou ou ficou bloqueado (ou o QA está rodando).');
+    s.render();
+  },
+  async qaRefazerResponder({ op } = {}) {
+    const t = s.ticketAberto();
+    if (!t) return;
+    const dir = s.pastaAba(t.id), l = qa.loteRefazer(dir);
+    if (!l) return;
+    const r = op !== undefined && op !== 'outra' && op !== '' ? l.opcoes[Number(op)]
+      : await vscode.window.showInputBox({ title: `Como refazer ${l.cenario.id}?`, prompt: l.cenario.titulo, ignoreFocusOut: true });
+    if (!r?.trim()) return;
+    const x = qa.responderRefazer(dir, r);
+    if (x) qa.registrarDecisao(dir, `Usuário instruiu como refazer ${x.id}`, { ticket: t.chave, cenario: x.id, resposta: r.trim() });
+    s.render();
+  },
+  qaRefazerCancelar() {
+    const t = s.ticketAberto();
+    if (t) { qa.cancelarRefazerLote(s.pastaAba(t.id)); s.render(); }
+  },
   qaRefazer({ id }) { const t = s.ticketAberto(); if (t && typeof id === 'string') qa.refazer(s.pastaAba(t.id), id); },
   qaParar() { const t = s.ticketAberto(); if (t) { qa.registrarDecisao(s.pastaAba(t.id), 'Usuário pausou os testes', { ticket: t.chave }); qa.pausar(s.pastaAba(t.id)); s.render(); } },
 });

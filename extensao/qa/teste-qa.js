@@ -145,6 +145,19 @@ assert.strictEqual(recentesPrimeiro([{ tipo: 'acao', texto: 'x' }, { tipo: 'acao
   qa.concluirCenario(d4, 'CT01', 'descartado', 'pausa');
   assert.deepStrictEqual([qa.cenarios(d4).cenarios[0].status, qa.cenarios(d4).cenarios[0].execucoes[0].status], ['pendente', 'descartado']);
 
+  // Refazer em lote: só falhou/bloqueado entram; cada resposta devolve o cenário à fila com a instrução e avança.
+  const dRef = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-ref-'));
+  sincronizar(dRef, plano1, 1);
+  iniciarCenario(dRef, 'CT01', null); qa.concluirCenario(dRef, 'CT01', 'falhou', 'x');
+  iniciarCenario(dRef, 'CT02', null); qa.concluirCenario(dRef, 'CT02', 'bloqueado', 'y');
+  assert.strictEqual(qa.iniciarRefazerLote(dRef), 2);
+  assert.strictEqual(qa.loteRefazer(dRef).opcoes.length, 3);
+  assert.deepStrictEqual(qa.responderRefazer(dRef, 'usar outra massa'), { fim: false, id: 'CT01' });
+  assert.strictEqual(qa.loteRefazer(dRef).cenario.id, 'CT02');
+  assert.deepStrictEqual(qa.responderRefazer(dRef, 'tentar de novo'), { fim: true, id: 'CT02' });
+  assert.strictEqual(qa.loteRefazer(dRef), null);
+  assert.deepStrictEqual(qa.cenarios(dRef).cenarios.map((c) => [c.status, c.instrucao]), [['pendente', 'usar outra massa'], ['pendente', 'tentar de novo']]);
+
   // qa-state (CLI) pela QA_DIR.
   const { execFileSync } = require('child_process');
   const cli = (...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: d4 }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
