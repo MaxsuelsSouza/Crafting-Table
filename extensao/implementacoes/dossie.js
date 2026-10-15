@@ -83,7 +83,7 @@ function trabalhoParaMarkdown(trabalho, chave) {
 
 const NIVEIS = ['ausente', 'verbal', 'bruto', 'gerado', 'aprovado'];
 const rank = (n) => NIVEIS.indexOf(n);
-const BRIEFING = '.briefing.md', JSON_ = 'dossie.json', MD = 'dossie.md', TRABALHO = 'trabalho-existente.md', LIMIAR_TEXTO = 40; // caracteres de descrição+comentários para virar "bruto"
+const BRIEFING = '.briefing.md', JSON_ = 'dossie.json', MD = 'dossie.md', TRABALHO = 'trabalho-existente.md', REPRODUCAO = 'reproducao.md', LIMIAR_TEXTO = 40; // caracteres de descrição+comentários para virar "bruto"
 const existe = (f) => { try { return fs.statSync(f).size > 0; } catch { return false; } };
 const subpasta = (t, lista) => tickets.pasta(t.chave, lista);
 
@@ -99,6 +99,10 @@ function sobreTicket(t, j) {
   const caracteres = texto.trim().length;
   return { caracteres, doc, temDoc, suficiente: caracteres >= LIMIAR_TEXTO || temDoc };
 }
+
+/** Tipos de ticket que pedem confirmação do erro antes de desenvolver (nome do tipo no Jira: Bug, Defeito, Incidente…). */
+const tipoTicket = require('../infra/tipo-ticket');
+const ehBug = (tipo) => tipoTicket.exigeReproducao(tipoTicket.classificar(tipo));
 
 /** Maior nível entre as fontes de um eixo. */
 const nivelDe = (itens) => itens.reduce((m, i) => (rank(i.confianca) > rank(m) ? i.confianca : m), 'ausente');
@@ -206,6 +210,8 @@ function montar(t, o = {}) {
   return {
     versao: 1, ticket: t.chave, titulo: t.titulo || t.documento?.nome || '', gerado: new Date().toISOString(),
     eixos, niveis, fontes, prontidao, modo, lacunas, trabalho, capacidades: { banco, repos, semBranch },
+    ...(() => { const cat = tipoTicket.categoriaDe({ ...t, tipo: o.j?.tipo || t.tipo });
+      return { tipoTicket: String(o.j?.tipo || t.tipo || ''), categoria: cat, exigeReproducao: tipoTicket.exigeReproducao(cat) }; })(),
     exigeAprovacaoEntendimento: modo !== 'executar' && prontidao !== 'alta'
   };
 }
@@ -252,6 +258,7 @@ function paraMarkdown(d, o = { eixos: ROTULO_EIXO, modos: ROTULO_MODO, nome: 'Do
     ? d.eixos[e].map((i) => `- **${i.rotulo}** (${i.confianca})${i.detalhe ? ` · ${i.detalhe}` : ''}${i.arquivo ? `\n  ${i.arquivo}` : ''}`).join('\n') : '- (nada encontrado)');
   return [`# ${o.nome} · ${d.ticket}${d.titulo ? ` · ${d.titulo}` : ''}`, '',
     `Modo: **${o.modos[d.modo]}** · Prontidão: **${d.prontidao}**`, '',
+    ...(d.exigeReproducao ? [`Tipo do ticket: **${d.tipoTicket}**${d.categoria ? ` (${tipoTicket.rotulo(d.categoria)})` : ''}: exige a etapa de Reprodução (confirmar que o erro acontece) antes de desenvolver. Resultado: ${REPRODUCAO}`, ''] : []),
     ...Object.keys(o.eixos).flatMap((e) => [sec(e), '']),
     '## Capacidades', '', `- Banco: ${d.capacidades.banco === 'leitura' ? 'somente leitura (mapa-db)' : 'indisponível'}`,
     ...d.capacidades.repos.map((r) => `- Repositório ${r.camada}: ${r.caminho} · branch principal: ${r.branchPrincipal || '(não configurada)'}`), '',
@@ -277,4 +284,4 @@ function gravar(dir, d) {
 }
 const lerGravado = (dir) => ler(path.join(dir, JSON_), null);
 
-module.exports = { montar, montarIncidente, gravarEntrada, lerEntrada, ENTRADA, ROTULO_MODO_INC, sobreTicket, paraMarkdown, gravar, lerGravado, nivelDe, trabalhoExistente, trabalhoParaMarkdown, NIVEIS, ROTULO_MODO, BRIEFING, JSON_, MD, TRABALHO, _teste: { rank, reChave } };
+module.exports = { montar, montarIncidente, gravarEntrada, lerEntrada, ENTRADA, ROTULO_MODO_INC, sobreTicket, ehBug, paraMarkdown, gravar, lerGravado, nivelDe, trabalhoExistente, trabalhoParaMarkdown, NIVEIS, ROTULO_MODO, BRIEFING, JSON_, MD, TRABALHO, REPRODUCAO, _teste: { rank, reChave } };

@@ -53,7 +53,7 @@ const aprovarSpec = (t, specs) => { // spec e tarefas aprovadas → modo executa
 let roteiro = {}; // n -> (dir, c) => void | 'pausa'
 const prompt_ = [];
 const rodarSimulado = (dir, opts) => {
-  const num = Number(/Etapa (\d)/.exec(opts.titulo)[1]);
+  const num = /Reprodução/.test(opts.titulo) ? 'R' : Number(/Etapa (\d)/.exec(opts.titulo)[1]);
   prompt_.push({ n: num, prompt: opts.prompt, ferramentas: opts.ferramentas, env: opts.env, extras: opts.extras });
   setImmediate(() => {
     const fn = roteiro[num];
@@ -313,6 +313,81 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     // o prompt ensina o formato novo e avisa do verificador
     const pr = prompts.prompt(3, { dir: d, t: { chave: 'X-1' }, d: {}, repos: [], banco: 'x' });
     assert.ok(pr.includes('.pausa.md') && pr.includes('motivo: <') && pr.includes('SEM JSON') && !pr.includes('{"motivo"'));
+  }
+
+  // ═══ 12. Ticket do tipo Bug: a Reprodução vem antes do Entendimento; falhou + evidência confirma, sem isso pausa ═══
+  {
+    const fluxo = require('../incidentes/fluxo'), reproducao = require('./reproducao');
+    assert.strictEqual(dossie.ehBug('Bug'), true); assert.strictEqual(dossie.ehBug('Defeito'), true); assert.strictEqual(dossie.ehBug('Story'), false);
+    const jira = { key: 'X', tipo: 'Bug', resumo: 'x', descricao: '<p>Ao cancelar a nota o sistema trava e mostra erro 500 na tela de baixa</p>', comentarios: [], subtarefas: [],
+      anexos: [{ id: '7', nome: 'erro.png', url: 'u', de: 'PAI-1' }, { id: '8', nome: 'planilha.xlsx', url: 'u' }] };
+    T.deps.coletarEvidencias = (dir, anexos) => reproducao.coletarEvidencias(dir, anexos, async () => Buffer.from('png'));
+    const novo = () => { const repo = criarRepo('backend', 'backend'), t = novoTicket({ titulo: 'Erro ao cancelar nota' }), s = servicos(t, [repo]); s.cacheJira[t.id] = { ...jira, key: t.chave }; DIR = s.pastaAba(t.id); return { t, s }; };
+    const plano = (dir) => { fluxo.plano(dir, [{ titulo: 'Abrir a nota', texto: 'abre' }, { titulo: 'Cancelar a nota', texto: 'erro 500' }]); };
+    const rodar = (dir, id, status, comPrint) => { fluxo.iniciar(dir, id); if (comPrint) { const f = path.join(dir, 'p.png'); fs.writeFileSync(f, 'x'); fluxo.evidencia(dir, id, [f]); } fluxo.concluir(dir, id, status, 'visto'); };
+
+    // a) confirmado com evidência: segue sozinha até o portão do Entendimento
+    {
+      prompt_.length = 0;
+      const { t, s } = novo();
+      roteiro = { R: (dir) => { plano(dir); rodar(dir, 'P01', 'passou'); rodar(dir, 'P02', 'falhou', true); } };
+      await T.seguir(s, t);
+      await esperar(fase('aguardando'));
+      assert.deepStrictEqual(prompt_.map((p) => p.n), ['R', 2]); // sem spec a prontidão não é alta: o Entendimento para no portão
+      assert.strictEqual(T.estado(DIR).etapa, 2);
+      assert.strictEqual(T.estado(DIR).reproducao, 'ok');
+      const md = fs.readFileSync(path.join(DIR, 'reproducao.md'), 'utf8');
+      assert.ok(md.includes('Erro confirmado') && md.includes('P02') && md.includes('evidência: evidencias/P02/') && md.includes('PAI-1-erro.png'), md);
+      assert.ok(fs.existsSync(path.join(DIR, 'evidencias-ticket', 'PAI-1-erro.png')) && !fs.existsSync(path.join(DIR, 'evidencias-ticket', 'planilha.xlsx')));
+      assert.ok(prompt_[0].prompt.includes('REPRODUÇÃO DO BUG') && prompt_[0].prompt.includes('PAI-1-erro.png') && prompt_[0].ferramentas.includes(`Bash(${reproducao.BIN}:*)`));
+      assert.ok(!prompt_[0].ferramentas.includes('Edit') && !prompt_[0].ferramentas.includes('Write')); // não altera código
+      assert.ok(dossie.lerGravado(DIR).exigeReproducao && fs.readFileSync(path.join(DIR, 'dossie.md'), 'utf8').includes('exige a etapa de Reprodução'));
+      const html = reproducao.corpo(t, { jira: s.cacheJira[t.id], uri: (f) => 'vsc://' + f }, DIR);
+      assert.ok(html.includes('Erro confirmado') && html.includes('data-cen="P02"') && html.includes('PAI-1-erro.png'));
+    }
+    // b) nada falhou: pausa; "Tentar de novo" replaneja; "Seguir sem confirmar" libera o Entendimento
+    {
+      prompt_.length = 0;
+      const { t, s } = novo();
+      let vez = 0;
+      roteiro = { R: (dir) => { plano(dir); rodar(dir, 'P01', 'passou'); rodar(dir, 'P02', ++vez === 1 ? 'passou' : 'bloqueado'); } };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      assert.strictEqual(T.estado(DIR).pausa.motivo, 'repro-nao');
+      assert.deepStrictEqual(T.estado(DIR).pausa.opcoes, [T.TENTAR, T.SEM_CONFIRMAR]);
+      await T.responder(s, t, T.TENTAR);
+      await esperar(fase('pausado'));
+      assert.strictEqual(vez, 2); assert.ok(fs.readdirSync(DIR).some((n) => /^fluxo\..+\.json$/.test(n))); // o fluxo anterior fica guardado
+      await T.responder(s, t, T.SEM_CONFIRMAR);
+      await esperar(fase('aguardando'));
+      assert.strictEqual(T.estado(DIR).reproducao, 'aceita');
+      assert.deepStrictEqual(prompt_.map((p) => p.n), ['R', 'R', 2]);
+      assert.ok(fs.readFileSync(path.join(DIR, 'reproducao.md'), 'utf8').includes('Erro não confirmado'));
+    }
+    // c) falhou sem evidência anexada: a evidência é obrigatória
+    {
+      prompt_.length = 0;
+      const { t, s } = novo();
+      roteiro = { R: (dir) => { plano(dir); rodar(dir, 'P01', 'passou'); rodar(dir, 'P02', 'falhou', false); } };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      const p = T.estado(DIR).pausa;
+      assert.strictEqual(p.motivo, 'repro-evidencia'); assert.ok(p.pergunta.includes('P02'));
+    }
+    // d) o Claude terminou sem registrar cenário: erro, não avança
+    {
+      prompt_.length = 0;
+      const { t, s } = novo();
+      roteiro = { R: () => {} };
+      await T.seguir(s, t);
+      await esperar(fase('erro'));
+      assert.deepStrictEqual(prompt_.map((p) => p.n), ['R']);
+    }
+    // e) ticket que não é bug: sem Reprodução e a aba explica
+    {
+      const t = novoTicket(), html = reproducao.corpo(t, { jira: { tipo: 'Story' } }, servicos(t, []).pastaAba(t.id));
+      assert.ok(html.includes('vale para tickets do tipo Bug'));
+    }
   }
 
   console.log('ok');

@@ -16,6 +16,7 @@ const { markdown } = require('../componentes/markdown');
 const { esc } = require('../infra/texto');
 const dossie = require('./dossie');
 const prompts = require('./prompts');
+const reproducao = require('./reproducao');
 
 const ESTADO = '.esteira.json', { PAUSA, PAUSA_MD, RESPOSTAS, CONTEXTO, GRAVAR, ARQ } = prompts;
 const ETAPAS = [
@@ -27,6 +28,7 @@ const ETAPAS = [
   { n: 6, nome: 'Verificação', arq: ARQ[6], vaga: null },
   { n: 7, nome: 'Resumo', arq: ARQ[7], vaga: null }
 ];
+const SEM_CONFIRMAR = 'Seguir sem confirmar o erro';
 const TENTAR = 'Tentar de novo', SEGUIR = 'Continuar assim mesmo', CORRIGIR = 'Tentar corrigir mais uma vez', RESUMIR = 'Seguir para o resumo assim mesmo', REPETIR = 'Rodar a implementação de novo', VERIFICAR = 'Seguir para a verificação';
 const MAX_CORRECOES = 2;
 const lerJson = (arq, vazio) => { try { return JSON.parse(fs.readFileSync(arq, 'utf8')); } catch { return vazio; } };
@@ -65,6 +67,8 @@ const deps = {
     p.on('error', (e) => { filhos.delete(dir); ok({ codigo: -1, saida: e.message }); });
     p.on('close', (codigo) => { filhos.delete(dir); ok({ codigo: codigo ?? -1, saida: saida.trim() }); });
   }),
+  // Anexos do ticket, pai e irmãos que parecem evidência → <aba>/evidencias-ticket (jira.baixarAnexo com as credenciais da extensão).
+  coletarEvidencias: (dir, anexos, s) => reproducao.coletarEvidencias(dir, anexos, (a) => require('../provedores').provedorAtivo().baixarAnexo(s.secrets, a)),
   salvarBranchPrincipal: async (caminho, nome) => {
     const c = require('../configuracao/configuracao'), cfg = c.cfg();
     const atual = cfg.get('repositorios') || [], base = atual.length ? atual : c.reposAuto(cfg.get('specsDir') || c.SPECS_PADRAO);
@@ -187,9 +191,69 @@ async function passoDossie(s, t, rodada) {
     pausar(dir, 1, { motivo: 'briefing', pergunta: 'O ticket não tem descrição, documento nem diagnóstico: só o título. Explique o que precisa ser feito (o que o usuário vê, o que deve mudar, como saber que ficou certo). O que você escrever vira a fonte "verbal" do dossiê.', opcoes: [] });
     return s.render();
   }
+  // Ticket do tipo Bug: confirma que o erro acontece antes de planejar qualquer mudança (a aba Reprodução).
+  if (d.exigeReproducao && !['ok', 'aceita'].includes(estado(dir).reproducao)) return rodarReproducao(s, t, d, rodada);
   mudar(dir, { etapa: 2, fase: 'parado', modo: d.modo, tentativas: 0, correcao: false });
   return rodarEtapa(s, t, 2, rodada);
 }
+
+// ── Reprodução do bug (antes da etapa 2, só para Bug/Defeito/Incidente) ──
+// A etapa fica "1" no estado (o Dossiê só termina quando o erro é confirmado ou o usuário aceita seguir sem confirmar).
+async function rodarReproducao(s, t, d, rodada) {
+  const dir = s.pastaAba(t.id), env = ambiente(s, t), mapa = vagas.raiz('impl.mapa') || '';
+  const j = s.cacheJira?.[t.id];
+  limparPausa(dir);
+  mudar(dir, { etapa: 1, fase: 'rodando', pausa: null });
+  aoVivo.anotar(dir, { tipo: 'etapa', texto: 'Esteira · Reprodução do bug' });
+  s.render();
+  if (j?.anexos?.length) {
+    const achados = await deps.coletarEvidencias(dir, j.anexos, s);
+    if (!controle.valida(dir, rodada)) return s.render();
+    aoVivo.anotar(dir, { tipo: 'fala', texto: achados.length ? `Evidências encontradas no ticket, no pai ou nos irmãos: ${achados.length}` : 'Nenhuma evidência (print, vídeo ou log) nos anexos do ticket, do pai e dos irmãos' });
+  }
+  let tratou = false;
+  const ok = maestro.rodar(dir, {
+    prompt: reproducao.prompt({ dir, t, d, comandos: deps.comandos(), repos: env.repos, gravar: prompts.GRAVAR, retomada: fluxoExiste(dir) }) + vagas.aviso('impl.mapa'),
+    titulo: 'Esteira · Reprodução do bug', ferramentas: FERRAMENTAS_REPRO(mapa),
+    env: { MAPA_DB_CONEXAO: env.banco.conexao, MAPA_DB_AMBIENTE: env.banco.ambiente, MAPA_DB_SQLCL: env.banco.sqlcl, MAPA_DB_SENSIVEIS: env.banco.sensiveis.join(','),
+      MAPA_DB_LOG: path.join(dir, '.mapa-db.jsonl'), IMPLEMENTACAO_DIR: dir },
+    extras: [...(env.modelo ? ['--model', env.modelo] : []), ...vagas.pluginDirs('impl.mapa'), '--settings', JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }),
+      '--add-dir', dir, '--add-dir', s.pasta(t.id), ...env.repos.map((r) => r.caminho)],
+    aoMudar: () => { s.render(); if (!tratou && !maestro.rodando(dir)) { tratou = true; aposReproducao(s, t, d, rodada); } }
+  });
+  if (!ok) mudar(dir, { fase: 'parado' });
+  s.render();
+}
+const fluxoExiste = (dir) => require('../incidentes/fluxo').ler(dir).passos.length > 0;
+
+// Terminou: confirma pelos cenários (erro = algum "falhou", com evidência). Senão pausa e pergunta; o usuário decide tentar de novo ou seguir.
+async function aposReproducao(s, t, d, rodada) {
+  const dir = s.pastaAba(t.id), fluxo = require('../incidentes/fluxo');
+  if (!controle.valida(dir, rodada)) return s.render();
+  fluxo.descartarEmAndamento(dir); // caiu no meio de um cenário: ele volta para a fila
+  const p = lerPausa(dir), r = reproducao.resultado(dir);
+  if (p?.pergunta) {
+    limparPausa(dir);
+    pausar(dir, 1, { motivo: String(p.motivo || ''), pergunta: String(p.pergunta), opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : [] });
+  } else if (!r.passos.length) {
+    mudar(dir, { fase: 'erro' });
+    aoVivo.anotar(dir, { tipo: 'erro', texto: 'A reprodução terminou sem registrar nenhum cenário' });
+  } else if (!r.confirmou) {
+    reproducao.gravarResumo(dir, t.chave);
+    pausar(dir, 1, { motivo: 'repro-nao', pergunta: `O erro NÃO foi confirmado: nenhum dos ${r.passos.length} cenário(s) falhou (veja a aba Reprodução). Tentar de novo (com outro passo a passo) ou seguir assim mesmo?`, opcoes: [TENTAR, SEM_CONFIRMAR] });
+  } else if (r.semEvidencia.length) {
+    reproducao.gravarResumo(dir, t.chave);
+    pausar(dir, 1, { motivo: 'repro-evidencia', pergunta: `O erro foi confirmado, mas ${r.semEvidencia.map((x) => x.id).join(', ')} falhou sem evidência anexada (print, vídeo ou log). A evidência é obrigatória.`, opcoes: [TENTAR, SEM_CONFIRMAR] });
+  } else {
+    reproducao.gravarResumo(dir, t.chave);
+    aoVivo.anotar(dir, { tipo: 'fim', texto: `Erro confirmado: ${r.falhou.map((x) => x.id).join(', ')} falhou com evidência (${dossie.REPRODUCAO})` });
+    mudar(dir, { reproducao: 'ok', etapa: 2, fase: 'parado', pausa: null, modo: d.modo, tentativas: 0, correcao: false });
+    return rodarEtapa(s, t, 2, rodada);
+  }
+  s.render();
+}
+const FERRAMENTAS_REPRO = (mapa) => ['Read', 'Glob', 'Grep', 'Skill', `Bash(${prompts.GRAVAR}:*)`, `Bash(${reproducao.BIN}:*)`, ...(mapa ? [`Bash(${mapa}/bin/mapa-db:*)`] : []),
+  'Bash(adb:*)', 'Bash(maestro:*)', 'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(grep:*)'];
 
 // ── Etapas com IA (2, 3, 4, 5, 7) ──
 const LEITURA = (mapa) => ['Read', 'Glob', 'Grep', `Bash(${GRAVAR}:*)`, `Bash(${mapa}/bin/mapa-db:*)`, `Bash(${mapa}/bin/mapa-git:*)`, `Bash(${mapa}/bin/mapa-conferir:*)`,
@@ -345,6 +409,11 @@ const responder = async (s, t, resposta) => {
     return seguir(s, t);
   }
   if (['sujo', 'git', 'repos'].includes(m)) { if (r !== TENTAR) return; mudar(dir, { pausa: null }); return seguir(s, t); }
+  if (m === 'repro-nao' || m === 'repro-evidencia') {
+    if (r === TENTAR) { reproducao.reiniciar(dir); mudar(dir, { pausa: null, etapa: 1, fase: 'parado', reproducao: undefined }); return seguir(s, t); }
+    if (r === SEM_CONFIRMAR) { reproducao.gravarResumo(dir, t.chave, 'seguiu sem confirmar por decisão do usuário'); mudar(dir, { pausa: null, reproducao: 'aceita', etapa: 2, fase: 'parado' }); return seguir(s, t); }
+    return;
+  }
   if (m === 'sync') {
     if (r === SEGUIR) mudar(dir, { pausa: null, syncOk: true }); else if (r === TENTAR) mudar(dir, { pausa: null }); else return;
     return seguir(s, t);
@@ -387,13 +456,14 @@ const corpo = (t, d0, dir) => {
     const feita = fase === 'concluido' || (x.n < e.etapa && existe(dir, x.n));
     const atual = x.n === e.etapa && !feita;
     return { n: x.n, nome: x.nome, estado: feita ? 'concluida' : atual ? estadoAtual : 'pendente', ...(atual && fase === 'parado' ? { rotulo: 'pronta para iniciar' } : {}),
+      ...(x.n === 1 && atual && dos?.exigeReproducao && !['ok', 'aceita'].includes(e.reproducao) && fase !== 'parado' ? { rotulo: 'reproduzindo o bug' } : {}),
       ...(x.n === 5 && e.correcao && atual ? { rotulo: `correção ${e.tentativas} de ${MAX_CORRECOES}` } : {}) };
   });
   const nova = e.etapa === 1 && fase === 'parado';
   const pausa = e.pausa && fase === 'pausado' ? `<div class="caixa-t">Pausa da esteira</div><div class="folha"><div class="es-pausa"><p>${esc(e.pausa.pergunta)}</p>
     ${e.pausa.motivo === 'manual' ? `<div class="es-barra">${btn('▶ Retomar', 'esteiraRetomar', '', 'bt bt-principal')}</div>`
       : `${e.pausa.opcoes.length ? `<div class="es-barra">${e.pausa.opcoes.map((o, i) => btn(esc(o), 'esteiraResponder', ` data-op="${i}"`)).join('')}</div>` : ''}
-      ${['sujo', 'git', 'repos'].includes(e.pausa.motivo) || (e.pausa.opcoes.length && ['sync', 'sem-mudanca', 'verificacao'].includes(e.pausa.motivo)) ? ''
+      ${['sujo', 'git', 'repos'].includes(e.pausa.motivo) || (e.pausa.opcoes.length && ['sync', 'sem-mudanca', 'verificacao', 'repro-nao', 'repro-evidencia'].includes(e.pausa.motivo)) ? ''
         : `<textarea class="es-obs" data-texto placeholder="Sua resposta…" style="margin-top:8px"></textarea><div class="es-barra">${btn('Responder e continuar', 'esteiraResponder', '', 'bt bt-principal')}</div>`}`}</div></div>` : '';
   const et = ETAPAS[e.etapa - 1], lido = !!e.aprovacao?.lido;
   const aprovacao = fase === 'aguardando' && et ? `<div class="agora"><div class="atitulo">Revise a etapa ${et.n} · ${esc(et.nome)}</div>
@@ -481,4 +551,4 @@ const acoes = (s) => ({
 });
 
 module.exports = { corpo, corpoDossie, acoes, botaoPlay, ETAPAS, _teste: { parsePausa, lerPausa, deps, estado, mudar, situacao, seguir, aposEtapa, responder, prepararBranches, prepararDossie, verificar, afetados, ramo, slug, verificacaoComandos,
-  FERRAMENTAS, rodarEtapa, avancar, proxima, ESTADO, PAUSA, RESPOSTAS, TENTAR, SEGUIR, CORRIGIR, RESUMIR, REPETIR, VERIFICAR, MAX_CORRECOES, filhos, dentro } };
+  FERRAMENTAS, FERRAMENTAS_REPRO, SEM_CONFIRMAR, rodarReproducao, aposReproducao, rodarEtapa, avancar, proxima, ESTADO, PAUSA, RESPOSTAS, TENTAR, SEGUIR, CORRIGIR, RESUMIR, REPETIR, VERIFICAR, MAX_CORRECOES, filhos, dentro } };

@@ -53,6 +53,7 @@ function corpoAba(t, aba, d) {
   if (aba === 'evidenciasInc') return require('../incidentes/evidencias').corpo(t, d, pastaAba(t.id));
   if (aba === 'esteira') return require('../implementacoes/esteira').corpo(t, d, pastaAba(t.id));
   if (aba === 'dossie') return require('../implementacoes/esteira').corpoDossie(t, d, pastaAba(t.id));
+  if (aba === 'reproducao') return require('../implementacoes/reproducao').corpo(t, d, pastaAba(t.id));
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
   if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
@@ -126,7 +127,7 @@ exports.provider = (ctx) => {
       baixando: abaDocs.baixando
     };
     if (aba === 'ticket' && jira.ehDocumento(t)) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(pasta(t.id))] };
-    else if (['evidenciasInc', 'mergulho'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
+    else if (['evidenciasInc', 'mergulho', 'reproducao'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
     view.webview.html = pagina(nonce, telaTicket(t, aba, d), aba === 'docs' && dirAba
       ? { html: lerTexto(path.join(dirAba, NOTAS)) || '', sid: idAba(t.id), estilo: ler(path.join(dirAba, '.notas.json'), null) || notas.ESTILO_PADRAO } : null);
     avisarMoldura();
@@ -147,12 +148,25 @@ exports.provider = (ctx) => {
   const atualizarJira = async (chave) => {
     const t = tickets.ler(chave);
     if (!t) return;
-    if (jira.ehDocumento(t)) return render(); // ticket-documento: a fonte é a pasta; sem busca nem rede
+    if (jira.ehDocumento(t)) { render(); return confirmarTipo(chave); } // ticket-documento: a fonte é a pasta; sem busca nem rede
     try {
       const j = await jira.buscar(ctx.secrets, jira.alvo(t));
       cacheJira[chave] = j;
       tickets.gravar({ ...tickets.ler(chave), titulo: j.resumo, status: j.status, tipo: j.tipo });
     } catch (e) { cacheJira[chave] = { erro: e.message }; }
+    render();
+    confirmarTipo(chave);
+  };
+  // Tipo do ticket não reconhecido (sem tipo ou nome fora das listas): pergunta uma vez por sessão; a escolha fica no .ticket.json.
+  const perguntados = new Set();
+  const confirmarTipo = async (chave) => {
+    const tt = require('../infra/tipo-ticket'), t = tickets.ler(chave);
+    if (!t || tt.categoriaDe(t) || perguntados.has(chave)) return;
+    perguntados.add(chave);
+    const op = Object.entries(tt.CATEGORIAS).map(([valor, label]) => ({ label, valor }));
+    const r = await vscode.window.showQuickPick(op, { title: `Que tipo de ticket é ${chave}?`, placeHolder: t.tipo ? `O tipo "${t.tipo}" não foi reconhecido` : 'O tipo do ticket não veio da ferramenta', ignoreFocusOut: true });
+    if (!r) return;
+    tickets.gravar({ ...tickets.ler(chave), categoria: r.valor, categoriaOrigem: 'usuario' });
     render();
   };
 
@@ -175,9 +189,11 @@ exports.provider = (ctx) => {
       if (key) { const t = ticketAberto(); if (t && jira.ehDocumento(t)) return vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); return t && vscode.env.openExternal(vscode.Uri.parse(jira.linkDo(t.site, key))); } // subtarefa
       aberto = id;
       aba = 'docs';
+      if (id !== SEM_TICKET) { const tk = tickets.ler(id); if (tk) tickets.gravar({ ...tk, usos: { ...tk.usos, [lista.modo()]: Date.now() } }); } // sobe para o topo da lista do módulo
       sessao.focar(id === SEM_TICKET ? null : id, lista.modo());
       render();
       if (id !== SEM_TICKET && !cacheJira[id]) atualizarJira(id);
+      else if (id !== SEM_TICKET) confirmarTipo(id); // já em cache: só confere o tipo
     },
     voltar() { aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); render(); },
     aba({ id }) { aba = id; render(); if (id === 'ticket' && aberto !== SEM_TICKET && cacheJira[aberto]?.erro) atualizarJira(aberto); },

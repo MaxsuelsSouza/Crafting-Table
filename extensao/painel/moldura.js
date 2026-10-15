@@ -33,7 +33,7 @@ const EVID = 'claudeAbas.evidencias';
 const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
 const ABAS = {
   refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
-  impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, TICKET, DECISOES],
+  impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, { id: 'reproducao', nome: 'Reprodução' }, TICKET, DECISOES],
   incidentes: [DOCS, { id: 'mergulho', nome: 'Mergulho' }, { id: 'evidenciasInc', nome: 'Evidências' }, TICKET, DECISOES],
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
   semTicket: [DOCS, DECISOES]
@@ -92,6 +92,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
       : `${jira.ehDocumento(t) ? pill.pill(t.status || 'Documento', { cor: 'novo', grande: true, dica: 'Status do ticket (editável na aba Ticket)' }) : pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
+      ${(() => { const tt = require('../infra/tipo-ticket'), c = tt.categoriaDe(t); return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], grande: true, bola: false, dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : ''; })()}
       ${refino && emRefino(t) ? pillRefino(t) : ''}
       <button class="ct-ico" ${b('atualizar')} title="${jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${esc(jira.nome)}`}">${IC.atualizar}</button>`}</div>
     ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}

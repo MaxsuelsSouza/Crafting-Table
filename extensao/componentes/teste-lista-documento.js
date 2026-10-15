@@ -47,7 +47,7 @@ assert.ok(card.card(dmd).includes('st-ia') && card.card(dmd).includes('title="Ab
 assert.strictEqual(card.card({ ...jiraT, refinando: false }), `<li data-acao="abrir" data-id="WMS-1" data-busca="wms-1 ticket do jira em andamento" title="Abrir o ticket">
     <div class="corpo">
       <div class="nome"><span>Ticket do Jira</span></div>
-      <div class="det"><span class="chave">WMS-1</span>${pillMod.status('Em andamento')}
+      <div class="det"><span class="chave">WMS-1</span>${pillMod.status('Em andamento')}${pillMod.pill('Tipo?', { cor: 'novo', dica: 'Tipo não reconhecido: ao abrir o ticket a extensão pergunta qual é' })}
         <span>${card._teste.conversas(0)}</span></div>
     </div>
     <span class="mini"><button class="perigo" data-acao="excluir" data-id="WMS-1" title="Excluir (a pasta vai para _arquivados, nada é apagado)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5"/></svg></button></span></li>`);
