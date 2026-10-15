@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const cardCenario = require('../qa/card-cenario');
+const { origemPermitida } = require('./origem');
 
 const ARQ = 'fluxo.json', RESULTADOS = ['passou', 'falhou', 'bloqueado'];
 const lerJson = (f, pad) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return pad; } };
@@ -41,6 +42,8 @@ function concluir(dir, id, status, nota = '') {
 function evidencia(dir, id, arquivos) {
   const ex = achar(ler(dir), id).execucoes.at(-1);
   if (!ex || ex.status !== 'executando') throw new Error(`${id} não está em execução (use iniciar antes)`);
+  const fora = arquivos.find((a) => !origemPermitida(dir, a));
+  if (fora) throw new Error(`origem não permitida (só /tmp ou a pasta da aba): ${fora}`);
   return arquivos.map((a) => { const destino = path.join(dir, ex.evidencias, path.basename(a)); fs.copyFileSync(a, destino); return destino; });
 }
 function acao(dir, id, texto) { const f = ler(dir), p = achar(f, id); p.acao = String(texto); gravar(dir, f); }

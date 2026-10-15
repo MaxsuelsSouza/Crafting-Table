@@ -108,6 +108,7 @@ assert.deepStrictEqual(anexosFaltando(s, t), []);
   // etapa terminada com documento: aguarda aprovação (não segue sozinha); card com Abrir, Aprovar travado até ler e Pedir ajuste; sem ⏸/▶
   mudar(dir, { etapa: 3, fase: 'rodando' });
   fs.writeFileSync(path.join(dir, ETAPAS[2].arq), '# dados');
+  fs.writeFileSync(path.join(dir, 'massa-real.sql'), 'select 1 from dual'); // sem massa real e sem pendência a etapa 3 pausa (teste-esteira-incidente)
   await aposEtapa(s, t, 3, undefined, 0);
   assert.deepStrictEqual([estado(dir).fase, estado(dir).etapa], ['aguardando', 3]);
   const ha = mg.corpo(t, {}, dir);
