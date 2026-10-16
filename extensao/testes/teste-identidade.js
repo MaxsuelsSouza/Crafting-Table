@@ -51,7 +51,7 @@ assert.strictEqual(sessao.pasta(uuid), path.join(sessao.RAIZ, uuid)); // não é
 assert.strictEqual(sessao.pasta('WMS-999'), path.join(sessao.RAIZ, 'WMS-999')); // parece Jira mas não existe: conversa
 
 // Card antigo com `jira` é lido como `ticket`.
-const { tarefasDe, TAREFAS } = require('../refinamento/locais');
+const { tarefasDe, TAREFAS } = require('../infra/spec');
 const dir = tk.pasta('WMS-123');
 fs.writeFileSync(path.join(dir, TAREFAS), JSON.stringify([{ id: 't01', jira: 'WMS-124' }, { id: 't02', ticket: 'WMS-125' }, { id: 't03', jira: null }]));
 assert.deepStrictEqual(tarefasDe(dir).map((c) => [c.ticket, c.jira]), [['WMS-124', undefined], ['WMS-125', undefined], [null, undefined]]);

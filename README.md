@@ -160,8 +160,8 @@ instalar.sh instalação em um comando
 
 - Mudou `.js` da extensão: `Ctrl+Shift+P` → **Developer: Reload Window**.
 - Mudou `extensao/package.json` (abas, ícones): feche o VS Code inteiro e abra de novo.
-- Testes rápidos: `node extensao/testes/teste-ticket.js`, `node extensao/testes/teste-teams.js`, `node extensao/refinamento/teste-mudancas.js`.
+- Testes rápidos: `node extensao/testes/teste-ticket.js`, `node extensao/testes/teste-teams.js`, `node extensao/refinamento/testes/teste-mudancas.js`.
 
 ## Criar um módulo novo
 
-Todo módulo nasce com o mesmo padrão (lista: menu · pesquisa · ↑↓ · ＋ Ticket · cards · Sem ticket · Vinculados; ticket: ← título ✦ ⚡ 🎫 🗑, pill + ⟳, menu Docs · Central · Ticket · Decisões | Conversas, rodapé com 🔔 e ▶ Comandos). O padrão está em [`CLAUDE.md`](CLAUDE.md) e o molde para copiar em [`extensao/modelo-modulo/`](extensao/modelo-modulo/). Organização da pasta (uma etapa por arquivo em `etapas/`, `abas/`, `bin/`, `testes/`): exemplo em [`extensao/incidentes/`](extensao/incidentes/).
+Todo módulo nasce com o mesmo padrão (lista: menu · pesquisa · ↑↓ · ＋ Ticket · cards · Sem ticket · Vinculados; ticket: ← título ✦ ⚡ 🎫 🗑, pill + ⟳, menu Docs · Central · Ticket · Decisões | Conversas, rodapé com 🔔 e ▶ Comandos). O padrão está em [`CLAUDE.md`](CLAUDE.md) e o molde para copiar em [`extensao/modelo-modulo/`](extensao/modelo-modulo/). Organização da pasta (uma etapa por arquivo em `etapas/`, `abas/`, `bin/`, `testes/`): exemplos em [`extensao/incidentes/`](extensao/incidentes/) e [`extensao/refinamento/`](extensao/refinamento/).

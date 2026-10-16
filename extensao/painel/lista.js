@@ -8,6 +8,7 @@ const listaTickets = require('../componentes/lista-tickets'); // tela inicial: m
 const vinculados = require('../componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
 const implementacoes = require('../implementacoes/implementacoes');
 const incidentes = require('../incidentes/incidentes');
+const refinamento = require('../refinamento/refinamento');
 const menuModulos = require('../componentes/menu-modulos');
 const { siteJira, projetoJira, boardsJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
 const variaveis = require('../provedores/variaveis');
@@ -17,7 +18,7 @@ const variaveis = require('../provedores/variaveis');
 
 // Caixa de vinculados de cada módulo (componentes/vinculados.js): título, seletor do topo e quais status do Jira entram.
 const VINCULADOS = {
-  refinamento: { titulo: 'Vinculados a você', seletor: 'etapa' },
+  [refinamento.ID]: refinamento.VINCULADOS,
   [implementacoes.ID]: implementacoes.VINCULADOS,
   [incidentes.ID]: incidentes.VINCULADOS,
   qa: { titulo: 'Com a label', seletor: 'label', variavel: 'etapasQA' }
@@ -68,7 +69,7 @@ const corpo = (s, estilo, emRefino) => {
   // Mais recente (aberto por último neste módulo) no topo; ticket nunca aberto vale pela data de criação.
   const uso = (x) => x.usos?.[modoLista] || x.criado || 0;
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).sort((a, b) => uso(b) - uso(a))
-    .map((x) => ({ ...x, refinando: modoLista === tickets.REFINAMENTO && emRefino(x), situacao: require('../infra/situacao').situacaoDe(x, modoLista) })),
+    .map((x) => ({ ...x, refinando: modoLista === refinamento.ID && emRefino(x), situacao: require('../infra/situacao').situacaoDe(x, modoLista) })),
     ferramenta !== true ? null : meus ? { ...meus, itens: meus.itens?.filter((i) => !ehChaveDoc(i.key)), ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 

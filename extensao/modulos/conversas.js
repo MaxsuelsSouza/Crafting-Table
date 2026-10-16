@@ -233,7 +233,8 @@ exports.provider = () => {
 };
 
 // ── Vínculo com as conversas do Claude (ticket ↔ conversa) ──
-const { HANDOFF, dirSpec, lerTexto, NOTAS, TAREFAS } = require('../refinamento/locais');
+const { dirSpec } = require('../infra/spec');
+const { lerTexto, NOTAS } = require('../infra/pasta-ticket');
 const jsonl = (sid) => historico(sid);
 function inicioDa(sid) {
   const t = (lerTexto(jsonl(sid)) || '').match(/"timestamp":"([^"]+)"/)?.[1];
@@ -295,9 +296,8 @@ const esteiraArquivos = (s, t) => {
   return achados.length ? `${e.rotulo} (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
 };
 const pedido = (s, t) => {
-  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
-  return (sessao.focoLista() === tickets.REFINAMENTO ? `Ticket ${t.chave}: ${t.titulo || ''}\n${t.link}\nPasta do ticket: ${s.pasta(t.chave)} (documentos, notas em ${NOTAS}, `
-    + `análise do backend em ${HANDOFF.backend} e do mobile em ${HANDOFF.mobile} (na pasta da spec), tarefas do passo 4 da spec em ${TAREFAS})\n`
+  const refinamento = require('../refinamento/refinamento'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
+  return (sessao.focoLista() === refinamento.ID ? refinamento.pedidoConversa(s, t) // Refinamento: refinamento/conversa.js
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
     : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`

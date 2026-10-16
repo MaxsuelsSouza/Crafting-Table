@@ -483,7 +483,7 @@ const corpo = (t, d0, dir) => {
 const corpoDossie = (t, d0, dir) => {
   let d = dossie.lerGravado(dir);
   try {
-    const env = ambiente({ reposDe: require('../refinamento/orquestrador').reposDe }, t);
+    const env = ambiente({ reposDe: require('../infra/repos').reposDe }, t);
     d = dossie.montar(t, { j: d0?.jira && !d0.jira.erro ? d0.jira : undefined, banco: env.banco, repos: env.repos });
   } catch { /* sem configuração (teste): fica o gravado */ }
   if (!d) return '<div class="folha"><div class="vazio-aba">Sem dossiê ainda.</div></div>';

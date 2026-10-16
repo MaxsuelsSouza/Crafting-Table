@@ -7,7 +7,8 @@ const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const sessao = require('../infra/sessao');
 const tickets = require('../infra/tickets');
-const { dirSpec, arqHandoff, ler, lerTexto, NOTAS, ORIGEM, decisoesDe, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, comSpec } = require('../refinamento/locais'); // onde cada coisa mora
+const { ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/pasta-ticket'); // onde cada coisa mora
+const { comSpec } = require('../infra/spec');
 const { IC } = require('../componentes/icones');
 const { markdown } = require('../componentes/markdown');
 const { LIDAS, notificar } = require('./notificacoes'); // sino do ticket
@@ -17,15 +18,8 @@ const aoVivo = require('../componentes/ao-vivo'); // caixa "Ao vivo": só as aç
 const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
 const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
 const configuracao = require('../configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
-const { sddState } = configuracao;
-const tarefas = require('../refinamento/tarefas'); // cards de tarefas: tela, script do modal, CSS e ações
-const mudancas = require('../refinamento/mudancas'); // mudanças pedidas em comentário: caixas da aba Spec, ações e CSS
-const orq = require('../refinamento/orquestrador'); // o Maestro dirigido pela extensão: etapa, seguir, filas e vigia de comentários
-const spec = require('../refinamento/spec'); // aba Spec: passos, cartão Agora, pilha de perguntas, modo refinamento e ações
-const analise = require('../refinamento/analise'); // aba Análise (handoff backend/mobile): tela, CSS e ações
-const { emRefino, modo } = spec;
+const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, dados, ações, orquestrador e vigia de comentários
 const acoesQa = require('../qa/acoes'); // ações e peças de UI do módulo QA
-const duvidas = require('../refinamento/duvidas'); // aba Dúvidas e as ações de dúvida
 const conversas = require('../modulos/conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -43,12 +37,11 @@ const rodape = require('../componentes/rodape'); // cabeçalho, rodapé, CSS e p
 // aba -> corpo (cada módulo desenha a sua)
 function corpoAba(t, aba, d) {
   if (aba === 'docs') return abaDocs.corpo(d, t.id === SEM_TICKET);
-  if (aba === 'spec') return spec.corpoAba(t, d);
+  const ref = refinamento.corpoAba(aba, t, d); // Spec, Análise, Tarefas e Dúvidas do Refinamento
+  if (ref !== undefined) return ref;
   if (aba === 'ticket' && jira.ehDocumento(t)) return require('../componentes/folha-documento').folhaDocumento(t, undefined, d.uri);
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`;
-  if (aba === 'analise') return analise.corpoAba(d);
-  if (aba === 'tarefas') return tarefas.telaTarefas(t, d.tarefas, d.impactos);
   if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
   const inc = require('../incidentes/incidentes').corpoAba(aba, t, d, pastaAba(t.id)); // Mergulho e Evidências do Incidente
   if (inc !== undefined) return inc;
@@ -56,7 +49,6 @@ function corpoAba(t, aba, d) {
   if (aba === 'dossie') return require('../implementacoes/esteira').corpoDossie(t, d, pastaAba(t.id));
   if (aba === 'reproducao') return require('../implementacoes/reproducao').corpo(t, d, pastaAba(t.id));
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
-  if (aba === 'duvidas') return duvidas.corpo(d);
   return '';
 }
 
@@ -99,33 +91,25 @@ exports.provider = (ctx) => {
     let t = aberto === SEM_TICKET ? { id: SEM_TICKET, conversas: [] } : aberto && comSpec(ticketDe(aberto));
     // diz em que módulo (e ticket) a pessoa está
     view.title = (conf.aberta() ? 'Configuração' : require('../componentes/menu-modulos').nome(lista.modo())) + (t && t.id !== SEM_TICKET ? ' / ' + t.id : '');
-    // Todos os passos aprovados: o modo refinamento termina sozinho.
-    if (t && emRefino(t) && t.specPronta && estadoSpec(t).proximoPasso > 6) t = { ...t, refinamento: modo(t.id, 'concluido') };
+    t = refinamento.aoDesenhar(t); // Refinamento: todos os passos aprovados, o modo termina sozinho
     if (!t) {
       aberto = null; sessao.focar(null); ultimaPagina = null;
       if (conf.aberta()) { view.webview.html = pagina(nonce, estilo + conf.corpo()); avisarMoldura(); return; }
-      view.webview.html = pagina(nonce, lista.corpo(servicos, estilo, emRefino));
+      view.webview.html = pagina(nonce, lista.corpo(servicos, estilo, refinamento.emRefino));
       avisarMoldura();
       lista.carregarSeNecessario(servicos);
       return;
     }
     if (!abasDe(t).some((a) => a.id === aba)) aba = 'docs';
-    // Confere os arquivos da spec antes de desenhar: edição depois de aprovado volta o passo para revisão.
-    if (aba === 'spec' && dirSpec(t) && fs.existsSync(path.join(dirSpec(t), 'sdd-state.json')) && sddState()) {
-      try { require('child_process').execFileSync(sddState(), ['check', '--ref', pasta(t.id)], { timeout: 5000, stdio: 'ignore' }); } catch {}
-    }
+    refinamento.antesDaAba(aba, t); // Refinamento: confere os arquivos da spec antes de desenhar a aba Spec
     const dir = pastaDe(t.id), dirAba = pastaAba(t.id);
     const d = {
-      dir, lado, abertos: spec.abertos,
+      dir, lado,
+      ...refinamento.dadosAba(t, dir), // Refinamento: passos lidos, análises, tarefas, dúvidas, impactos e o estado da spec
       uri: (f) => view.webview.asWebviewUri(vscode.Uri.file(f)).toString(), // miniaturas e vídeo da aba Evidências dos Incidentes
       docs: t.id === SEM_TICKET ? abaDocs.docsDe(dir) : abaDocs.docsDoTicket(servicos, t),
-      handoffs: t.id === SEM_TICKET ? {} : { backend: lerTexto(arqHandoff(t, 'backend')), mobile: lerTexto(arqHandoff(t, 'mobile')) },
-      tarefas: t.id === SEM_TICKET ? [] : tarefasDe(dir),
       decisoes: decisoesDe(dirAba),
-      duvidas: duvidasDe(dir),
-      impactos: t.id === SEM_TICKET ? [] : impactosDe(dir),
       vivoRodando: t.id !== SEM_TICKET && maestro.rodando(dir),
-      estado: dirSpec(t) ? estadoSpec(t) : null,
       jira: cacheJira[t.id],
       origens: dir ? ler(path.join(dir, ORIGEM), {}) : {},
       baixando: abaDocs.baixando
@@ -148,10 +132,7 @@ exports.provider = (ctx) => {
     };
     const obs = [];
     for (const p of new Set([dir, dirAba])) try { if (p) obs.push(fs.watch(p, (_, nome) => { if (nome !== NOTAS && nome !== '.notas.json' && nome !== '.decisoes.lock' && nome !== LIDAS) depois(300, nome === '.ao-vivo.jsonl'); })); } catch {}
-    if (dirSpec(t) && fs.existsSync(dirSpec(t))) {
-      try { obs.push(fs.watch(dirSpec(t), (_, nome) => { if (nome && !nome.endsWith('.tmp')) depois(400); })); } catch {}
-      try { obs.push(fs.watch(t.spec.repo, (_, nome) => { if (nome === 'constitution.md') depois(400); })); } catch {}
-    }
+    refinamento.observar(t, depois, obs); // Refinamento: a pasta da spec e a constituição
     observador = { close: () => { clearTimeout(espera); obs.forEach((o) => o.close()); } };
   };
 
@@ -188,12 +169,12 @@ exports.provider = (ctx) => {
   // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
   const servicos = {
     render: () => renderSuave(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
-    pasta, pastaAba, gravar, notificar, reposDe: orq.reposDe, orq, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
+    pasta, pastaAba, gravar, notificar, reposDe: require('../infra/repos').reposDe, orq: refinamento.orq(), abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
-  orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  refinamento.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, refinamento, conversas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,
@@ -240,8 +221,7 @@ exports.provider = (ctx) => {
       if (aberto === id) { aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); }
       render();
     },
-    atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); orq.vigiarComentarios(); } },
-    vigiarAgora() { return orq.vigiarComentarios(); }, // ⟳ e testes: olha os comentários agora
+    atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); refinamento.aoAtualizar(); } },
     // 🗑 do cabeçalho: tira o ticket deste módulo (a pasta do ticket só vai para _arquivados se não estiver em outro) ou, na 2ª opção,
     // também leva os registros dele neste módulo (documentos, notas, decisões, evidências, estado). Nada é apagado de verdade.
     async excluirTicket() {

@@ -15,29 +15,7 @@ const SKILLS = path.join(os.homedir(), '.claude', 'skills');
 
 // contrato: o que a extensão espera de quem ocupa a vaga (base da verificação por IA de um substituto).
 const VAGAS = {
-  'refinamento.sdd': {
-    padrao: { tipo: 'plugin', id: 'sdd@crafting-local', nome: 'sdd', skill: 'sdd' }, como: 'skill invocada + bin sdd-state + hooks',
-    contrato: 'Método SDD em 7 passos (0 Constituição, 1 spec.md v1.0 com RFnn e Dado/Quando/Então, 2 Clarificação spec.md v2.0, 3 plan.md com "## Mapeamento do código" e "## Conformidade com a Constituição", '
-      + '4 tasks.md com tNN e cards, 5 analise.md com achados Ann, 6 testes.md e card qa). Estado só pelo bin <raiz>/bin/sdd-state (init, status, check, iniciar N, concluir N --versao --resumo, ajuste, '
-      + 'pergunta add|responder, achado add|resolver|aceitar, card add|editar|revisar, impacto registrar|aplicado, comentario classificar, duvida add, json) gravando sdd-state.json, .tarefas.json, .impactos.json, .duvidas.json. '
-      + 'Nunca aprova passo (só a pessoa). Modo [segundo plano] sem AskUserQuestion. Modos [triagem], [impacto] e [aplicar] para comentários novos do ticket. Hooks que bloqueiam edição direta dos JSONs de estado e do "aprovar".'
-  },
-  'refinamento.foco': {
-    padrao: { tipo: 'local', id: 'foco', nome: 'foco', caminho: LOCAL('foco') }, como: 'hooks (--plugin-dir)',
-    contrato: 'Hooks sem skill: SessionStart injeta regras de escrita curta em PT-BR; PostToolUse em Write/Edit mede os .md (limites: spec 300 linhas, plan 350, tasks 300, analise 200, constitution 450, testes 450, mapa-* 350; '
-      + '90 palavras por parágrafo, 35 por frase) e devolve exit 2 com o que enxugar. Substitui o i-have-adhd, que fica desligado nas execuções.'
-  },
-  'refinamento.mapa': {
-    padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa'), skill: 'mapear' }, como: 'skill mapa:mapear + bins (--plugin-dir)',
-    contrato: 'Passo 3: grava mapa-backend.md e/ou mapa-mobile.md na pasta da spec com Camadas por RF, Onde o fluxo vive, Inventário invertido (RF | Hoje | Desejado | Menor mudança | Quem mais passa aqui), '
-      + 'Contratos, Banco, O que não vamos criar, Riscos; evidências arquivo:linha. Bins <raiz>/bin/mapa-git (git só leitura), mapa-db (SELECT só leitura, máx. 50 linhas, colunas sensíveis mascaradas, log em MAPA_DB_LOG, '
-      + 'recusa produção; env MAPA_DB_CONEXAO/AMBIENTE/SQLCL/SENSIVEIS) e mapa-conferir <mapa.md> --repo --db-log (confere as evidências).'
-  },
-  'refinamento.metodoQa': {
-    padrao: { tipo: 'plugin', id: 'fcx-qa-test-planning@fcxlabs', nome: 'fcx-qa-test-planning', skill: 'jira-qa-planner' }, como: 'lido como método (não invocado)',
-    contrato: 'Método do passo 6: testes.md em PT-BR com CT01… sequencial, Gherkin Dado que/Quando/Então, "📌 Validações:" com ✔, no mínimo 1 positivo, 1 negativo e 1 borda por RF, cada CT cita o RF e a subtarefa, '
-      + 'regressão nomeada, "⚠️ (inferido)" no que não tem base na spec, templates de fluxo/tela e de API, estimativa em horas (modo detalhado). Não usa a ferramenta de tickets: a extensão cria o card [QA].'
-  },
+  ...require('../refinamento/etapas').VAGAS, // vagas do Refinamento: refinamento/etapas/index.js
   'qa.ambiente': {
     padrao: { tipo: 'skill', id: 'testes-funcionais', nome: 'testes-funcionais', caminho: path.join(SKILLS, 'testes-funcionais') }, como: 'script executado + referências lidas',
     contrato: 'Script <raiz>/assets/backend/preparar-ambiente.py --chave KEY --json [--build-app], idempotente, que sobe API (5111), Metro (8081), emulador e app; imprime linhas "[ OK|FEITO|PEND.|AVISO] texto" '
@@ -58,17 +36,9 @@ const VAGAS = {
 // subetapas: [{ nome, vaga }] — a etapa-mãe não tem vaga própria; cada subetapa tem a sua (Etapa 4 → 4.1, 4.2).
 // Etapas na ordem de cada módulo (a tela numera: Etapa 1, Etapa 2…); vaga null = a etapa não usa plugin nem skill (só o prompt da extensão).
 // todas: vale para todas as etapas do módulo (aparece no fim, sem número).
+/** @type {{ id: string, nome: string, etapas: { nome: string, vaga?: string | null, obs?: string, subetapas?: { nome: string, vaga: string }[], todas?: boolean }[] }[]} */
 const MODULOS = [
-  { id: 'refinamento', nome: 'Refinamento', etapas: [
-    { nome: 'Constituição', vaga: 'refinamento.sdd' },
-    { nome: 'Especificação', vaga: 'refinamento.sdd' },
-    { nome: 'Clarificação', vaga: 'refinamento.sdd' },
-    { nome: 'Plano técnico', subetapas: [{ nome: 'Mapeamento do código', vaga: 'refinamento.mapa' }, { nome: 'Plano técnico', vaga: 'refinamento.sdd' }] },
-    { nome: 'Tarefas', vaga: 'refinamento.sdd' },
-    { nome: 'Análise de qualidade', vaga: 'refinamento.sdd' },
-    { nome: 'Plano de testes', vaga: 'refinamento.metodoQa' },
-    { nome: 'Comentários novos (triagem, impacto, aplicar)', vaga: 'refinamento.sdd' },
-    { nome: 'Regras de escrita', vaga: 'refinamento.foco', todas: true }] },
+  { id: 'refinamento', nome: 'Refinamento', etapas: require('../refinamento/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // refinamento/etapas/index.js
   { id: 'impl', nome: 'Implementação', etapas: [
     { nome: 'Dossiê', vaga: null, obs: 'a extensão lê o disco do ticket, sem IA' },
     { nome: 'Entendimento', vaga: null },

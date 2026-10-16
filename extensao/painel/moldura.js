@@ -5,7 +5,6 @@ const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
 const { ESTILO_NOTAS } = require('../modulos/comandos').ui;
 const sessao = require('../infra/sessao');
-const { duvidasDe, tarefasDe } = require('../refinamento/locais');
 const aoVivo = require('../componentes/ao-vivo');
 const rodape = require('../componentes/rodape');
 const menuAbas = require('../componentes/menu-abas');
@@ -15,13 +14,8 @@ const pill = require('../componentes/pill');
 const listaTickets = require('../componentes/lista-tickets');
 const vinculados = require('../componentes/vinculados');
 const configuracao = require('../configuracao/configuracao');
-const tarefas = require('../refinamento/tarefas');
-const mudancas = require('../refinamento/mudancas');
-const spec = require('../refinamento/spec');
-const analise = require('../refinamento/analise');
-const { emRefino, botaoRefino, pillRefino } = spec;
+const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, ▶/⏸, pill, faixa, contadores, CSS e script
 const acoesQa = require('../qa/acoes');
-const duvidas = require('../refinamento/duvidas');
 const notas = require('./notas').editor;
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const { pastaDe, pastaAba, naRaiz } = require('../infra/pastas');
@@ -32,7 +26,7 @@ const PRINCIPAL = 'claudeAbas.painel';
 const EVID = 'claudeAbas.evidencias';
 const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
 const ABAS = {
-  refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
+  [refinamento.ID]: refinamento.ABAS,
   impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, { id: 'reproducao', nome: 'Reprodução' }, TICKET, DECISOES],
   incidentes: require('../incidentes/incidentes').ABAS,
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
@@ -77,11 +71,10 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
   const semTicket = t.id === SEM_TICKET;
   const refino = !semTicket && naRaiz();
-  const contador = (id) => (id === 'duvidas' ? [duvidasDe(pastaDe(t.id)).filter((x) => !x.resposta).length, 'dúvida(s) em aberto: a spec só avança quando todas forem respondidas']
-    : id === 'tarefas' ? [tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length, 'tarefa(s) esperando sua decisão'] : [0, '']);
+  const contador = (id) => refinamento.contadorAba(id, t); // badges das abas Dúvidas e Tarefas; [0, ''] nas outras
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
-  const play = refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
+  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
   const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
     tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">
@@ -92,9 +85,9 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
       : `${jira.ehDocumento(t) ? pill.pill(t.status || 'Documento', { cor: 'novo', grande: true, dica: 'Status do ticket (editável na aba Ticket)' }) : pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
       ${(() => { const tt = require('../infra/tipo-ticket'), c = tt.categoriaDe(t); return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], grande: true, bola: false, dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : ''; })()}
-      ${refino && emRefino(t) ? pillRefino(t) : ''}
+      ${refino ? refinamento.pill(t) : ''}
       ${botoesTicket.botoes(ctx, 'pills')}`}</div>
-    ${refino && emRefino(t) && t.refinamento.estado !== 'pausado' ? '<div class="ct-roxo"></div>' : ''}
+    ${refino ? refinamento.faixa(t) : ''}
     ${menuAbas.menu(itens, { aba, secao, principal: PRINCIPAL, dentro })}
   </header>`;
 }
@@ -105,7 +98,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .secundario { flex: none; height: 34px; padding: 0 12px; border-radius: var(--r-md); font-size: 12px; font-weight: 600;
     color: var(--ok) !important; border: 1px solid color-mix(in srgb, var(--ok) 55%, transparent) !important; background: var(--surface) !important; box-shadow: var(--sombra); }
   .secundario:hover { background: color-mix(in srgb, var(--ok) 14%, transparent) !important; }
-  ${spec.CSS}
   /* Detalhe */
   .menu { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
   .menu .fb-btn { flex: none; padding: 0 6px; font-size: 11.5px; }
@@ -137,8 +129,7 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .dresumo { margin: 2px 6px 10px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-2); font-size: 12px; line-height: 1.55; }
   .dresumo p { margin: 0 0 6px; }
   .dtrecho { font-size: 11.5px; color: var(--text-dim); }
-  ${tarefas.CSS}
-  ${mudancas.CSS}
+  ${refinamento.CSS()}
   .md table { border-collapse: collapse; margin: 6px 0; font-size: 11.5px; }
   .md th, .md td { border: 1px solid var(--border); padding: 3px 7px; text-align: left; }
   .md th { background: var(--surface-2); }
@@ -146,7 +137,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .previa-acoes button { height: 28px; padding: 0 12px; border: 1px solid var(--border) !important; border-radius: var(--r-md); font-size: 12px; }
   .previa-acoes .primario { border-color: transparent !important; }
   ${aoVivo.CSS}
-  ${duvidas.CSS}
   .dtrecho .esc { color: var(--ok); }
 
   /* Painel do ticket */
@@ -155,7 +145,6 @@ const estilo = ESTILO_NOTAS + CSS_MOLDURA + `<style>
   .rolagem { flex: 1; min-height: 0; overflow-y: auto; padding-top: 10px; }
   .caixa-t { margin: 0 12px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); display: flex; gap: 6px; }
   .caixa-t span { margin-left: auto; text-transform: none; letter-spacing: 0; }
-  ${analise.CSS}
   .erro { color: var(--danger); font-size: 12px; margin: 0 12px 8px; }
   ${abaDocs.CSS}
   ${listaTickets.CSS}
@@ -198,7 +187,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
   ${listaTickets.script('ticketsAntigos')}
   ${vinculados.script()}
 
-  ${spec.scriptPilha()}
+  ${refinamento.script()}
 
   // A página é redesenhada a cada linha nova do Ao vivo: a caixa e o corpo voltam para onde estavam.
   ${aoVivo.script('vivo')}
@@ -213,7 +202,6 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
 
   ${require('../modulos/comandos').scriptBloco()}
 
-  ${tarefas.script()}
 </script></body></html>`;
 }
 

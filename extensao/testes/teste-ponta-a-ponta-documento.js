@@ -128,8 +128,8 @@ const ultimo = () => pedidos[pedidos.length - 1];
   // ════ 2. REFINAMENTO (md)
   {
     const orq = require('../refinamento/orquestrador');
-    const { acoes: acoesTarefas } = require('../refinamento/tarefas');
-    const duv = require('../refinamento/duvidas');
+    const { acoes: acoesTarefas } = require('../refinamento/abas/tarefas');
+    const duv = require('../refinamento/abas/duvidas');
     const { tarefasDe, duvidasDe, impactosDe, TAREFAS, DUVIDAS } = require('../refinamento/locais');
     const t0 = ts.md, dir = tickets.pasta(t0.chave);
     tickets.gravar({ ...tickets.ler(t0.chave), spec: { repo: dir, dir: 'DOC-001-x' } });

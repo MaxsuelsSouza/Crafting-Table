@@ -7,7 +7,8 @@
 const fs = require('fs');
 const path = require('path');
 const tickets = require('../infra/tickets');
-const { dirSpec, estadoSpec, tarefasDe, arqHandoff, ler } = require('../refinamento/locais');
+const { dirSpec, estadoSpec, tarefasDe, arqHandoff } = require('../infra/spec');
+const { ler } = require('../infra/pasta-ticket');
 const { html2txt } = require('../infra/texto');
 
 const { execFileSync } = require('child_process');

@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const { FC } = require('../infra/marca');
-const { NOTAS } = require('../refinamento/locais');
+const { NOTAS } = require('../infra/pasta-ticket');
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // Editor de notas (aba Docs do ticket): <pasta do ticket ou da conversa>/.notas.html e .notas.json (aparência).

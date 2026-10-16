@@ -2,7 +2,7 @@
 const path = require('path');
 const { esc } = require('../infra/texto');
 const sessao = require('../infra/sessao');
-const { lerTexto } = require('../refinamento/locais');
+const { lerTexto } = require('../infra/pasta-ticket');
 const { IC } = require('./icones');
 const { quando } = require('./formato');
 const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto, blocosAbertos } = require('../painel/notificacoes');

@@ -14,7 +14,7 @@ const contextoJira = (j, t) => require('../../infra/contexto').contextoDoTicket(
 // Anexos do Jira ainda não baixados (mesma conta da aba Docs).
 const anexosFaltando = (s, t) => {
   if (ehDocumento(t)) return []; // ticket-documento: o original e os extras já estão na pasta (.origem.json); nada a baixar
-  const { ler, ORIGEM } = require('../../refinamento/locais');
+  const { ler, ORIGEM } = require('../../infra/pasta-ticket');
   return require('../../componentes/aba-docs').pendentes(
     s.cacheJira[t.id]?.anexos,
     ler(path.join(s.pasta(t.id), ORIGEM), {})

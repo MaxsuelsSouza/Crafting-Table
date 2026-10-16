@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { esc } = require('../infra/texto');
 const jira = require('../infra/ticket').jira;
-const { docsDaSpec, ler, ORIGEM } = require('../refinamento/locais');
+const { docsDaSpec } = require('../infra/spec');
+const { ler, ORIGEM } = require('../infra/pasta-ticket');
 const notas = require('../painel/notas').editor;
 
 // Componente "Aba Docs": a primeira aba do menu do ticket, igual em todas as listas (Refinamento, Implementações, QA e Sem ticket).

@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const tickets = require('./tickets');
 const inc = require('../incidentes/incidentes');
+const ref = require('../refinamento/refinamento');
 
 const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -27,12 +28,7 @@ const QA = { procurando: ['Procurando plano', 'ia'], criando: ['Criando plano', 
 /** @param {any} t ticket local @param {string} modulo refinamento | impl | incidentes | qa */
 function situacaoDe(t, modulo) {
   const dir = (l) => tickets.pasta(t.chave, l);
-  if (modulo === tickets.REFINAMENTO) {
-    const m = t.refinamento?.estado;
-    return m === 'rodando' ? { texto: 'Refinando', cor: 'ia', dica: 'Modo refinamento: o Claude trabalha nos passos da spec' }
-      : m === 'pausado' ? { texto: 'Refinamento pausado', cor: 'pausada', dica: '' }
-      : m === 'aguardando_inicio' ? { texto: 'Preparando spec', cor: 'ia', dica: '' } : null;
-  }
+  if (modulo === ref.ID) return ref.situacao(t);
   if (modulo === 'impl') { const e = lerJson(path.join(dir('impl'), '.esteira.json')); return e ? etapas(e, 'Implementando') : null; }
   if (modulo === inc.ID) { const e = lerJson(path.join(dir(inc.ID), inc.SITUACAO.arquivo)); return e ? etapas(e, inc.SITUACAO.rotulo) : null; }
   if (modulo === 'qa') {
