@@ -5,7 +5,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Componente "Card de cenário": cada CT do plano de QA. Fechado mostra o código, o título e a pill de status; clicado expande o texto,
 // a pasta/copiar das evidências, cada execução com as suas miniaturas e o botão ↻ Refazer. Usado no mapa de cenários do QA (qa/abas/evidencias/mapa.js,
 // exibido nas Evidências em modulos/evidencias.js), no fluxo dos Incidentes (componentes/fluxo-passos.js) e na Reprodução das Implementações
-// (implementacoes/reproducao.js). As classes .cen/.cdet/.cid/.cst também vestem os itens da aba Massa (qa/abas/massa.js).
+// (implementacoes/abas/reproducao.js). As classes .cen/.cdet/.cid/.cst também vestem os itens da aba Massa (qa/abas/massa.js).
 // Para usar numa tela: CSS no <style>, card(c, ctx) no corpo (dentro de <div class="cens">) e script(chave) no <script>.
 // Cliques pelo data-acao/data-painel de sempre: abrir, pastaCenario, copiarCenario (evidencias.js) e qaRefazer (painel.js).
 // Redesenhar quando mudar .cenarios.json ou a pasta de evidências (evidencias.js já vigia). Estado aberto/fechado: vscode.getState()[chave].

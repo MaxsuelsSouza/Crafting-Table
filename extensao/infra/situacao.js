@@ -8,6 +8,7 @@ const tickets = require('./tickets');
 const inc = require('../incidentes/incidentes');
 const ref = require('../refinamento/refinamento');
 const qa = require('../qa/qa');
+const impl = require('../implementacoes/implementacoes');
 
 const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -28,7 +29,7 @@ function etapas(e, nomeEtapa) {
 function situacaoDe(t, modulo) {
   const dir = (l) => tickets.pasta(t.chave, l);
   if (modulo === ref.ID) return ref.situacao(t);
-  if (modulo === 'impl') { const e = lerJson(path.join(dir('impl'), '.esteira.json')); return e ? etapas(e, 'Implementando') : null; }
+  if (modulo === impl.ID) { const e = lerJson(path.join(dir(impl.ID), impl.SITUACAO.arquivo)); return e ? etapas(e, impl.SITUACAO.rotulo) : null; }
   if (modulo === inc.ID) { const e = lerJson(path.join(dir(inc.ID), inc.SITUACAO.arquivo)); return e ? etapas(e, inc.SITUACAO.rotulo) : null; }
   if (modulo === qa.ID) return qa.situacao(t);
   return null;

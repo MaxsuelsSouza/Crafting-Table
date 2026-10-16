@@ -16,10 +16,7 @@ const LOCAL = (n) => path.join(__dirname, '..', 'plugins', n);
 const VAGAS = {
   ...require('../refinamento/etapas').VAGAS, // vagas do Refinamento: refinamento/etapas/index.js
   ...require('../qa/etapas').VAGAS, // vagas do QA: qa/etapas/index.js
-  'impl.mapa': {
-    padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db, mapa-git e mapa-conferir (--plugin-dir)',
-    contrato: 'Bins <raiz>/bin/mapa-git (git só leitura), mapa-db (SELECT só leitura, recusa produção) e mapa-conferir <mapa.md> --repo --db-log (confere as evidências) para a Varredura do código e o Plano de mudança da esteira de Implementação.'
-  },
+  ...require('../implementacoes/etapas').VAGAS, // vaga da Implementação: implementacoes/etapas/index.js
   ...require('../incidentes/etapas').VAGAS // vagas do Incidente: incidentes/etapas/index.js
 };
 
@@ -29,14 +26,7 @@ const VAGAS = {
 /** @type {{ id: string, nome: string, etapas: { nome: string, vaga?: string | null, obs?: string, subetapas?: { nome: string, vaga: string }[], todas?: boolean }[] }[]} */
 const MODULOS = [
   { id: 'refinamento', nome: 'Refinamento', etapas: require('../refinamento/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // refinamento/etapas/index.js
-  { id: 'impl', nome: 'Implementação', etapas: [
-    { nome: 'Dossiê', vaga: null, obs: 'a extensão lê o disco do ticket, sem IA' },
-    { nome: 'Entendimento', vaga: null },
-    { nome: 'Varredura do código', vaga: 'impl.mapa' },
-    { nome: 'Plano de mudança', vaga: 'impl.mapa' },
-    { nome: 'Implementação', vaga: null },
-    { nome: 'Verificação', vaga: null, obs: 'comandos de build e teste de Configurações > Comandos' },
-    { nome: 'Resumo', vaga: null }] },
+  { id: 'impl', nome: 'Implementação', etapas: require('../implementacoes/etapas').ETAPAS.map(({ n, arq, ...e }) => e) }, // implementacoes/etapas/index.js
   { id: 'qa', nome: 'QA', etapas: require('../qa/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // qa/etapas/index.js
   { id: 'incidentes', nome: 'Incidentes', etapas: require('../incidentes/etapas').ETAPAS.map(({ nome, vaga }) => ({ nome, vaga })) }
 ];

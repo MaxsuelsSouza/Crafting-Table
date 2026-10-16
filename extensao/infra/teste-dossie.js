@@ -1,8 +1,8 @@
 // @ts-check
-// node implementacoes/teste-dossie.js — o dossiê lê o disco do ticket e decide prontidão e modo, sem rede e sem IA.
+// node infra/teste-dossie.js — o dossiê lê o disco do ticket e decide prontidão e modo, sem rede e sem IA.
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'dossie-home-'));
-const tickets = require('../infra/tickets');
+const tickets = require('./tickets');
 const dossie = require('./dossie');
 
 const novo = (chave, extras = {}) => tickets.gravar({ idProvedor: chave, chave, provedor: 'jira', site: 'https://x', link: 'https://x/' + chave, titulo: 'Titulo', status: '', conversas: [], ...extras });

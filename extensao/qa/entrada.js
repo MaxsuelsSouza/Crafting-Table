@@ -1,10 +1,10 @@
 // @ts-check
-// Entrada do QA: o dossiê do ticket (o mesmo da Implementação: implementacoes/dossie.js) mais o que a Implementação entregou e o que o dev explicou.
+// Entrada do QA: o dossiê do ticket (o mesmo da Implementação: infra/dossie/) mais o que a Implementação entregou e o que o dev explicou.
 // Só lê arquivos (sem vscode, sem IA). Grava dossie.json e dossie.md na pasta qa/ para o Claude e a aba. Ticket só com título não vira plano
 // inventado: devolve a pergunta que a extensão faz ao dev (briefing).
 const fs = require('fs');
 const path = require('path');
-const dossie = require('../implementacoes/dossie');
+const dossie = require('../infra/dossie');
 
 const BRIEFING = '.briefing.md';
 const existe = (f) => {

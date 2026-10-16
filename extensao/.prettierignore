@@ -1,7 +1,8 @@
-# Formatador só nas pastas dos módulos já organizados, Incidentes, Refinamento e QA (npm run formatar). O resto da extensão fica como está.
+# Formatador só nas pastas dos módulos já organizados, Incidentes, Refinamento, QA e Implementações (npm run formatar). O resto da extensão fica como está.
 /*
 !/incidentes/
 !/refinamento/
 !/qa/
+!/implementacoes/
 !/.prettierrc.json
 incidentes/**/*.md

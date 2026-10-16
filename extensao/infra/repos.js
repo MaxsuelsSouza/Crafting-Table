@@ -1,7 +1,7 @@
 // @ts-check
 // Repositórios de código do ticket (saiu de refinamento/orquestrador.js, que reexporta): os das configurações que existem em disco ou,
 // sem eles, os achados no repositório de specs (reposAuto).
-// Onde é usado: Refinamento (orquestrador), implementacoes/esteira.js e, via servicos.reposDe do painel.js, Incidentes e QA.
+// Onde é usado: Refinamento (orquestrador), Implementações (implementacoes/orquestrador/ambiente.js) e, via servicos.reposDe do painel.js, Incidentes e QA.
 // Como usar: const { reposDe } = require('../infra/repos'); reposDe(t) → [{ camada, caminho, refRelease? }]
 const fs = require('fs');
 const { cfg, reposAuto, SPECS_PADRAO } = require('../configuracao/configuracao');

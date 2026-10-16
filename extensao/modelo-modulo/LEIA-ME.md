@@ -2,7 +2,7 @@
 
 Copie `modulo.js` para `extensao/<modulo>/<modulo>.js` e registre nos pontos abaixo. O padrão visual está em `CLAUDE.md` (seção "Padrão de módulo").
 
-Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/` e `extensao/qa/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
+Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/`, `extensao/qa/` e `extensao/implementacoes/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
 
 ## Registro (nesta ordem)
 

@@ -1,7 +1,7 @@
 // @ts-check
 // A spec do ticket: onde mora e como ler (saiu de refinamento/locais.js, que reexporta). O Refinamento produz a spec; os outros
 // módulos a leem como entrada.
-// Onde é usado: painel.js, conversas.js (a spec como entrada da conversa), aba-docs.js (docs da spec), implementacoes/dossie.js
+// Onde é usado: painel.js, conversas.js (a spec como entrada da conversa), aba-docs.js (docs da spec), infra/dossie/montar.js
 // (spec, cards e análises) e o próprio Refinamento.
 // Como usar: const { dirSpec, estadoSpec, comSpec, arqHandoff, docsDaSpec, tarefasDe, TAREFAS, HANDOFF } = require('../infra/spec');
 //   dirSpec(r) pasta da spec (ou null) · estadoSpec(r) sdd-state.json · comSpec(t) ticket com specPronta

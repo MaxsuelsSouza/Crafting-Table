@@ -16,6 +16,7 @@ const vinculados = require('../componentes/vinculados');
 const configuracao = require('../configuracao/configuracao');
 const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, ▶/⏸, pill, faixa, contadores, CSS e script
 const qa = require('../qa/qa'); // registro do QA: abas e ▶/⏸
+const implementacoes = require('../implementacoes/implementacoes'); // registro da Implementação: abas, ▶/⏸ e script
 const notas = require('./notas').editor;
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const { pastaDe, pastaAba, naRaiz } = require('../infra/pastas');
@@ -27,13 +28,13 @@ const EVID = 'claudeAbas.evidencias';
 const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticket' }, DECISOES = { id: 'decisoes', nome: 'Decisões' };
 const ABAS = {
   [refinamento.ID]: refinamento.ABAS,
-  impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, { id: 'reproducao', nome: 'Reprodução' }, TICKET, DECISOES],
+  [implementacoes.ID]: implementacoes.ABAS,
   incidentes: require('../incidentes/incidentes').ABAS,
   [qa.ID]: qa.ABAS,
   semTicket: [DOCS, DECISOES]
 };
 /** @returns {{ id?: string, secao?: string, nome: string }[]} */
-const abasDe = (t) => ABAS[t.id === SEM_TICKET ? 'semTicket' : sessao.focoLista()] || ABAS.impl;
+const abasDe = (t) => ABAS[t.id === SEM_TICKET ? 'semTicket' : sessao.focoLista()] || ABAS[implementacoes.ID];
 const FORA = () => require('../infra/grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
 
 // Cabeçalho do ticket aberto (o rodapé é componentes/rodape.js): na página do painel os botões falam com ele direto (data-acao);
@@ -74,7 +75,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   const contador = (id) => refinamento.contadorAba(id, t); // badges das abas Dúvidas e Tarefas; [0, ''] nas outras
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
-  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === qa.ID ? qa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
+  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === qa.ID ? qa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === implementacoes.ID ? implementacoes.botaoPlay(pastaAba(t.id), b) : '';
   const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
     tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">
@@ -170,8 +171,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     e.stopPropagation();
     enviar({ acao: el.dataset.acao, id: el.dataset.id, op: el.dataset.op, key: el.dataset.key, texto: el.closest('.folha')?.querySelector('textarea[data-texto]')?.value });
   });
-  // Esteira (implementações): a explicação do dev grava ao sair do campo.
-  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs-impl]')) enviar({ acao: 'esteiraObs', texto: e.target.value }); });
+  ${implementacoes.script()}
 
   // Decisões abertas continuam abertas depois do redesenho.
   const abertas = new Set((vscode.getState() || {}).decisoes || []);

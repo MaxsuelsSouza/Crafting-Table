@@ -1,14 +1,14 @@
 // @ts-check
 // Entrada do incidente (entrada.json/md na pasta da aba): o que o ticket traz para investigar, com a confiança de cada fonte.
 // Montada no começo da etapa 1 (etapas/01-triagem.js); o prompt de todas as etapas a cita e o orquestrador decide por ela se as etapas 1 a 3
-// pedem aprovação (exigeAprovacaoInicial). Mesma régua do dossiê da Implementação (implementacoes/dossie.js: NIVEIS, LIMIAR_TEXTO, capacidades),
+// pedem aprovação (exigeAprovacaoInicial). Mesma régua do dossiê da Implementação (infra/dossie/: NIVEIS, LIMIAR_TEXTO, capacidades),
 // eixos próprios: relato (o que aconteceu), evidencia (anexos) e ambiente (banco e código).
 const fs = require('fs');
 const path = require('path');
 const tickets = require('../infra/tickets');
-const { sobreTicket, capacidadesDe, nivelDe, rank, paraMarkdown } = require('../implementacoes/dossie');
+const { sobreTicket, capacidadesDe, nivelDe, rank, paraMarkdown } = require('../infra/dossie');
 
-/** @typedef {import('../implementacoes/dossie').Item} Item */
+/** @typedef {import('../infra/dossie').Item} Item */
 const ENTRADA = { json: 'entrada.json', md: 'entrada.md' };
 const ROTULO_MODO_INC = { investigar: 'Investigar (há relato do incidente)', perguntar: 'Perguntar (só o título)' };
 const ROTULO_EIXO_INC = {
