@@ -1,6 +1,6 @@
 // @ts-check
-const { pasta } = require('../../../infra/pasta-ticket');
-const maestro = require('../../../painel/maestro');
+const { pasta } = require('../../../infra/ticket/pasta-ticket');
+const maestro = require('../../../infra/agentes/maestro');
 const { IMPACTOS, duvidasDe, impactosDe, ticketDe, estadoSpec } = require('../../locais');
 const { pausado } = require('../../estado');
 const { s } = require('../../orquestrador/servicos');

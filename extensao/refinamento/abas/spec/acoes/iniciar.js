@@ -3,8 +3,8 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const os = require('os');
-const tickets = require('../../../../infra/tickets');
-const jira = require('../../../../infra/ticket').jira;
+const tickets = require('../../../../infra/ticket/tickets');
+const jira = require('../../../../infra/provedores/fachada').jira;
 const { sobreTicket } = require('../../../../infra/dossie');
 const { SPECS_PADRAO } = require('../../../../configuracao/configuracao');
 const { estadoSpec, gravarRefino } = require('../../../locais');
@@ -42,7 +42,7 @@ const acoes = (s) => ({
     let j;
     try {
       j = jira.ehDocumento(t)
-        ? require('../../../../provedores/documento').buscarSync({ key: t.chave })
+        ? require('../../../../infra/provedores/documento').buscarSync({ key: t.chave })
         : s.cacheJira?.[t.chave];
     } catch {
       /* sem dados: não bloqueia */

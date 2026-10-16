@@ -1,6 +1,6 @@
 // @ts-check
 const path = require('path');
-const vagas = require('../../../agentes/etapas');
+const vagas = require('../../../infra/agentes/etapas');
 const { SKILL_AMB, QA_STATE } = require('../../orquestrador/prompt-comum');
 const { LOG_AMB } = require('./estado');
 

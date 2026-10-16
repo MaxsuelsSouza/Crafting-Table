@@ -2,8 +2,8 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../../../infra/tickets');
-const { pasta } = require('../../../infra/pasta-ticket');
+const tickets = require('../../../infra/ticket/tickets');
+const { pasta } = require('../../../infra/ticket/pasta-ticket');
 const { IMPACTOS, dirSpec, impactosDe, ticketDe } = require('../../locais');
 const { pausado } = require('../../estado');
 const mudancas = require('./snapshot');

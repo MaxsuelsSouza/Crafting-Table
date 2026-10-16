@@ -1,7 +1,7 @@
 // @ts-check
-// Dependência externa da Etapa 5: roda o lote aprovado no SQLcl (veio de infra/banco.js).
-const lib = require('../../../plugins/mapa/lib/banco');
-const { liberado } = require('../../../infra/banco');
+// Dependência externa da Etapa 5: roda o lote aprovado no SQLcl (veio de infra/agentes/banco.js).
+const lib = require('../../../infra/plugins/mapa/lib/banco');
+const { liberado } = require('../../../infra/agentes/banco');
 const { validarAlteracao } = require('./regras/sql');
 
 /**

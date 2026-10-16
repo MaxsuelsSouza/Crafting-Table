@@ -1,6 +1,6 @@
 // @ts-check
 // 3.2 Plano técnico: lê os mapas, escreve plan.md e roda concluir 3.
-const { pasta } = require('../../../../infra/pasta-ticket');
+const { pasta } = require('../../../../infra/ticket/pasta-ticket');
 const { anotar } = require('../../../../componentes/ao-vivo');
 const { dirSpec, ticketDe, estadoSpec } = require('../../../locais');
 const { estadoDe } = require('../../../estado');

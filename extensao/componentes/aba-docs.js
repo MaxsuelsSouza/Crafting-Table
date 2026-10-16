@@ -3,9 +3,9 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const { esc } = require('../infra/texto');
-const jira = require('../infra/ticket').jira;
-const { docsDaSpec } = require('../infra/spec');
-const { ler, ORIGEM } = require('../infra/pasta-ticket');
+const jira = require('../infra/provedores/fachada').jira;
+const { docsDaSpec } = require('../infra/ticket/spec');
+const { ler, ORIGEM } = require('../infra/ticket/pasta-ticket');
 const notas = require('../painel/notas').editor;
 
 // Componente "Aba Docs": a primeira aba do menu do ticket, igual em todas as listas (Refinamento, Implementações, QA e Sem ticket).
@@ -63,13 +63,13 @@ const CSS = `
 
 // ── Documentos e anexos do ticket (ações da aba) ──
 const baixando = new Set(); // ids de anexos sendo baixados (o render do painel passa ao corpo da aba)
-const docsDe = (dir) => (dir ? require('../infra/documentos')._teste.listar(dir) : []);
+const docsDe = (dir) => (dir ? require('../infra/ticket/documentos')._teste.listar(dir) : []);
 // Docs do ticket = pasta da aba + documentos da spec (locais.docsDaSpec); mapa-*.md ficam na aba Análise.
 // Fora do módulo Refinamento, os anexos do Jira (raiz, .origem.json) também entram; os rascunhos do refinamento não.
 function docsDoTicket(s, t) {
   const docs = docsDe(s.pastaAba(t.id));
-  if (require('../infra/sessao').focoLista() !== require('../infra/tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome]));
-    if (require('../provedores/documento').ehDocumento(t)) docs.push(...docsDe(path.join(s.pasta(t.id), '.anexos')).filter((d) => jira[d.nome] && !docs.some((x) => x.nome === d.nome))); }
+  if (require('../infra/ticket/sessao').focoLista() !== require('../infra/ticket/tickets').REFINAMENTO) { const jira = ler(path.join(s.pasta(t.id), ORIGEM), {}); docs.push(...docsDe(s.pasta(t.id)).filter((d) => jira[d.nome]));
+    if (require('../infra/provedores/documento').ehDocumento(t)) docs.push(...docsDe(path.join(s.pasta(t.id), '.anexos')).filter((d) => jira[d.nome] && !docs.some((x) => x.nome === d.nome))); }
   const vistos = new Set(docs.map((x) => x.origem || x.full));
   for (const d of docsDaSpec(t)) if (!vistos.has(d.full) && !docs.some((x) => x.nome === d.nome)) docs.push(d);
   return docs.sort((a, b) => b.mtime - a.mtime);
@@ -87,7 +87,7 @@ const acoes = (s) => ({
   },
   docMencionar({ id }) {
     const d = docDe(s, id);
-    if (d && !d.quebrado) require('../infra/claude').mencionar(`@${d.origem || d.full}`);
+    if (d && !d.quebrado) require('../infra/agentes/conversa').mencionar(`@${d.origem || d.full}`);
   },
   // Anexo do Jira → pasta do ticket (nome repetido ganha sufixo), marcado em .origem.json como vindo do Jira.
   async anexoBaixar({ id }) {
@@ -102,7 +102,7 @@ const acoes = (s) => ({
       for (let n = 2; fs.existsSync(path.join(dir, nome)); n++) nome = `${name}-${n}${ext}`;
       fs.writeFileSync(path.join(dir, nome), conteudo);
       const origens = ler(path.join(dir, ORIGEM), {});
-      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: require('../provedores/documento').ehDocumento(require('../infra/tickets').ler(chave)) ? 'documento' : require('../provedores').provedorAtivo().id, id } }, null, 1));
+      fs.writeFileSync(path.join(dir, ORIGEM), JSON.stringify({ ...origens, [nome]: { origem: require('../infra/provedores/documento').ehDocumento(require('../infra/ticket/tickets').ler(chave)) ? 'documento' : require('../infra/provedores').provedorAtivo().id, id } }, null, 1));
     } catch (e) {
       vscode.window.showErrorMessage(`Não consegui baixar ${a.nome}: ${e.message}`);
     } finally {

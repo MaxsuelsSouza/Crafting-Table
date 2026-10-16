@@ -2,7 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 const aoVivo = require('../../../componentes/ao-vivo');
 const { estadoSpec, refinoDe, gravarRefino } = require('../../locais');
 const { pasta, nomeProvedor } = require('./comum');

@@ -78,12 +78,12 @@ if (!fonte.png) { // sem soffice: PNG mínimo válido 1x1
 }
 const SEM = { docx: 'soffice indisponível ou conversão falhou', pdf: 'soffice indisponível ou conversão falhou', escaneado: 'sem soffice/pdftoppm para montar o PDF só de imagem' };
 
-const tickets = require('../infra/tickets');
-const doc = require('../provedores/documento');
-const ctx = require('../infra/contexto');
-const maestro = require('../painel/maestro');
-const jira = require('../infra/ticket').jira;
-const sessao = require('../infra/sessao');
+const tickets = require('../infra/ticket/tickets');
+const doc = require('../infra/provedores/documento');
+const ctx = require('../infra/ticket/contexto');
+const maestro = require('../infra/agentes/maestro');
+const jira = require('../infra/provedores/fachada').jira;
+const sessao = require('../infra/ticket/sessao');
 
 // claude -p stubado: guarda cada pedido (prompt) e deixa o teste simular o que o Claude escreveria.
 /** @type {any[]} */ const pedidos = []; let aoRodar = null;
@@ -172,7 +172,7 @@ const ultimo = () => pedidos[pedidos.length - 1];
   // ════ 3. QA (docx; sem docx cai no md)
   {
     const qa = require('../qa/motor'), { acoes } = require('../qa/abas/acoes');
-    const { areaIA } = require('../infra/area-ia');
+    const { areaIA } = require('../infra/agentes/area-ia');
     sessao.focoLista = () => 'qa';
     const t = ts.docx || ts.md, raiz = tickets.pasta(t.chave), dir = tickets.pasta(t.chave, 'qa');
     fs.mkdirSync(dir, { recursive: true });

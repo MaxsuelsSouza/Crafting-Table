@@ -1,12 +1,12 @@
 // @ts-check
 // Rótulos e constantes das tarefas usados na tela e nas ações.
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 
 // Onde a subtarefa mora: no documento (ticket-documento, tudo local) ou na ferramenta de gestão.
 const ondeNome = (t) => (jira.ehDocumento(t) ? 'documento' : jira.nome);
 // Ticket que se quebra (Épico, Feature…): o card vira um item do tipo abaixo (refinamento.filho), não uma subtarefa.
 const filhoDe = (t) => {
-  const r = require('../../../infra/tickets').ler(t.chave)?.refinamento || {};
+  const r = require('../../../infra/ticket/tickets').ler(t.chave)?.refinamento || {};
   return r.papel === 'quebrar' ? r.filho || '' : '';
 };
 // Responsável da tarefa: UMA pessoa ({ id, nome }, escolhida na lista de pessoas do ticket). `vinculado` (boolean) é o formato antigo: "eu".

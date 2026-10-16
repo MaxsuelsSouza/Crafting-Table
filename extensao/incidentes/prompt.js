@@ -30,11 +30,11 @@ const FERRAMENTAS = (mapa) => [
   'Bash(mkdir:*)'
 ];
 
-const ehDocumento = (t) => require('../provedores/documento').ehDocumento(t);
+const ehDocumento = (t) => require('../infra/provedores/documento').ehDocumento(t);
 // Ticket por documento (só nas etapas que leem o ticket): onde estão o original, o texto extraído, as páginas e os anexos extras do incidente.
 const BLOCO_DOC = (t, analisaAnexos) => {
-  const { EXTRAIDO, PAGINAS } = require('../infra/contexto'),
-    d = require('../infra/tickets').pasta(t.chave),
+  const { EXTRAIDO, PAGINAS } = require('../infra/ticket/contexto'),
+    d = require('../infra/ticket/tickets').pasta(t.chave),
     arq = path.join(d, t.documento?.arquivo || '');
   return `\n\nTicket por documento (sem ferramenta de gestão): o documento original é ${arq}; texto extraído em ${path.join(d, EXTRAIDO)} (se existir); para PDF escaneado as páginas estão em ${path.join(d, PAGINAS)}/ (leia as imagens com Read). Comentários = os da aba Ticket do documento (no ${CONTEXTO}). Anexos extras do incidente (prints, vídeos) estão em ${path.join(d, '.anexos')}/ (pasta oculta: liste com ls, o Glob não a enxerga)${analisaAnexos ? ' e devem ser analisados todos; vídeos: extraia os quadros como indicado acima' : ''}. Documento escrito à mão ou imagem: leia direto com Read e transcreva o que entender no arquivo da etapa, marcando o que estiver ilegível em vez de inventar. PDF paginado: pdftotext/pdftoppm; docx: unzip -p arquivo word/document.xml (somente leitura).`;
 };

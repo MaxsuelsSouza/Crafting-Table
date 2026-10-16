@@ -9,22 +9,22 @@ exports.activate = (ctx) => {
       .then(() => ctx.globalState.update('claudeMovido', true), () => {});
   }
   ctx.subscriptions.push(
-    require('./infra/sessao').iniciar(),
+    require('./infra/ticket/sessao').iniciar(),
     require('./painel/painel').provider(ctx), // Tickets: lista e o ticket aberto (seção principal do grupo)
     require('./modulos/comandos').provider(ctx),
     require('./modulos/evidencias').provider(ctx),
     require('./modulos/emulador').provider(),
     require('./modulos/cofre').provider(ctx),
     require('./modulos/conversas').provider(),
-    require('./integracoes/testes').iniciar(),
-    require('./integracoes/teams').encaminhar(ctx), // avisos do 🔔 para o Teams (só com TEAMS_WEBHOOK no Cofre)
-    require('./infra/grupo').provider(ctx), // Tickets: painel + Comandos, Emulador, Evidências, Cofre e Conversas dentro do ticket
+    require('./infra/integracoes/testes').iniciar(),
+    require('./infra/integracoes/teams').encaminhar(ctx), // avisos do 🔔 para o Teams (só com TEAMS_WEBHOOK no Cofre)
+    require('./painel/grupo').provider(ctx), // Tickets: painel + Comandos, Emulador, Evidências, Cofre e Conversas dentro do ticket
     ...Object.entries({
       abrirClaude: 'craftingTable',
       abrirTickets: 'claudeAbas-tickets'
     }).map(([cmd, container]) => vscode.commands.registerCommand(`claudeAbas.${cmd}`,
       () => vscode.commands.executeCommand(`workbench.view.extension.${container}`))),
-    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./integracoes/teams').abrir),
-    vscode.commands.registerCommand('claudeAbas.testarTeams', () => require('./integracoes/teams').testar(ctx))
+    vscode.commands.registerCommand('claudeAbas.abrirTeams', require('./infra/integracoes/teams').abrir),
+    vscode.commands.registerCommand('claudeAbas.testarTeams', () => require('./infra/integracoes/teams').testar(ctx))
   );
 };

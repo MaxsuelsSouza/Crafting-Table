@@ -1,9 +1,9 @@
 // @ts-check
 // Blocos do prompt-base de toda execução: escrita pelo gravador, ticket por documento, explicação do dev e tipo do ticket (quebrar).
 const path = require('path');
-const jira = require('../../infra/ticket').jira;
-const tickets = require('../../infra/tickets');
-const { pasta } = require('../../infra/pasta-ticket');
+const jira = require('../../infra/provedores/fachada').jira;
+const tickets = require('../../infra/ticket/tickets');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
 const { briefingDe, BRIEFING } = require('../locais');
 const { papelDoTicket } = require('../estado');
 const { GRAVAR } = require('./ferramentas');
@@ -17,7 +17,7 @@ const CONTEXTO = '.contexto-ticket.md';
 const blocoDocumento = (t) => {
   if (!jira.ehDocumento(t)) return '';
   const d = pasta(t.chave),
-    ctx = require('../../infra/contexto');
+    ctx = require('../../infra/ticket/contexto');
   const doc = tickets.ler(t.chave)?.documento || t.documento || {};
   let arq = path.join(d, CONTEXTO);
   try {
@@ -26,7 +26,7 @@ const blocoDocumento = (t) => {
         ctx.gravarContexto(
           d,
           CONTEXTO,
-          require('../../provedores/documento').buscarSync({ key: t.chave }),
+          require('../../infra/provedores/documento').buscarSync({ key: t.chave }),
           tickets.ler(t.chave) || t
         );
       } catch {

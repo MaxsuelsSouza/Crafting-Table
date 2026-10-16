@@ -9,7 +9,7 @@ Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · 
 | # | Arquivo | O que acrescentar |
 |---|---|---|
 | 1 | `componentes/menu-modulos.js` | `[mod.ID, mod.ROTULO, mod.DICA]` em `MODULOS` |
-| 2 | `infra/tickets.js` | `mod.ID` em `SUBPASTAS` (pasta `<ticket>/<id>/` da aba) |
+| 2 | `infra/ticket/tickets.js` | `mod.ID` em `SUBPASTAS` (pasta `<ticket>/<id>/` da aba) |
 | 3 | `painel/lista.js` | `[mod.ID]: mod.VINCULADOS` em `VINCULADOS` (filtro especial na busca: `carregarMeus`) |
 | 4 | `painel/moldura.js` | `ABAS[mod.ID] = mod.ABAS` e um ramo `sessao.focoLista() === mod.ID ? mod.botaoPlay(...)` no `cabecalho` |
 | 5 | `painel/painel.js` | `if (aba === 'central') ...` por módulo em `corpoAba` e `mod` em `modulosAcoes` |
@@ -27,7 +27,7 @@ Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if`
 | `observar(t, depois, obs)` | `painel.js` (`render`) | pastas de fora do ticket que redesenham a tela |
 | `botaoPlay(dir, b, t)` · `pill(t)` · `faixa(t)` · `contadorAba(id, t)` | `moldura.js` (`cabecalho`) | ▶/⏸, pill, faixa sob o cabeçalho e o número nas abas |
 | `CSS()` · `script()` | `moldura.js` | CSS e script da webview (um bloco cada) |
-| `situacao(t)` | `infra/situacao.js` | pill do card na lista |
+| `situacao(t)` | `infra/ticket/situacao.js` | pill do card na lista |
 | `pedidoConversa(s, t)` | `modulos/conversas.js` | texto do pedido da conversa aberta pelo ✦ |
 | `ETAPA_PEDIDO` | `modulos/conversas.js` | o nome do módulo no pedido, quando difere do `ETAPA` do título (QA: `QA (testes)`) |
 | `rodape(dir, acao)` | `componentes/rodape.js` | caixa do módulo depois de Comandos (QA: Ambiente) |

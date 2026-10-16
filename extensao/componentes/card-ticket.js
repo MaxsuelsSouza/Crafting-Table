@@ -13,12 +13,12 @@ const LIXO = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-
 
 // Ticket por documento: selo com o tipo do arquivo no lugar da pill do provedor; o status local (se houver) fica neutro.
 const TIPOS = { pdf: 'PDF', png: 'Imagem', jpg: 'Imagem', jpeg: 'Imagem', webp: 'Imagem', gif: 'Imagem', md: 'Texto', txt: 'Texto', docx: 'Word' };
-const ehDoc = (t) => require('../provedores/documento').ehDocumento(t);
+const ehDoc = (t) => require('../infra/provedores/documento').ehDocumento(t);
 const tipoDoc = (t) => TIPOS[String(t.documento?.tipo || '').toLowerCase()] || 'Documento';
 const statusDoc = (t) => (t.status && t.status !== 'Documento' ? pill.pill(t.status, { cor: 'novo' }) : '');
 
 // Tipo do ticket (incidente, bug, bug experimental, outro); sem tipo reconhecido a pill pede a escolha ao abrir o ticket.
-const tipoPill = (t) => { const tt = require('../infra/tipo-ticket'), c = tt.categoriaDe(t);
+const tipoPill = (t) => { const tt = require('../infra/ticket/tipo-ticket'), c = tt.categoriaDe(t);
   return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : pill.pill('Tipo?', { cor: 'novo', dica: 'Tipo não reconhecido: ao abrir o ticket a extensão pergunta qual é' }); };
 
 const conversas = (n) => `${n} conversa${n === 1 ? '' : 's'}`;

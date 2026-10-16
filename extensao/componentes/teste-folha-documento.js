@@ -13,11 +13,11 @@ const https = require('https');
 https.request = () => { throw new Error('rede'); };
 global.fetch = () => { throw new Error('rede'); };
 
-const tk = require('../infra/tickets');
+const tk = require('../infra/ticket/tickets');
 const { folhaDocumento } = require('./folha-documento');
 const { acoes } = require('../painel/documento');
 const moldura = require('../painel/moldura');
-const jira = require('../infra/ticket').jira;
+const jira = require('../infra/provedores/fachada').jira;
 
 const mk = (n, tipo, conteudo) => {
   const chave = `DOC-00${n}`, arquivo = `doc.${tipo}`, d = tk.pasta(chave);

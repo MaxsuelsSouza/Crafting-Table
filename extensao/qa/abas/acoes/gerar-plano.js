@@ -2,17 +2,17 @@
 const fs = require('fs');
 const path = require('path');
 const qa = require('../../motor');
-const maestro = require('../../../painel/maestro');
-const { areaIA } = require('../../../infra/area-ia');
+const maestro = require('../../../infra/agentes/maestro');
+const { areaIA } = require('../../../infra/agentes/area-ia');
 const aoVivo = require('../../../componentes/ao-vivo');
 const entrada = require('../../entrada');
 const { cfg } = require('../../../configuracao/configuracao');
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 const { docLocal, provNome } = require('./dependencias');
 
 // Roda a IA em segundo plano sobre o plano local: grava o contexto do ticket (via provedor), roda o Claude (só leitura local + o qa-plano.md)
 // e, ao terminar, a extensão publica e procura o plano de novo. Devolve se a IA começou.
-// A IA escreve o plano na área dela (infra/area-ia.js: o Claude Code nega escrita em ~/.claude) e a extensão o copia para dir.
+// A IA escreve o plano na área dela (infra/agentes/area-ia.js: o Claude Code nega escrita em ~/.claude) e a extensão o copia para dir.
 // prompt(rasc): monta o prompt com a pasta onde a IA grava.
 async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
   const rasc = areaIA(dir),

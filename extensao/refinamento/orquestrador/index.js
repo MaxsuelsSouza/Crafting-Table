@@ -20,7 +20,7 @@
 //   sdd.js              chama o sdd-state
 //   iniciar.js          recebe os serviços e liga o vigia de comentários
 // Comentários do ticket (vigia, triagem, impacto, avisos): ../etapas/comentarios/. Passo 3: ../etapas/03-plano-tecnico/.
-const { reposDe } = require('../../infra/repos'); // comum a todos os módulos (exportado aqui também, como sempre)
+const { reposDe } = require('../../infra/ticket/repos'); // comum a todos os módulos (exportado aqui também, como sempre)
 const { papelDoTicket, mudarEstado, estadoDe } = require('../estado');
 const { respondidas } = require('./servicos');
 const { FERRAMENTAS } = require('./ferramentas');

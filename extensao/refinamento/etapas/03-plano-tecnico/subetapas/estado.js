@@ -5,7 +5,7 @@
 // 'pendente' | 'rodando' | 'concluida' | 'erro' | 'pausada' (a IA não grava em ~/.claude; quem grava é a extensão).
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../../../../infra/tickets');
+const tickets = require('../../../../infra/ticket/tickets');
 const { dirSpec, HANDOFF } = require('../../../locais');
 
 const SUBETAPAS3 = [

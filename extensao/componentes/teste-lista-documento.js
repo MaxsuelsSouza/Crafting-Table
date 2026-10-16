@@ -13,13 +13,13 @@ vscode.window = new Proxy(vscode.window, { get: (o, k) => (k in o ? o[k] : /^on/
 vscode.workspace = new Proxy(vscode.workspace, { get: (o, k) => (k in o ? o[k] : /^on/.test(String(k)) ? () => ({ dispose() {} }) : undefined) });
 let provider;
 let cfgReal;
-Module._load = (r, ...a) => (r === 'vscode' ? vscode : r === '../configuracao/configuracao' ? (cfgReal ||= { ...load(r, ...a), pendencias: async () => [], siteJira: () => 'https://x.atlassian.net', projetoJira: () => ['WMS'], boardsJira: () => ['B'] }) : r === '../infra/grupo' ? { ...load(r, ...a), registrar: (_i, p) => { provider = p; return { dispose() {} }; } } : load(r, ...a));
+Module._load = (r, ...a) => (r === 'vscode' ? vscode : r === '../configuracao/configuracao' ? (cfgReal ||= { ...load(r, ...a), pendencias: async () => [], siteJira: () => 'https://x.atlassian.net', projetoJira: () => ['WMS'], boardsJira: () => ['B'] }) : r === './grupo' ? { ...load(r, ...a), registrar: (_i, p) => { provider = p; return { dispose() {} }; } } : load(r, ...a));
 const assert = require('assert'), fs = require('fs'), os = require('os'), path = require('path');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'ldoc-'));
 require('https').request = () => { throw new Error('rede'); };
 global.fetch = () => { throw new Error('rede'); };
 
-const tk = require('../infra/tickets');
+const tk = require('../infra/ticket/tickets');
 const lista = require('../painel/lista');
 const listaTickets = require('./lista-tickets');
 const card = require('./card-ticket');
@@ -56,7 +56,7 @@ assert.deepStrictEqual(tk.listar().filter((t) => ['WMS-1', 'DOC-001', 'DOC-002']
 (async () => {
   // 2. Vinculados: chave DOC-* vinda do provedor não aparece nem tem prévia/puxar/link.
   const estado = new Map();
-  const jira = require('../infra/ticket').jira;
+  const jira = require('../infra/provedores/fachada').jira;
   jira.conectado = async () => true;
   for (const n of ['etapas', 'labels', 'boardsPorNome']) jira[n] = async () => [];
   jira.meus = async () => [{ key: 'DOC-001', resumo: 'colisão', status: 'Em andamento' }, { key: 'WMS-9', resumo: 'real', status: 'Em andamento' }];
@@ -89,7 +89,7 @@ assert.deepStrictEqual(tk.listar().filter((t) => ['WMS-1', 'DOC-001', 'DOC-002']
 
   // Excluir: arquiva a pasta com .anexos/ e o documento; o original (fora da pasta) segue intacto.
   const original = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'orig-')), 'contrato.pdf'); fs.writeFileSync(original, 'ORIGINAL');
-  const dd = require('../provedores/documento').criarPorDocumento(original, { listas: [lista.modo()] });
+  const dd = require('../infra/provedores/documento').criarPorDocumento(original, { listas: [lista.modo()] });
   await envia({ acao: 'excluir', id: dd.chave }); await new Promise((r) => setTimeout(r, 20));
   assert.ok(/documento/.test(avisos.at(-1)[1].detail));
   assert.strictEqual(tk.ler(dd.chave), null);

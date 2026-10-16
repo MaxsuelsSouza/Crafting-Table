@@ -1,5 +1,5 @@
 // @ts-check
-const vagas = require('../../../agentes/etapas');
+const vagas = require('../../../infra/agentes/etapas');
 const { SKILL, QA_STATE, REGRAS, citarRespostas } = require('../../orquestrador/prompt-comum');
 
 // Pré-condição (antes da suíte, fora da lista de cenários): confirma que a aplicação subiu, que a rede responde e que o login abre sessão autenticada.

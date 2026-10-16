@@ -44,10 +44,10 @@ globalThis.fetch = /** @type {any} */ (
   }
 );
 
-const tickets = require('../../infra/tickets');
-const doc = require('../../provedores/documento');
+const tickets = require('../../infra/ticket/tickets');
+const doc = require('../../infra/provedores/documento');
 const orq = require('../orquestrador');
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const { acoes } = require('../abas/tarefas');
 const duv = require('../abas/duvidas');
 const { tarefasDe, duvidasDe, impactosDe, TAREFAS, DUVIDAS, IMPACTOS } = require('../locais');
@@ -68,7 +68,7 @@ maestro.rodando = () => false;
   const dir = tickets.pasta(t0.chave);
   tickets.gravar({ ...tickets.ler(t0.chave), spec: { repo: dir, dir: 'DOC-001-x' } });
   const t = tickets.ler(t0.chave);
-  const jira = require('../../infra/ticket').jira;
+  const jira = require('../../infra/provedores/fachada').jira;
   assert.ok(jira.ehDocumento(t));
 
   const gravar = (id, nome, dado) => fs.writeFileSync(path.join(tickets.pasta(id), nome), JSON.stringify(dado));

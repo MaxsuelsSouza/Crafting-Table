@@ -3,13 +3,13 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const maestro = require('../../../../painel/maestro');
+const maestro = require('../../../../infra/agentes/maestro');
 const { arquivoPasso, estadoSpec } = require('../../../locais');
 const orq = require('../../../orquestrador');
 const { pasta, copiaAprovada } = require('../comum');
 const { abertos } = require('../abertos');
 
-const mencionar = (texto) => require('../../../../infra/claude').mencionar(texto);
+const mencionar = (texto) => require('../../../../infra/agentes/conversa').mencionar(texto);
 
 const acoes = (s) => ({
   specAbrir({ id }) {

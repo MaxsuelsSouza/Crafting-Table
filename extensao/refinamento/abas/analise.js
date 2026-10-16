@@ -33,7 +33,7 @@ const CSS = `
 
 const acoes = (s) => ({
   handoffMencionar({ id }) {
-    if (HANDOFF[id]) require('../../infra/claude').mencionar(`@${arqHandoff(s.ticketAberto(), id)}`);
+    if (HANDOFF[id]) require('../../infra/agentes/conversa').mencionar(`@${arqHandoff(s.ticketAberto(), id)}`);
   },
   handoffPrevia({ id }) {
     if (HANDOFF[id])

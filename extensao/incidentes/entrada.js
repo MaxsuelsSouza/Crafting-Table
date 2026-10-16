@@ -5,7 +5,7 @@
 // eixos próprios: relato (o que aconteceu), evidencia (anexos) e ambiente (banco e código).
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../infra/tickets');
+const tickets = require('../infra/ticket/tickets');
 const { sobreTicket, capacidadesDe, nivelDe, rank, paraMarkdown } = require('../infra/dossie');
 
 /** @typedef {import('../infra/dossie').Item} Item */

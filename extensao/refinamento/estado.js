@@ -1,7 +1,7 @@
 // @ts-check
 // Estado do Refinamento no .ticket.json (refinamento.*): o modo (estado), o papel do tipo de ticket e quem lê/grava.
 // Lido pela tela, pela lista, pelo orquestrador e pelas etapas.
-const tickets = require('../infra/tickets');
+const tickets = require('../infra/ticket/tickets');
 
 // Modo refinamento (.ticket.json refinamento.estado): aguardando_inicio → (Dar início) → rodando ⇄ pausado.
 const MODO_ATIVO = ['aguardando_inicio', 'rodando', 'pausado'];
@@ -20,7 +20,7 @@ const papelDoTicket = (t) => {
   const r = tickets.ler(t.chave || t.id)?.refinamento || {};
   return { papel: r.papel || 'desenvolver', tipo: r.tipoTicket || '', filho: r.filho || '' };
 };
-// Pill do card na lista (infra/situacao.js, pelo registro): o texto e a cor do modo refinamento, ou null (desligado/concluído).
+// Pill do card na lista (infra/ticket/situacao.js, pelo registro): o texto e a cor do modo refinamento, ou null (desligado/concluído).
 const situacaoCard = (t) => {
   const m = t.refinamento?.estado;
   return m === 'rodando'

@@ -1,7 +1,7 @@
 // @ts-check
 const fs = require('fs');
 const path = require('path');
-const { pasta, lerTexto } = require('../infra/pasta-ticket');
+const { pasta, lerTexto } = require('../infra/ticket/pasta-ticket');
 
 // Notificações: .notificacoes.jsonl da pasta (hook notificacoes.py e sdd-state); lidas = mais antigas que .notificacoes.lidas.
 const NOTIF = '.notificacoes.jsonl', LIDAS = '.notificacoes.lidas';

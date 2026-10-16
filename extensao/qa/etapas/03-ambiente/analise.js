@@ -1,6 +1,6 @@
 // @ts-check
 const path = require('path');
-const maestro = require('../../../painel/maestro');
+const maestro = require('../../../infra/agentes/maestro');
 const { gravarJson } = require('../../estado');
 const { claude } = require('../../orquestrador/claude');
 const { AMBIENTE, ambiente } = require('./estado');

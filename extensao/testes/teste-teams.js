@@ -5,8 +5,8 @@ process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-'));
 const avisos = [];
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? { window: { showWarningMessage: (m) => avisos.push(m), setStatusBarMessage: (m) => avisos.push(m) } } : r === '../modulos/emulador' ? {} : load(r, ...a));
-const tickets = require('../infra/tickets');
-const { ciclo } = require('../integracoes/teams')._teste;
+const tickets = require('../infra/ticket/tickets');
+const { ciclo } = require('../infra/integracoes/teams')._teste;
 
 const URL = 'https://x.logic.azure.com/segredo123';
 let posts = [], status = 200;

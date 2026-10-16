@@ -4,7 +4,7 @@ const assert = require('assert');
 const Module = /** @type {any} */ (require('module'));
 const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
-const variaveis = require('../../provedores/variaveis');
+const variaveis = require('../../infra/provedores/variaveis');
 const h = require('../hierarquia');
 
 const L = { quebrar: ['Epic', 'Feature'], desenvolver: ['Story|História', 'Task'], executar: ['Sub-task'] };

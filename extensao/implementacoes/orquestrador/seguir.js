@@ -1,6 +1,6 @@
 // @ts-check
 // Iniciar, continuar e retomar a esteira da etapa em que parou (1 dossiê, 6 verificação, as outras com IA).
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const aoVivo = require('../../componentes/ao-vivo');
 const { filhos } = require('../dependencias');

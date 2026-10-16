@@ -4,16 +4,16 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { esc } = require('../infra/texto');
-const jira = require('../infra/ticket').jira;
-const sessao = require('../infra/sessao');
-const tickets = require('../infra/tickets');
-const { ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/pasta-ticket'); // onde cada coisa mora
-const { comSpec } = require('../infra/spec');
+const jira = require('../infra/provedores/fachada').jira;
+const sessao = require('../infra/ticket/sessao');
+const tickets = require('../infra/ticket/tickets');
+const { ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/ticket/pasta-ticket'); // onde cada coisa mora
+const { comSpec } = require('../infra/ticket/spec');
 const { IC } = require('../componentes/icones');
 const { markdown } = require('../componentes/markdown');
 const { LIDAS, notificar } = require('./notificacoes'); // sino do ticket
-const maestro = require('./maestro');
-const vigia = require('./vigia');
+const maestro = require('../infra/agentes/maestro');
+const vigia = require('../infra/agentes/vigia');
 const aoVivo = require('../componentes/ao-vivo'); // caixa "Ao vivo": só as ações (Ver tudo / Recolher)
 const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
 const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
@@ -24,7 +24,7 @@ const conversas = require('../modulos/conversas'); // conversas do Claude: vínc
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 const { SEM_TICKET } = require('../componentes/card-ticket');
-const { pasta, pastaDe, pastaAba, naRaiz, idAba, gravar } = require('../infra/pastas'); // pastas do ticket
+const { pasta, pastaDe, pastaAba, naRaiz, idAba, gravar } = require('../infra/ticket/pastas'); // pastas do ticket
 const { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, estilo, pagina } = require('./moldura');
 const rodape = require('../componentes/rodape'); // cabeçalho, rodapé, CSS e página da webview
 
@@ -70,7 +70,7 @@ exports.provider = (ctx) => {
   for (const m of ['comandos', 'emulador']) require('../modulos/' + m).aoMudar(() => ((conf.aberta() && conf.aba() === 'comandos') || aberto ? render() : avisarMoldura()));
   // ⚙ na barra de título da view (ao lado de "Crafting Table"): volta para a seção principal e abre as configurações.
   ctx.subscriptions?.push(vscode.commands.registerCommand('claudeAbas.configuracoes', async () => {
-    if (!require('../infra/grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
+    if (!require('./grupo').telaCheiaAberta()) await vscode.commands.executeCommand('claudeAbas.tickets.focus');
     pedirSecao(PRINCIPAL);
     acoes.config();
   }));
@@ -152,7 +152,7 @@ exports.provider = (ctx) => {
   // Tipo do ticket não reconhecido (sem tipo ou nome fora das listas): pergunta uma vez por sessão; a escolha fica no .ticket.json.
   const perguntados = new Set();
   const confirmarTipo = async (chave) => {
-    const tt = require('../infra/tipo-ticket'), t = tickets.ler(chave);
+    const tt = require('../infra/ticket/tipo-ticket'), t = tickets.ler(chave);
     if (!t || tt.categoriaDe(t) || perguntados.has(chave)) return;
     perguntados.add(chave);
     const op = Object.entries(tt.CATEGORIAS).map(([valor, label]) => ({ label, valor }));
@@ -162,14 +162,14 @@ exports.provider = (ctx) => {
     render();
   };
 
-  const mencionar = (texto) => require('../infra/claude').mencionar(texto);
+  const mencionar = (texto) => require('../infra/agentes/conversa').mencionar(texto);
   const ticketAberto = () => (aberto && aberto !== SEM_TICKET ? ticketDe(aberto) : null);
 
   const this_abrir = (chave, a) => { acoes.abrir({ id: chave }); aba = a; render(); };
   // Serviços que os módulos recebem em `acoes(servicos)` (ver teste-acoes.js). Só o que algum módulo já usa.
   const servicos = {
     render: () => renderSuave(), ticketAberto: () => ticketAberto(), get aberto() { return aberto; },
-    pasta, pastaAba, gravar, notificar, reposDe: require('../infra/repos').reposDe, orq: refinamento.orq(), abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
+    pasta, pastaAba, gravar, notificar, reposDe: require('../infra/ticket/repos').reposDe, orq: refinamento.orq(), abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
   vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
@@ -196,11 +196,11 @@ exports.provider = (ctx) => {
       if (!via) return;
       let t;
       if (via.documento) {
-        const doc = require('../provedores/documento');
+        const doc = require('../infra/provedores/documento');
         const r = await vscode.window.showOpenDialog({ canSelectMany: false, title: 'Anexar documento ao ticket', filters: { Documentos: doc.ACEITAS } });
         if (!r?.length) return;
         try { t = lista.porNaLista(doc.criarPorDocumento(r[0].fsPath, { listas: [lista.modo()] })); } catch (e) { return vscode.window.showErrorMessage(e.message); }
-        require('../infra/contexto').prepararDocumento(t).then(() => render(), () => {}); // extrai o texto sem bloquear a abertura
+        require('../infra/ticket/contexto').prepararDocumento(t).then(() => render(), () => {}); // extrai o texto sem bloquear a abertura
       } else {
         try { const ident = jira.identidade(via.link); t = lista.porNaLista(tickets.criar(via.link, { listas: [lista.modo()] }, ident)); } catch (e) { return vscode.window.showErrorMessage(e.message); }
       }
@@ -264,7 +264,7 @@ exports.provider = (ctx) => {
   return vscode.Disposable.from(
     sessao.onDidChange(() => { setTimeout(conversas.reconciliar, 1500, servicos); if (aberto === SEM_TICKET) render(); }), // dá tempo de o Claude gravar a 1ª mensagem
     { dispose: fechar },
-    require('../infra/grupo').registrar(PRINCIPAL, provider)
+    require('./grupo').registrar(PRINCIPAL, provider)
   );
 };
 

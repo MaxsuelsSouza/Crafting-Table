@@ -169,7 +169,7 @@ exports.provider = () => {
   const acoes = {
     mencionar({ id }) {
       const emu = achar(id);
-      require('../infra/claude').mencionar(`[Emulador Android "${id}" da Crafting Table · AVD ${id} · ${emu ? `ligado · serial ${emu.serial} · PID ${emu.pid}${emu.semJanela ? ' · sem janela' : ''}` : 'desligado'} · emulator: ${EMULATOR} · adb: ${ADB}]`);
+      require('../infra/agentes/conversa').mencionar(`[Emulador Android "${id}" da Crafting Table · AVD ${id} · ${emu ? `ligado · serial ${emu.serial} · PID ${emu.pid}${emu.semJanela ? ' · sem janela' : ''}` : 'desligado'} · emulator: ${EMULATOR} · adb: ${ADB}]`);
     },
     ligar({ id }) {
       ligar(id);

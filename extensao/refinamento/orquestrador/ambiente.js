@@ -2,7 +2,7 @@
 // Variáveis de ambiente do mapa-db (banco do mapeamento), lidas das configurações.
 const path = require('path');
 const { cfg } = require('../../configuracao/configuracao');
-const { pasta } = require('../../infra/pasta-ticket');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
 
 // Banco do mapeamento: conexão/ambiente vêm das configurações (o Claude não escolhe a base). Sem isso, mapa-db recusa.
 const bancoEnv = (t) => {

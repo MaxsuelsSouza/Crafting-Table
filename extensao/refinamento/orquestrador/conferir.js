@@ -1,6 +1,6 @@
 // @ts-check
 // Conferência depois de cada execução de passo: problema volta ao Claude (correção limitada); esgotou, pausa com o motivo.
-const { pasta } = require('../../infra/pasta-ticket');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
 const { anotar } = require('../../componentes/ao-vivo');
 const { duvidasDe, impactosDe, ticketDe, estadoSpec, refinoDe, gravarRefino } = require('../locais');
 const { estadoDe, mudarEstado } = require('../estado');

@@ -1,5 +1,5 @@
 // @ts-check
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const aoVivo = require('../../componentes/ao-vivo');
 const { FERRAMENTAS_EXEC, PROIBIDAS } = require('./ferramentas');
 

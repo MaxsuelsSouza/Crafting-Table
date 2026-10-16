@@ -8,7 +8,7 @@ const { esc } = require('../infra/texto');
 const emulador = require('./emulador');
 
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.
-const sessao = require('../infra/sessao');
+const sessao = require('../infra/ticket/sessao');
 const aoVivo = require('../componentes/ao-vivo');
 const cardCenario = require('../componentes/card-cenario');
 const ADB = path.join(emulador.SDK, 'platform-tools', 'adb');
@@ -20,7 +20,7 @@ function ticketAtual() {
   const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!cwd) return Promise.resolve('sem-ticket');
   return new Promise((resolve) => execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }, (err, out) =>
-    resolve((!err && require('../infra/ticket').jira.chaveDaBranch(String(out))) || 'sem-ticket')));
+    resolve((!err && require('../infra/provedores/fachada').jira.chaveDaBranch(String(out))) || 'sem-ticket')));
 }
 
 // Saídas da skill testes-funcionais para o ticket da conversa (o hook crafting-testes.py grava .ticket).
@@ -161,7 +161,7 @@ exports.provider = (ctx) => {
     }
     // QA: planejamento e Ao vivo do ▶ (registro qa/qa.js, evidencias) no topo; redesenha quando o estado ou o Ao vivo mudam.
     const qa = require('../qa/qa');
-    const dirQa = sessao.foco() && sessao.focoLista() === qa.ID ? require('../infra/tickets').pasta(sessao.foco(), qa.ID) : null;
+    const dirQa = sessao.foco() && sessao.focoLista() === qa.ID ? require('../infra/ticket/tickets').pasta(sessao.foco(), qa.ID) : null;
     if (dirQa !== vigiadoQa) {
       vigiaQa?.close(); vigiaQa = null; vigiadoQa = dirQa;
       if (dirQa) {
@@ -261,7 +261,7 @@ exports.provider = (ctx) => {
       adb(['-s', gravacao.serial, 'shell', 'pkill', '-INT', 'screenrecord']);
     },
     mencionar({ nome }) {
-      if (todos.some((x) => x.full === nome)) require('../infra/claude').mencionar(`@${nome}`);
+      if (todos.some((x) => x.full === nome)) require('../infra/agentes/conversa').mencionar(`@${nome}`);
     },
     abrir({ nome }) {
       const a = todos.find((x) => x.full === nome);
@@ -292,7 +292,7 @@ exports.provider = (ctx) => {
 
   return vscode.Disposable.from(
     { dispose: () => { observador?.dispose(); vigiaQa?.close(); gravacao?.proc.kill(); } },
-    require('../infra/grupo').registrar('claudeAbas.evidencias', {
+    require('../painel/grupo').registrar('claudeAbas.evidencias', {
       resolveWebviewView(v) {
         view = v;
         view.webview.onDidReceiveMessage((m) => acoes[m.acao]?.(m));

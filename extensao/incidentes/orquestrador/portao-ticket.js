@@ -9,12 +9,12 @@ const { ehDocumento } = require('../prompt');
 const { pausar } = require('./pausar');
 
 // Descrição, subtarefas e comentários (e o documento, se o ticket for um) em texto, para o Claude ler sem depender de outra ferramenta.
-const contextoJira = (j, t) => require('../../infra/contexto').contextoDoTicket(j, t);
+const contextoJira = (j, t) => require('../../infra/ticket/contexto').contextoDoTicket(j, t);
 
 // Anexos do Jira ainda não baixados (mesma conta da aba Docs).
 const anexosFaltando = (s, t) => {
   if (ehDocumento(t)) return []; // ticket-documento: o original e os extras já estão na pasta (.origem.json); nada a baixar
-  const { ler, ORIGEM } = require('../../infra/pasta-ticket');
+  const { ler, ORIGEM } = require('../../infra/ticket/pasta-ticket');
   return require('../../componentes/aba-docs').pendentes(
     s.cacheJira[t.id]?.anexos,
     ler(path.join(s.pasta(t.id), ORIGEM), {})
@@ -27,8 +27,8 @@ const portaoTicket = async (s, t, dir, n, rodada, et) => {
     // todos os anexos do ticket precisam estar baixados
     if (ehDocumento(t)) {
       // fonte local: extrai texto/páginas e usa o buscar local (sem rede)
-      await require('../../infra/contexto').prepararDocumento(t);
-      s.cacheJira[t.id] = require('../../provedores/documento').buscarSync({ key: t.chave });
+      await require('../../infra/ticket/contexto').prepararDocumento(t);
+      s.cacheJira[t.id] = require('../../infra/provedores/documento').buscarSync({ key: t.chave });
     } else if (!s.cacheJira[t.id] && s.atualizarJira) await s.atualizarJira(t.id);
     if (!controle.valida(dir, rodada)) return { parar: true };
     const falta = anexosFaltando(s, t);

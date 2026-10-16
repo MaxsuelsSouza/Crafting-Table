@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../componentes/ao-vivo');
-const maestro = require('../painel/maestro');
+const maestro = require('../infra/agentes/maestro');
 const { filhos } = require('./dependencias');
 const { ETAPAS } = require('./etapas');
 

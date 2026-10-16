@@ -2,13 +2,13 @@
 // Uma execução do Claude em segundo plano (maestro.rodar): env, ferramentas, plugins, --add-dir e o prompt-base.
 const fs = require('fs');
 const path = require('path');
-const { areaIA } = require('../../infra/area-ia');
-const { pasta } = require('../../infra/pasta-ticket');
-const { reposDe } = require('../../infra/repos');
-const maestro = require('../../painel/maestro');
+const { areaIA } = require('../../infra/agentes/area-ia');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
+const { reposDe } = require('../../infra/ticket/repos');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const { cfg, sddState } = require('../../configuracao/configuracao');
-const vagas = require('../../agentes/etapas');
+const vagas = require('../../infra/agentes/etapas');
 const { dirSpec, ondeSalvar } = require('../locais');
 const { s } = require('./servicos');
 const { FERRAMENTAS, MAPA } = require('./ferramentas');

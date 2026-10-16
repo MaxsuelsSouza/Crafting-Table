@@ -1,6 +1,6 @@
 // @ts-check
 // Iniciar/Continuar/Retomar: da etapa guardada em diante.
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const { estado, mudar, situacao, existe } = require('../estado');
 

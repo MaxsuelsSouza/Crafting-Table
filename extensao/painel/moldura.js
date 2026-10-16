@@ -2,9 +2,9 @@
 // Moldura compartilhada do ticket: cabeçalho (abas, badges), CSS e a página HTML da webview.
 // O painel.js desenha o corpo; o grupo.js usa cabecalho/CSS_MOLDURA das outras seções via provider.moldura.
 const { esc } = require('../infra/texto');
-const jira = require('../infra/ticket').jira;
+const jira = require('../infra/provedores/fachada').jira;
 const { ESTILO_NOTAS } = require('../modulos/comandos').ui;
-const sessao = require('../infra/sessao');
+const sessao = require('../infra/ticket/sessao');
 const aoVivo = require('../componentes/ao-vivo');
 const rodape = require('../componentes/rodape');
 const menuAbas = require('../componentes/menu-abas');
@@ -19,7 +19,7 @@ const qa = require('../qa/qa'); // registro do QA: abas e ▶/⏸
 const implementacoes = require('../implementacoes/implementacoes'); // registro da Implementação: abas, ▶/⏸ e script
 const notas = require('./notas').editor;
 const { SEM_TICKET } = require('../componentes/card-ticket');
-const { pastaDe, pastaAba, naRaiz } = require('../infra/pastas');
+const { pastaDe, pastaAba, naRaiz } = require('../infra/ticket/pastas');
 const PRINCIPAL = 'claudeAbas.painel';
 
 // Abas do menu do ticket em cada lista (componentes/menu-abas.js): { id, nome } = aba desta página, { secao, nome } = outra seção.
@@ -35,7 +35,7 @@ const ABAS = {
 };
 /** @returns {{ id?: string, secao?: string, nome: string }[]} */
 const abasDe = (t) => ABAS[t.id === SEM_TICKET ? 'semTicket' : sessao.focoLista()] || ABAS[implementacoes.ID];
-const FORA = () => require('../infra/grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
+const FORA = () => require('./grupo')._teste.GRUPOS['claudeAbas.tickets'].slice(1).filter(([id]) => id !== EVID);
 
 // Cabeçalho do ticket aberto (o rodapé é componentes/rodape.js): na página do painel os botões falam com ele direto (data-acao);
 // na moldura de outra seção, passam pelo grupo.js (data-painel / data-secao).
@@ -66,7 +66,7 @@ const CSS_MOLDURA = `<style>
 
 // ⚡ Instrução direta ao Claude do Ao vivo (maestro.instruir): ativo só quando há uma execução desta janela neste ticket.
 // O botão em si é do componente botoes-ticket.js.
-const podeInstruir = (t) => { const maestro = require('./maestro'); return [pastaDe(t.id), pastaAba(t.id)].some((d) => d && maestro.podeInstruir(d)); };
+const podeInstruir = (t) => { const maestro = require('../infra/agentes/maestro'); return [pastaDe(t.id), pastaAba(t.id)].some((d) => d && maestro.podeInstruir(d)); };
 
 function cabecalho(t, { aba, secao, dentro = false }) {
   const b = (cmd) => (dentro ? `data-acao="${cmd}"` : `data-painel="${cmd}"`);
@@ -85,7 +85,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     </div>
     <div class="ct-pills">${semTicket ? pill.pill('Sem ticket vinculado', { grande: true, bola: false, dica: 'Documentos e notas da conversa atual do Claude, que não pertence a nenhum ticket' })
       : `${jira.ehDocumento(t) ? pill.pill(t.status || 'Documento', { cor: 'novo', grande: true, dica: 'Status do ticket (editável na aba Ticket)' }) : pill.status(t.status, { grande: true, dica: `Coluna do ticket no board do ${jira.nome}${t.tipo ? ` · ${t.tipo}` : ''}` })}
-      ${(() => { const tt = require('../infra/tipo-ticket'), c = tt.categoriaDe(t); return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], grande: true, bola: false, dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : ''; })()}
+      ${(() => { const tt = require('../infra/ticket/tipo-ticket'), c = tt.categoriaDe(t); return c ? pill.pill(tt.rotulo(c), { cor: tt.COR[c], grande: true, bola: false, dica: `Tipo do ticket${t.tipo ? `: ${t.tipo}` : ''}` }) : ''; })()}
       ${refino ? refinamento.pill(t) : ''}
       ${botoesTicket.botoes(ctx, 'pills')}`}</div>
     ${refino ? refinamento.faixa(t) : ''}

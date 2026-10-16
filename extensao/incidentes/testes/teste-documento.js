@@ -30,9 +30,9 @@ global.fetch = () => {
 };
 
 const orq = require('../orquestrador'),
-  maestro = require('../../painel/maestro'),
-  tickets = require('../../infra/tickets');
-const docs = require('../../provedores/documento'),
+  maestro = require('../../infra/agentes/maestro'),
+  tickets = require('../../infra/ticket/tickets');
+const docs = require('../../infra/provedores/documento'),
   folha = require('../../componentes/folha-documento');
 const { prompt, FERRAMENTAS } = require('../prompt'),
   { estado, mudar } = require('../estado'),

@@ -5,12 +5,12 @@ const { ehLocal, onde } = require('./dependencias');
 const { PAUSA, citarRespostas, citarDossie } = require('../../orquestrador/prompt-comum');
 const { PLANO_LOCAL, CONTEXTO } = require('./subetapas/1.2-plano-local');
 
-// Só para documento: o original e o texto extraído (infra/contexto.js; só cita o que já existe na pasta do ticket).
+// Só para documento: o original e o texto extraído (infra/ticket/contexto.js; só cita o que já existe na pasta do ticket).
 function blocoDocumento(dir) {
   if (!ehLocal(dir)) return '';
   const raiz = path.dirname(dir),
     ex = (f) => fs.existsSync(path.join(raiz, f));
-  const t = require('../../../infra/tickets').ler(path.basename(raiz)),
+  const t = require('../../../infra/ticket/tickets').ler(path.basename(raiz)),
     orig = t?.documento?.arquivo;
   const itens = [
     orig && `o documento original ${path.join(raiz, orig)}`,
@@ -37,7 +37,7 @@ const REGRAS_PLANO = (dir, rasc = dir) =>
   `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). ` +
   `${citarDossie(dir)}${citarRespostas(dir)}\n${blocoDocumento(dir)}Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica só depois de o humano ler e aprovar. ` +
   `Se faltar algo que só o humano sabe e nenhuma fonte responde, NÃO invente: grave ${path.join(rasc, PAUSA)} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio), não grave o plano e termine.`;
-// Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/area-ia.js); a extensão copia para dir.
+// Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/agentes/area-ia.js); a extensão copia para dir.
 // Interpretar: o texto de QA já existe (subtarefa, descrição, comentário, anexo) mas em formato livre: o Claude identifica e normaliza, sem inventar.
 const promptInterpretar = (dir, rasc = dir) =>
   `[segundo plano · Crafting Table] Este ticket JÁ TEM material de planejamento de testes de QA, em formato livre (pode ser tabela, lista, prosa, Gherkin ou outro). ` +

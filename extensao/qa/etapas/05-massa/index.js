@@ -8,7 +8,7 @@
 //   proposta.js          lote SQL proposto pela IA: aprovar, recusar, desfazer
 //   desistir.js          sem massa e sem UPDATE possível: bloqueia o cenário e segue
 const aoVivo = require('../../../componentes/ao-vivo');
-const vagas = require('../../../agentes/etapas');
+const vagas = require('../../../infra/agentes/etapas');
 const { estado, mudar } = require('../../estado');
 const { pausado } = require('../../orquestrador/rodando');
 const { claude } = require('../../orquestrador/claude');
@@ -39,7 +39,7 @@ async function levantarMassa(dir, d, amb, cens) {
   if (!cens.length) return { ok: true };
   mudar(dir, { etapa: 'massa', massaFase: 'buscar' });
   const b = d.banco,
-    liberado = b && require('../../../infra/banco').liberado(b),
+    liberado = b && require('../../../infra/agentes/banco').liberado(b),
     mapa = liberado ? vagas.raiz('impl.mapa') || '' : '';
   const rodar = (cs, fase, titulo, timeoutMin) => {
     mudar(dir, { massaFase: fase });
@@ -51,7 +51,7 @@ async function levantarMassa(dir, d, amb, cens) {
           d.chave,
           cs,
           dir,
-          b ? require('../../../infra/banco').texto(b) : '',
+          b ? require('../../../infra/agentes/banco').texto(b) : '',
           mapa,
           escreve,
           naAba,
@@ -61,7 +61,7 @@ async function levantarMassa(dir, d, amb, cens) {
         cwd: amb.backend || d.backend,
         ferramentas: FERRAMENTAS_MASSA(mapa),
         env: {
-          ...(mapa ? require('../../../infra/banco').env(b, dir) : {}),
+          ...(mapa ? require('../../../infra/agentes/banco').env(b, dir) : {}),
           ...(escreve ? { QA_BANCO_ESCRITA: '1' } : {})
         }
       },

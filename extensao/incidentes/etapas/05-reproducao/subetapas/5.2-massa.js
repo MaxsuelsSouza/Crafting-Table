@@ -7,7 +7,7 @@ const { documentos } = require('../../index');
 const { mesclar: mudar, lerTxt, RESPOSTAS } = require('../../../estado');
 const { REGRAS, SKILL } = require('../regras/ferramentas');
 const { travaDml } = require('../regras/trava-dml');
-const vagas = require('../../../../agentes/etapas');
+const vagas = require('../../../../infra/agentes/etapas');
 const { SUBETAPAS, pausar } = require('./estado');
 
 const lista = documentos;

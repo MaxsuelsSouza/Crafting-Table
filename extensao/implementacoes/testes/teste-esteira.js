@@ -47,8 +47,8 @@ globalThis.fetch = /** @type {any} */ (
   }
 );
 
-const tickets = require('../../infra/tickets');
-const maestro = require('../../painel/maestro');
+const tickets = require('../../infra/ticket/tickets');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const esteira = require('../esteira');
 const dossie = require('../../infra/dossie');
@@ -223,7 +223,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     assert.ok(fs.existsSync(path.join(DIR, 'implementacao.md')));
     // a conversa interativa passa a citar os artefatos
     const { pedido } = require('../../modulos/conversas')._teste2;
-    require('../../infra/sessao').focar(t.chave, 'impl');
+    require('../../infra/ticket/sessao').focar(t.chave, 'impl');
     const p = pedido(s, t);
     assert.ok(p.includes('dossie.md') && p.includes('plano-mudanca.md') && p.includes('implementacao.log.md'), p);
   }
@@ -458,7 +458,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     T.ramo({ chave: 'DOC-001', titulo: '', documento: { nome: 'Requisitos_v2.md' } }),
     'impl/DOC-001-requisitos-v2-md'
   );
-  const etapas = require('../../agentes/etapas');
+  const etapas = require('../../infra/agentes/etapas');
   assert.ok(etapas.VAGAS['impl.mapa'] && etapas.MODULOS.find((m) => m.id === 'impl').etapas.length === 7);
   assert.strictEqual(etapas.usos('impl.mapa').length, 2);
 

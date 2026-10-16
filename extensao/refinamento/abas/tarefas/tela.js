@@ -1,6 +1,6 @@
 // @ts-check
 // Tela da aba Tarefas: quadro de colunas, detalhe de cada card (modal) e a grade das abertas.
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 const { esc } = require('../../../infra/texto');
 const { markdown } = require('../../../componentes/markdown');
 const { quando, iniciais } = require('../../../componentes/formato');

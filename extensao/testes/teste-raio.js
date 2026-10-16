@@ -4,7 +4,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'raio-')); process.env.HOME =
 fs.mkdirSync(path.join(home, '.local', 'bin'), { recursive: true });
 const bin = path.join(home, '.local', 'bin', 'claude'), log = path.join(home, 'args.log');
 fs.writeFileSync(bin, `#!/usr/bin/env node\nrequire('fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');\nif (!(process.argv.includes('--resume') && process.argv[3].includes('trava') && !require('fs').existsSync(require('path').join(require('os').homedir(), 'travou')))) console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sid-1' }));\nconst flag = require('path').join(require('os').homedir(), 'travou'); const resume = process.argv.includes('--resume');\nif (resume && !require('fs').existsSync(flag) && process.argv[3].includes('trava')) { require('fs').writeFileSync(flag, ''); process.stdout.write = () => true; setTimeout(() => {}, 60000); } else setTimeout(() => {}, resume ? 300 : 60000);\n`, { mode: 0o755 });
-const maestro = require('../painel/maestro'), aoVivo = require('../componentes/ao-vivo');
+const maestro = require('../infra/agentes/maestro'), aoVivo = require('../componentes/ao-vivo');
 const dir = path.join(home, 'ticket'); fs.mkdirSync(dir);
 const esperar = (f) => new Promise((ok) => { const t = setInterval(() => f() && (clearInterval(t), ok()), 50); });
 (async () => {

@@ -3,10 +3,10 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const banco = require('../../../infra/banco');
+const banco = require('../../../infra/agentes/banco');
 const { cfg } = require('../../../configuracao/configuracao');
 const { NOTIF } = require('../../../painel/notificacoes');
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 const { executar: executarSql } = require('../../etapas/05-massa/dependencias');
 const docLocal = (t) => jira.ehDocumento(t); // ticket por documento: tudo pelo adaptador local, sem rede e sem conta
 const provNome = (t) => (docLocal(t) ? 'documento' : jira.nome);

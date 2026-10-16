@@ -4,7 +4,7 @@
 // Reprodução da Implementação (implementacoes/etapas/01-dossie/reproducao/, abas/reproducao.js).
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../tickets');
+const tickets = require('../ticket/tickets');
 const { html2txt } = require('../texto');
 
 const LIMIAR_TEXTO = 40; // caracteres de descrição+comentários para virar "bruto"
@@ -23,7 +23,7 @@ function sobreTicket(t, j) {
 }
 
 /** Tipos de ticket que pedem confirmação do erro antes de desenvolver (nome do tipo no Jira: Bug, Defeito, Incidente…). */
-const tipoTicket = require('../tipo-ticket');
+const tipoTicket = require('../ticket/tipo-ticket');
 const ehBug = (tipo) => tipoTicket.exigeReproducao(tipoTicket.classificar(tipo));
 
 module.exports = { LIMIAR_TEXTO, sobreTicket, ehBug };

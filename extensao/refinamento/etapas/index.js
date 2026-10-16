@@ -1,6 +1,6 @@
 // @ts-check
 // Etapas do Refinamento, na ordem da spec SDD (passos 0 a 6), e a etapa paralela de comentários. Fonte única: as Configurações > Plugins
-// (agentes/etapas.js) leem daqui. Só dados (sem require de lógica): agentes/etapas.js carrega este arquivo cedo.
+// (infra/agentes/etapas.js) leem daqui. Só dados (sem require de lógica): infra/agentes/etapas.js carrega este arquivo cedo.
 //   n               passo do sdd-state (0 a 6); sem n = não é passo (corre ao lado ou vale para todas)
 //   nome, vaga      nome na tela de plugins e o plugin/skill que a etapa usa (VAGAS abaixo)
 //   subetapas       a etapa-mãe não tem vaga própria; cada subetapa tem a sua (3 → 3.1 Mapeamento, 3.2 Plano técnico)
@@ -30,9 +30,9 @@ const ETAPAS = [
   { nome: 'Regras de escrita', vaga: 'refinamento.foco', todas: true, arquivo: null }
 ];
 
-// Vagas do Refinamento em Configurações > Plugins (agentes/etapas.js junta com as dos outros módulos).
+// Vagas do Refinamento em Configurações > Plugins (infra/agentes/etapas.js junta com as dos outros módulos).
 // contrato: o que a extensão espera de quem ocupa a vaga (base da verificação por IA de um substituto).
-const LOCAL = (n) => path.join(__dirname, '..', '..', 'plugins', n);
+const LOCAL = (n) => path.join(__dirname, '..', '..', 'infra', 'plugins', n);
 const VAGAS = {
   'refinamento.sdd': {
     padrao: { tipo: 'plugin', id: 'sdd@crafting-local', nome: 'sdd', skill: 'sdd' },

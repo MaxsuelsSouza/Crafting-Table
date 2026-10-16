@@ -4,8 +4,8 @@ Module._load = (r, ...a) => (r === 'vscode' ? { EventEmitter: class { fire() {} 
 const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'ident-'));
-const tk = require('../infra/tickets');
-const jira = require('../provedores/jira');
+const tk = require('../infra/ticket/tickets');
+const jira = require('../infra/provedores/jira');
 
 // Jira: nada muda (id = chave, pasta = chave, projeto vem do adaptador).
 const lj = jira.lerLink('https://x.atlassian.net/browse/WMS-123');
@@ -43,7 +43,7 @@ fs.writeFileSync(path.join(tk.RAIZ, 'OLD-1', '.ticket.json'), JSON.stringify({ c
 assert.deepStrictEqual([tk.ler('OLD-1').idProvedor, tk.ler('OLD-1').provedor], ['OLD-1', 'jira']);
 
 // Sessão: ticket × conversa pela existência do .ticket.json, sem regex.
-const sessao = require('../infra/sessao');
+const sessao = require('../infra/ticket/sessao');
 assert.strictEqual(sessao.pasta('5012345678'), tk.pasta('5012345678'));
 assert.strictEqual(sessao.pasta(n.chave), tk.pasta(n.chave));
 assert.strictEqual(sessao.pasta('WMS-123'), tk.pasta('WMS-123'));
@@ -51,7 +51,7 @@ assert.strictEqual(sessao.pasta(uuid), path.join(sessao.RAIZ, uuid)); // não é
 assert.strictEqual(sessao.pasta('WMS-999'), path.join(sessao.RAIZ, 'WMS-999')); // parece Jira mas não existe: conversa
 
 // Card antigo com `jira` é lido como `ticket`.
-const { tarefasDe, TAREFAS } = require('../infra/spec');
+const { tarefasDe, TAREFAS } = require('../infra/ticket/spec');
 const dir = tk.pasta('WMS-123');
 fs.writeFileSync(path.join(dir, TAREFAS), JSON.stringify([{ id: 't01', jira: 'WMS-124' }, { id: 't02', ticket: 'WMS-125' }, { id: 't03', jira: null }]));
 assert.deepStrictEqual(tarefasDe(dir).map((c) => [c.ticket, c.jira]), [['WMS-124', undefined], ['WMS-125', undefined], [null, undefined]]);

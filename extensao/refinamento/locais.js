@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 // Comuns a todos os módulos (infra/): leitores da pasta do ticket e a spec. Reexportados abaixo, com os mesmos nomes de sempre.
-const { pasta, ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/pasta-ticket');
+const { pasta, ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/ticket/pasta-ticket');
 const {
   HANDOFF,
   HANDOFF_LEGADO,
@@ -13,7 +13,7 @@ const {
   tarefasDe,
   estadoSpec,
   comSpec
-} = require('../infra/spec');
+} = require('../infra/ticket/spec');
 
 // FONTE ÚNICA de "onde cada coisa mora". Mudou um local? Muda só aqui (painel, prompts e abas leem daqui).
 //

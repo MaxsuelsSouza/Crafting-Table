@@ -2,9 +2,9 @@
 // Dependências reais da etapa 5 (VS Code): comandos, emulador, portas, Metro, app, banco (SQLcl), o Claude e a gravação de tela.
 // Os testes injetam as suas; qualquer chave passada por `d` em executar vence.
 const path = require('path');
-const maestro = require('../../../painel/maestro');
-const banco = require('../../../plugins/mapa/lib/banco');
-const vagas = require('../../../agentes/etapas');
+const maestro = require('../../../infra/agentes/maestro');
+const banco = require('../../../infra/plugins/mapa/lib/banco');
+const vagas = require('../../../infra/agentes/etapas');
 const { FERRAMENTAS } = require('./regras/ferramentas');
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -3,9 +3,9 @@
 // grava o seu arquivo; ao terminar, apos-etapa.js decide. Ferramentas: só leitura, mais Edit/Write na 5. A 5 prepara a branch antes.
 const fs = require('fs');
 const path = require('path');
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
-const vagas = require('../../agentes/etapas');
+const vagas = require('../../infra/agentes/etapas');
 const dossie = require('../../infra/dossie');
 const prompts = require('../prompts');
 const { ETAPAS, ARQ } = require('../etapas');

@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const cardCenario = require('./card-cenario');
-const { origemPermitida } = require('../infra/origem');
+const { origemPermitida } = require('../infra/ticket/origem');
 
 const ARQ = 'fluxo.json', RESULTADOS = ['passou', 'falhou', 'bloqueado'];
 const lerJson = (f, pad) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return pad; } };

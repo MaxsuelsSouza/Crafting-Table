@@ -4,9 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 const { sddState } = require('../configuracao/configuracao');
-const { pasta, pastaDe } = require('../infra/pastas');
-const { lerTexto } = require('../infra/pasta-ticket');
-const { dirSpec, arqHandoff, tarefasDe, estadoSpec } = require('../infra/spec');
+const { pasta, pastaDe } = require('../infra/ticket/pastas');
+const { lerTexto } = require('../infra/ticket/pasta-ticket');
+const { dirSpec, arqHandoff, tarefasDe, estadoSpec } = require('../infra/ticket/spec');
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const { duvidasDe, impactosDe } = require('./locais');
 const { emRefino } = require('./estado');

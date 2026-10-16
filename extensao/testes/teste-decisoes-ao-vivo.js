@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
 const Module = require('module'), carregar = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : carregar(r, ...a));
-const { falas, linhas, DECISOES_DE_TESTE } = require('../painel/maestro')._teste;
+const { falas, linhas, DECISOES_DE_TESTE } = require('../infra/agentes/maestro')._teste;
 const aoVivo = require('../componentes/ao-vivo');
 
 // parser: a linha DECISÃO vira linha 'decisao'; o resto continua fala

@@ -3,17 +3,17 @@
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
 const assert = require('assert');
-const { faltando, OPERACOES } = require('../provedores/contrato');
-const jira = require('../provedores/jira');
+const { faltando, OPERACOES } = require('../infra/provedores/contrato');
+const jira = require('../infra/provedores/jira');
 const { mdParaAdf, adfTexto, adfMd } = jira._teste;
 
 // Contrato: o adaptador do Jira cumpre tudo; a fachada (ticket.js) delega cada operação e diz o nome do provedor ativo.
 assert.deepStrictEqual(faltando(jira), []);
 assert.deepStrictEqual(faltando({ id: 'x', nome: 'X', capacidades: {}, lerLink() {} }), ['camposCredencial', ...OPERACOES.filter((o) => o !== 'lerLink')]);
-const fachada = require('../infra/ticket').jira;
+const fachada = require('../infra/provedores/fachada').jira;
 assert.ok(OPERACOES.every((o) => typeof fachada[o] === 'function'));
 assert.strictEqual(fachada.nome, 'Jira');
-assert.strictEqual(require('../provedores').provedorAtivo().id, 'jira'); // sem vscode (testes): o padrão
+assert.strictEqual(require('../infra/provedores').provedorAtivo().id, 'jira'); // sem vscode (testes): o padrão
 console.log('ok contrato');
 
 // Link e chave.

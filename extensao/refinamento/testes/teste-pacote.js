@@ -6,7 +6,7 @@ const fs = require('fs'),
   path = require('path'),
   assert = require('assert');
 process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'pac-home-'));
-const tickets = require('../../infra/tickets');
+const tickets = require('../../infra/ticket/tickets');
 const pacote = require('../pacote');
 
 const chave = 'PAC-1',

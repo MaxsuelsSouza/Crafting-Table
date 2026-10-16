@@ -1,7 +1,7 @@
 // @ts-check
 // Pausas do Mergulho: a pausa de uma etapa (pedida pela própria etapa ou por um portão) e o ⏸ manual.
 const aoVivo = require('../../componentes/ao-vivo');
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const fluxo = require('../../componentes/fluxo-passos');
 const { mudar } = require('../estado');

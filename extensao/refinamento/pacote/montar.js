@@ -1,7 +1,7 @@
 // @ts-check
 // Monta o texto do refinamento.md: cabeçalho, pendências, passos e as seções (historico.js, tarefas.js, arquivos.js), nessa ordem.
 const path = require('path');
-const tickets = require('../../infra/tickets');
+const tickets = require('../../infra/ticket/tickets');
 const { dirSpec, estadoSpec, tarefasDe, duvidasDe, impactosDe, decisoesDe } = require('../locais');
 const { ROTINA, STATUS, dia } = require('./comum');
 const { historico } = require('./historico');

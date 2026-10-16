@@ -1,6 +1,6 @@
 // @ts-check
 // Etapas do Mergulho (módulo Incidentes), na ordem em que rodam. Fonte única: o orquestrador, a aba Mergulho e as Configurações > Plugins
-// (agentes/etapas.js) leem daqui. Só dados (sem require de lógica): agentes/etapas.js carrega este arquivo cedo.
+// (infra/agentes/etapas.js) leem daqui. Só dados (sem require de lógica): infra/agentes/etapas.js carrega este arquivo cedo.
 //   n, nome, arq   número, nome na caixa de etapas e o artefato que prova que a etapa terminou
 //   vaga           plugin/skill que a etapa usa (VAGAS abaixo; null = só o prompt da extensão)
 //   arquivo        a lógica da etapa (NN-nome.js nesta pasta), carregada por logica(n)
@@ -30,8 +30,8 @@ const documentos = (dir) =>
     .map((e) => path.join(dir, e.arq))
     .join(', ');
 
-// Vagas do Incidente em Configurações > Plugins (agentes/etapas.js junta com as dos outros módulos).
-const LOCAL = (n) => path.join(__dirname, '..', '..', 'plugins', n);
+// Vagas do Incidente em Configurações > Plugins (infra/agentes/etapas.js junta com as dos outros módulos).
+const LOCAL = (n) => path.join(__dirname, '..', '..', 'infra', 'plugins', n);
 const SKILLS = path.join(os.homedir(), '.claude', 'skills');
 const VAGAS = {
   'incidentes.mapa': {

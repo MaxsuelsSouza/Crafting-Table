@@ -1,7 +1,7 @@
 // @ts-check
 // Cliques da aba Dúvidas: enviar ao ticket, responder, confirmar ou rejeitar a resposta sugerida por comentário.
 const vscode = require('vscode');
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 const { DUVIDAS, duvidasDe, textoDuvida } = require('../../locais');
 const { escolherMencoes } = require('./mencoes');
 const { fecharDuvida } = require('./fechar');

@@ -4,7 +4,7 @@
 const path = require('path');
 const { documentos } = require('../../index');
 const { FLUXO, REGRAS, SKILL } = require('../regras/ferramentas');
-const vagas = require('../../../../agentes/etapas');
+const vagas = require('../../../../infra/agentes/etapas');
 const { SUBETAPAS, ARTEFATO, pausar } = require('./estado');
 
 const lista = documentos;

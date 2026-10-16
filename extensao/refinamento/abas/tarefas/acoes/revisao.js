@@ -2,7 +2,7 @@
 // Revisão de card já no Jira (mudança vinda de comentário): aplicar ou descartar.
 const vscode = require('vscode');
 const os = require('os');
-const jira = require('../../../../infra/ticket').jira;
+const jira = require('../../../../infra/provedores/fachada').jira;
 const { TAREFAS, lerTexto, tarefasDe, impactosDe } = require('../../../locais');
 const { ondeNome } = require('../rotulos');
 const { descricaoJira } = require('../jira');

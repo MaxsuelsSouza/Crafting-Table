@@ -1,6 +1,6 @@
 // @ts-check
 // Etapas do QA, na ordem em que rodam. Fonte única: a caixa "Etapas do QA" (abas/evidencias/etapas.js) e as Configurações > Plugins
-// (agentes/etapas.js) leem daqui. Só dados (sem require de lógica): agentes/etapas.js carrega este arquivo cedo.
+// (infra/agentes/etapas.js) leem daqui. Só dados (sem require de lógica): infra/agentes/etapas.js carrega este arquivo cedo.
 //   n, nome   número e nome na caixa de etapas
 //   vaga      plugin/skill que a etapa usa (VAGAS abaixo; null = só o prompt da extensão) · obs: nota na aba Plugins
 //   arquivo   a lógica da etapa (NN-nome/ ou NN-nome.js nesta pasta); a ordem de execução é a do orquestrador/executar.js
@@ -23,7 +23,7 @@ const ETAPAS = [
   { n: 7, nome: 'Publicar', vaga: null, arquivo: '07-publicar' }
 ];
 
-// Vagas do QA em Configurações > Plugins (agentes/etapas.js junta com as dos outros módulos).
+// Vagas do QA em Configurações > Plugins (infra/agentes/etapas.js junta com as dos outros módulos).
 const SKILLS = path.join(os.homedir(), '.claude', 'skills');
 // contrato: o que a extensão espera de quem ocupa a vaga (base da verificação por IA de um substituto).
 const VAGAS = {

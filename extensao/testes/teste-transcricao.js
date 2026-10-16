@@ -34,7 +34,7 @@ fs.copyFileSync(bg, path.join(home, '.claude', 'projects', '-x', 's1.jsonl'));
 const tela = conv._teste.telaLeitura('s1');
 assert.ok(tela.includes('data-acao="fechar"') && tela.includes('data-acao="recarregar"') && tela.includes('Leu /a/b.md') && tela.includes('somente leitura'));
 // o botão do Claude do ticket não pega a conversa de segundo plano (abriria vazia)
-const claude = require('../infra/claude'), tickets = require('../infra/tickets');
+const claude = require('../infra/agentes/conversa'), tickets = require('../infra/ticket/tickets');
 tickets.gravar({ chave: 'WMS-1', link: 'x', site: 's', titulo: 'T', status: '', conversas: [], refinamento: { estado: 'desligado' }, criado: 1 });
 tickets.vincular('s1', 'WMS-1', 'incidentes');
 const t = tickets.ler('WMS-1');

@@ -1,7 +1,7 @@
 // @ts-check
 // Próxima etapa: rodando e sem nada esperando o humano → o passo seguinte numa execução nova. Passo 3 e 6: arquivos da etapa.
-const { pasta } = require('../../infra/pasta-ticket');
-const maestro = require('../../painel/maestro');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
+const maestro = require('../../infra/agentes/maestro');
 const { duvidasDe, tarefasDe, impactosDe, estadoSpec } = require('../locais');
 const { estadoDe, papelDoTicket } = require('../estado');
 const mudancas = require('../etapas/comentarios/regras');

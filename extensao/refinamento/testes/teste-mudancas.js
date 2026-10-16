@@ -147,7 +147,7 @@ assert.strictEqual(sdd('impacto', 'registrar', '9', '--nivel', 'nenhum', '--resu
 assert.strictEqual(lerI()[0].status, 'analisado');
 
 // menu do cabeçalho: cada lista com as suas abas (componentes/menu-abas.js); Evidências logo depois de Docs só no QA
-const sessao = require('../../infra/sessao');
+const sessao = require('../../infra/ticket/sessao');
 const abasNa = (lista) => {
   sessao.focoLista = () => lista;
   return [

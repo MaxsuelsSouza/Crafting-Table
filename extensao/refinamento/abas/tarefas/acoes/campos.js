@@ -1,7 +1,7 @@
 // @ts-check
 // Campos do card pendente: estimativa e responsável.
 const vscode = require('vscode');
-const jira = require('../../../../infra/ticket').jira;
+const jira = require('../../../../infra/provedores/fachada').jira;
 const { escolherPessoa } = require('../../../../componentes/escolher-pessoa');
 const { TAREFAS, tarefasDe } = require('../../../locais');
 const { ondeNome } = require('../rotulos');

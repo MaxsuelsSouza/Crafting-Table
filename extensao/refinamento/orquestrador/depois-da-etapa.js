@@ -1,7 +1,7 @@
 // @ts-check
 // Execução terminou: card não confirmado, spec que não nasceu, impactos, refinamento.md e as filas (triagem, impacto, tarefas).
-const { pasta } = require('../../infra/pasta-ticket');
-const maestro = require('../../painel/maestro');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
+const maestro = require('../../infra/agentes/maestro');
 const { notificar } = require('../../painel/notificacoes');
 const { anotar } = require('../../componentes/ao-vivo');
 const pacote = require('../pacote');

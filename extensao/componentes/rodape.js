@@ -1,14 +1,14 @@
 // @ts-check
 const path = require('path');
 const { esc } = require('../infra/texto');
-const sessao = require('../infra/sessao');
-const { lerTexto } = require('../infra/pasta-ticket');
+const sessao = require('../infra/ticket/sessao');
+const { lerTexto } = require('../infra/ticket/pasta-ticket');
 const { IC } = require('./icones');
 const { quando } = require('./formato');
 const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto, blocosAbertos } = require('../painel/notificacoes');
 const qa = require('../qa/qa'); // registro do QA: caixa do ambiente
 const { SEM_TICKET } = require('./card-ticket');
-const { pastaAba } = require('../infra/pastas');
+const { pastaAba } = require('../infra/ticket/pastas');
 
 // Componente "Rodapé": a barra de baixo do ticket com Notificações (🔔), Comandos/Emuladores e, no QA, o Ambiente.
 // Usado pela moldura do ticket (moldura.js): na página do painel (painel.js) e embaixo das outras seções (grupo.js, via provider.moldura).

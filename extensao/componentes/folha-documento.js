@@ -18,7 +18,7 @@ const data = (iso) => { const d = new Date(iso); return isNaN(+d) ? '' : d.toLoc
 
 // Lê da pasta do ticket o que a folha mostra.
 function dadosDe(t) {
-  const d = require('../infra/tickets').pasta(t.chave);
+  const d = require('../infra/ticket/tickets').pasta(t.chave);
   let anexos = [];
   try { anexos = fs.readdirSync(path.join(d, '.anexos')).sort().flatMap((n) => { const st = fs.statSync(path.join(d, '.anexos', n)); return st.isFile() ? [{ nome: n, tamanho: st.size }] : []; }); } catch { /* sem anexos */ }
   return { dir: d, anexos, texto: lerTexto(path.join(d, '.documento-texto.md')), comentarios: lerJson(path.join(d, '.comentarios.json'), []), subtarefas: lerJson(path.join(d, '.subtarefas.json'), []) };

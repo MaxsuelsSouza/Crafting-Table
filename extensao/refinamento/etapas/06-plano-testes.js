@@ -1,7 +1,7 @@
 // @ts-check
 // Passo 6 · Plano de testes (QA): o método de QA da vaga refinamento.metodoQa, acrescentado ao prompt genérico do passo (orquestrador/seguir.js).
 const path = require('path');
-const vagas = require('../../agentes/etapas');
+const vagas = require('../../infra/agentes/etapas');
 
 // Passo 6: o método de QA da vaga refinamento.metodoQa (padrão: plugin fcx-qa-test-planning, jira-qa-planner + test-estimation), lido do plugin instalado.
 const qaCaminhos = () => {

@@ -14,7 +14,7 @@ const path = require('path');
 
 if (process.argv.includes('--teste')) { teste(); process.exit(0); }
 
-const tickets = require('../infra/tickets');
+const tickets = require('../infra/ticket/tickets');
 const CLAUDE = path.join(os.homedir(), '.claude');
 const DOCS = path.join(CLAUDE, 'documentos');
 const REFS = path.join(CLAUDE, 'refinamentos');

@@ -2,7 +2,7 @@
 
 // Módulo Implementações: tickets em implementação. Pasta do ticket: ~/.claude/tickets/<CHAVE>/impl/ (tickets.js).
 // Registro do módulo (formato de modelo-modulo/modulo.js): tudo que os pontos comuns (lista, moldura, painel, conversas, configuração) precisam saber
-// da Implementação vem daqui. Sem require no topo: infra/tickets.js e o menu carregam este arquivo cedo; a lógica é carregada na hora do uso.
+// da Implementação vem daqui. Sem require no topo: infra/ticket/tickets.js e o menu carregam este arquivo cedo; a lógica é carregada na hora do uso.
 //
 // Estrutura da pasta:
 //   implementacoes.js  este registro
@@ -19,7 +19,7 @@
 // O dossiê do ticket (comum à Implementação e ao QA) mora em infra/dossie/.
 
 //   ID, ROTULO, DICA  menu de módulos (componentes/menu-modulos.js)
-//   VINCULADOS        caixa de vinculados (componentes/vinculados.js): os status vêm da variável etapasImplementacao (provedores/variaveis.js)
+//   VINCULADOS        caixa de vinculados (componentes/vinculados.js): os status vêm da variável etapasImplementacao (infra/provedores/variaveis.js)
 //   ETAPA             texto do pedido ao Claude e do título da conversa (conversas.js)
 const ID = 'impl';
 const ROTULO = 'Implementações';
@@ -55,7 +55,7 @@ const ARQUIVOS_CONVERSA = {
     'verificacao.json'
   ]
 };
-// Pill do card na lista (infra/situacao.js): estado lido de .esteira.json.
+// Pill do card na lista (infra/ticket/situacao.js): estado lido de .esteira.json.
 const SITUACAO = { arquivo: '.esteira.json', rotulo: 'Implementando' };
 
 // Corpo das abas próprias (painel.js corpoAba); undefined = a aba não é da Implementação.

@@ -5,8 +5,8 @@ const path = require('path');
 // Ações da aba Ticket de um ticket-documento (componentes/folha-documento.js). Só leem/gravam a pasta do ticket: zero rede.
 // Módulo de ações do painel: registrado em modulosAcoes (painel/painel.js); `s` são os serviços (ticketAberto, render…).
 const { STATUS } = require('../componentes/folha-documento');
-const tickets = () => require('../infra/tickets');
-const doc = require('../provedores/documento');
+const tickets = () => require('../infra/ticket/tickets');
+const doc = require('../infra/provedores/documento');
 const vs = () => require('vscode');
 
 const acoes = (s) => ({

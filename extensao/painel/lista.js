@@ -1,8 +1,8 @@
 // @ts-check
 const vscode = require('vscode');
-const jira = require('../infra/ticket').jira;
+const jira = require('../infra/provedores/fachada').jira;
 const { esc } = require('../infra/texto');
-const tickets = require('../infra/tickets');
+const tickets = require('../infra/ticket/tickets');
 const { IC } = require('../componentes/icones');
 const listaTickets = require('../componentes/lista-tickets'); // tela inicial: módulos, pesquisa, cards e vinculados
 const vinculados = require('../componentes/vinculados'); // caixa de vinculados (filtro de status por módulo)
@@ -12,7 +12,7 @@ const refinamento = require('../refinamento/refinamento');
 const qa = require('../qa/qa');
 const menuModulos = require('../componentes/menu-modulos');
 const { siteJira, projetoJira, boardsJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
-const variaveis = require('../provedores/variaveis');
+const variaveis = require('../infra/provedores/variaveis');
 
 // Lista de tickets (Refinamento, Implementações ou QA) e a caixa "Vinculados a você" de cada uma. Estado de módulo (singleton:
 // o painel é criado uma vez); o painel lê por modo/resetar/fecharPrevia/corpo/carregarSeNecessario e iniciar().
@@ -49,7 +49,7 @@ const avaliarFerramenta = async (s) => {
   return ok;
 };
 // Ticket por documento (chave reservada DOC-N ou ticket local do provedor documento): nunca vai ao provedor; a lista local vence.
-const ehChaveDoc = (id) => /^DOC-\d+$/i.test(String(id || '')) || require('../provedores/documento').ehDocumento(tickets.ler(id));
+const ehChaveDoc = (id) => /^DOC-\d+$/i.test(String(id || '')) || require('../infra/provedores/documento').ehDocumento(tickets.ler(id));
 const avisoDoc = () => { vscode.window.showInformationMessage('Este ticket é um documento: não há ferramenta de gestão para abrir.'); };
 const fecharPrevia = () => { previa = null; };
 
@@ -70,7 +70,7 @@ const corpo = (s, estilo, emRefino) => {
   // Mais recente (aberto por último neste módulo) no topo; ticket nunca aberto vale pela data de criação.
   const uso = (x) => x.usos?.[modoLista] || x.criado || 0;
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).sort((a, b) => uso(b) - uso(a))
-    .map((x) => ({ ...x, refinando: modoLista === refinamento.ID && emRefino(x), situacao: require('../infra/situacao').situacaoDe(x, modoLista) })),
+    .map((x) => ({ ...x, refinando: modoLista === refinamento.ID && emRefino(x), situacao: require('../infra/ticket/situacao').situacaoDe(x, modoLista) })),
     ferramenta !== true ? null : meus ? { ...meus, itens: meus.itens?.filter((i) => !ehChaveDoc(i.key)), ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 

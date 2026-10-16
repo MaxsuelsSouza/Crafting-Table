@@ -4,7 +4,7 @@
 const assert = require('assert');
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
-const variaveis = require('../provedores/variaveis');
+const variaveis = require('../infra/provedores/variaveis');
 const configuracao = require('./configuracao');
 
 // Setting falsa: guarda o que o código grava e responde os settings antigos.
@@ -50,7 +50,7 @@ assert.strictEqual(c.dados.jiraSite, 'https://x.atlassian.net/'); // settings an
 
   // Pendências: faltando variável, o fluxo avisa (nada de valor da empresa).
   const secrets = {};
-  require('../infra/ticket').jira.conectado = async () => true;
+  require('../infra/provedores/fachada').jira.conectado = async () => true;
   fazer({});
   variaveis.vincular(null);
   assert.deepStrictEqual(await configuracao.pendencias(secrets), ['site', 'projeto', 'board']);

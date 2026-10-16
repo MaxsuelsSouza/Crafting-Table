@@ -3,10 +3,10 @@
 // (alvo, pronto, onde) com a confiança de cada fonte; daí saem a prontidão e o modo da esteira. Visão geral: index.js.
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../tickets');
-const { dirSpec, estadoSpec, tarefasDe, arqHandoff } = require('../spec');
-const { ler } = require('../pasta-ticket');
-const tipoTicket = require('../tipo-ticket');
+const tickets = require('../ticket/tickets');
+const { dirSpec, estadoSpec, tarefasDe, arqHandoff } = require('../ticket/spec');
+const { ler } = require('../ticket/pasta-ticket');
+const tipoTicket = require('../ticket/tipo-ticket');
 const { BRIEFING, TRABALHO } = require('./arquivos');
 const { sobreTicket } = require('./ticket');
 const { rank, nivelDe, capacidadesDe } = require('./confianca');

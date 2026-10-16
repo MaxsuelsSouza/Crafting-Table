@@ -1,6 +1,6 @@
 // @ts-check
 // Execução viva: nesta janela (ativos), pausada (estado) ou em outra janela (pid da janela dona).
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const { estado } = require('../estado');
 
 const ativos = new Set();

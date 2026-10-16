@@ -1,5 +1,5 @@
 // @ts-check
-const vagas = require('../../../agentes/etapas');
+const vagas = require('../../../infra/agentes/etapas');
 const { SKILL, QA_STATE, REGRAS, citarRespostas, citarDossie } = require('../../orquestrador/prompt-comum');
 
 const MASSA_BUSCA_MIN = 5;

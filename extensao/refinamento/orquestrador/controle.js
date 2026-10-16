@@ -1,7 +1,7 @@
 // @ts-check
 // ── Controle: ⏸ de verdade, e a situação que o cabeçalho e a caixa Ao vivo mostram.
-const { pasta } = require('../../infra/pasta-ticket');
-const maestro = require('../../painel/maestro');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const { anotar } = require('../../componentes/ao-vivo');
 const { duvidasDe, impactosDe, ticketDe, estadoSpec } = require('../locais');

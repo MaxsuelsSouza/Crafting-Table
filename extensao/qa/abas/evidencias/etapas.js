@@ -1,5 +1,5 @@
 // @ts-check
-const vagas = require('../../../agentes/etapas');
+const vagas = require('../../../infra/agentes/etapas');
 const caixaEtapas = require('../../../componentes/caixa-etapas');
 const { estado } = require('../../estado');
 const { cenarios } = require('../../etapas/02-cenarios/mapa');
@@ -8,7 +8,7 @@ const { statusAmbiente } = require('../../etapas/03-ambiente/status');
 const { massa } = require('../../etapas/05-massa/estado');
 const { podePublicar } = require('../../etapas/07-publicar');
 
-// Caixa de etapas do QA: os nomes vêm de agentes/etapas.js (módulo "qa", os mesmos da aba Plugins); o estado sai do que o módulo já sabe.
+// Caixa de etapas do QA: os nomes vêm de infra/agentes/etapas.js (módulo "qa", os mesmos da aba Plugins); o estado sai do que o módulo já sabe.
 function etapasQa(dir, e, rodando) {
   const nomes = vagas.MODULOS.find((m) => m.id === 'qa').etapas.map((x) => x.nome);
   const r = cenarios(dir).cenarios.filter((c) => !c.arquivado && c.status !== 'dispensado'),

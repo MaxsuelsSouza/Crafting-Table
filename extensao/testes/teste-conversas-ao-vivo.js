@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'home-'));
 process.env.HOME = home; // tickets.js e o ao-vivo leem ~/.claude na carga
-const tickets = require('../infra/tickets'), { anexarConversa } = require('../componentes/ao-vivo');
+const tickets = require('../infra/ticket/tickets'), { anexarConversa } = require('../componentes/ao-vivo');
 
 tickets.gravar({ chave: 'WMS-9', link: 'x', site: 's', titulo: 'T', status: '', conversas: [], refinamento: { estado: 'desligado' }, criado: 1 });
 const sessao = (sid) => { const d = path.join(home, '.claude', 'projects', '-qualquer-cwd'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, `${sid}.jsonl`), '{"type":"user"}'); return path.join(d, `${sid}.jsonl`); };

@@ -8,8 +8,8 @@ let pend = [];
 const cfgStub = { siteJira: () => 'https://x.atlassian.net', projetoJira: () => ['WMS'], boardsJira: () => ['B'], pendencias: async () => pend };
 const vscode = { workspace: { getConfiguration: () => ({ get: () => undefined, update: async () => {} }) }, window: {}, env: {}, Uri: { parse: (x) => x, file: (f) => ({ fsPath: f }) }, EventEmitter: class { fire() {} } };
 Module._load = (r, ...a) => (r === 'vscode' ? vscode : r === '../configuracao/configuracao' ? cfgStub : load(r, ...a));
-const jira = require('../infra/ticket').jira;
-const tickets = require('../infra/tickets');
+const jira = require('../infra/provedores/fachada').jira;
+const tickets = require('../infra/ticket/tickets');
 const lista = require('../painel/lista');
 
 let conta = false, rede = 0, apiOk = true;

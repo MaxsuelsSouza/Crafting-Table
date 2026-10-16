@@ -9,7 +9,7 @@ Module._load = (r, ...a) =>
     : load(r, ...a);
 const impl = require('../implementacoes');
 const { filtrar } = require('../../componentes/vinculados');
-const tickets = require('../../infra/tickets');
+const tickets = require('../../infra/ticket/tickets');
 const menu = require('../../componentes/menu-modulos');
 
 const itens = ['Buffer', 'Não iniciado', 'In progress', 'em andamento', 'Pronto para QA'].map((status) => ({ status }));

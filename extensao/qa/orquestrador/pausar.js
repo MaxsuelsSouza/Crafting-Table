@@ -1,5 +1,5 @@
 // @ts-check
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const { estado, mudar } = require('../estado');
 const { preparos } = require('../etapas/03-ambiente/estado');
 const { vivoPid } = require('./rodando');

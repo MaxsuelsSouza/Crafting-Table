@@ -2,7 +2,7 @@
 // Grava dossie.json, dossie.md e trabalho-existente.md na pasta da aba e lê o dossiê gravado.
 const fs = require('fs');
 const path = require('path');
-const { ler } = require('../pasta-ticket');
+const { ler } = require('../ticket/pasta-ticket');
 const { JSON_, MD, TRABALHO } = require('./arquivos');
 const { paraMarkdown } = require('./markdown');
 const { trabalhoParaMarkdown } = require('./trabalho-existente');

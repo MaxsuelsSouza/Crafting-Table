@@ -3,9 +3,9 @@
 // Lógica dos cenários, evidências e prompt: ../reproducao/. Ao confirmar, a esteira segue para a etapa 2.
 const path = require('path');
 const aoVivo = require('../../../../componentes/ao-vivo');
-const maestro = require('../../../../painel/maestro');
+const maestro = require('../../../../infra/agentes/maestro');
 const controle = require('../../../../infra/controle');
-const vagas = require('../../../../agentes/etapas');
+const vagas = require('../../../../infra/agentes/etapas');
 const dossie = require('../../../../infra/dossie');
 const prompts = require('../../../prompts');
 const reproducao = require('../reproducao');

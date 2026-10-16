@@ -36,12 +36,12 @@ globalThis.fetch = /** @type {any} */ (
   }
 );
 
-const tickets = require('../../infra/tickets');
-const sessao = require('../../infra/sessao');
-const doc = require('../../provedores/documento');
+const tickets = require('../../infra/ticket/tickets');
+const sessao = require('../../infra/ticket/sessao');
+const doc = require('../../infra/provedores/documento');
 const impl = require('../implementacoes');
 const { pedido, tituloConversa } = require('../../modulos/conversas')._teste2;
-const { _textoTicket } = require('../../infra/claude');
+const { _textoTicket } = require('../../infra/agentes/conversa');
 const abaDocs = require('../../componentes/aba-docs');
 
 const orig = path.join(os.tmpdir(), `Requisitos-${Date.now()}.md`);

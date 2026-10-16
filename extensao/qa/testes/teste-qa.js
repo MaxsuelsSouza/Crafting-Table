@@ -351,7 +351,7 @@ assert.strictEqual(
   assert.throws(() => cli('cenario', 'CT02', 'concluir', '--status', 'passou')); // só cenário em execução
 
   // ▶ inteiro: plano com 2 CTs, ambiente simulado, massa levantada, CT01 passa, pausa durante o CT02 → descartado; retomada termina.
-  const maestro = require('../../painel/maestro');
+  const maestro = require('../../infra/agentes/maestro');
   const back = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-back-'));
   fs.mkdirSync(path.join(back, 'testes-funcionais'));
   fs.writeFileSync(
@@ -615,7 +615,7 @@ assert.strictEqual(
   await new Promise((r) => filho.on('exit', r));
   assert.ok(!qa.rodando(d7));
   // maestro: .ao-vivo.pid só conta se o processo vivo for o claude.
-  const mae = require('../../painel/maestro'),
+  const mae = require('../../infra/agentes/maestro'),
     d8 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-claude-'));
   fs.writeFileSync(path.join(d8, '.ao-vivo.pid'), String(process.pid));
   assert.ok(!mae.vivo(process.pid)); // node, não claude

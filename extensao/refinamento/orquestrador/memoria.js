@@ -2,8 +2,8 @@
 // Memória do passo e os prompts que a usam (ajuste, respostas): cada execução nova lê do disco o que a anterior deixou.
 const fs = require('fs');
 const path = require('path');
-const { areaIA } = require('../../infra/area-ia');
-const { pasta } = require('../../infra/pasta-ticket');
+const { areaIA } = require('../../infra/agentes/area-ia');
+const { pasta } = require('../../infra/ticket/pasta-ticket');
 const { arquivoPasso, estadoSpec } = require('../locais');
 const { GRAVAR } = require('./ferramentas');
 

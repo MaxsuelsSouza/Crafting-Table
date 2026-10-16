@@ -1,7 +1,7 @@
 // @ts-check
 // Menções do comentário da dúvida (QuickPick do VS Code).
 const vscode = require('vscode');
-const jira = require('../../../infra/ticket').jira;
+const jira = require('../../../infra/provedores/fachada').jira;
 
 // Busca pessoas no Jira enquanto digita; Enter numa pessoa a menciona (Enter de novo remove), "Concluir" segue.
 // Devolve [{ id, nome }] (vazio = ninguém) ou undefined se cancelou.

@@ -1,7 +1,7 @@
 // @ts-check
 // Markdown do dossiê (dossie.md, que a IA e a aba Dossiê leem) e os rótulos de modo e de eixo. Os Incidentes usam paraMarkdown com rótulos próprios.
 const path = require('path');
-const tipoTicket = require('../tipo-ticket');
+const tipoTicket = require('../ticket/tipo-ticket');
 const { TRABALHO, REPRODUCAO } = require('./arquivos');
 
 const ROTULO_MODO = { executar: 'Executar (spec e tarefas aprovadas)', corrigir: 'Corrigir (incidente diagnosticado)', entender: 'Entender primeiro (sem refinamento)', perguntar: 'Perguntar (só o título)' };

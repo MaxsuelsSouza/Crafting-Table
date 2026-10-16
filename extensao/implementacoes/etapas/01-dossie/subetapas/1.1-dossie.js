@@ -6,16 +6,16 @@ const dossie = require('../../../../infra/dossie');
 const { CONTEXTO } = require('../../../estado');
 const { ambiente } = require('../../../orquestrador/ambiente');
 
-const ehDocumento = (t) => require('../../../../provedores/documento').ehDocumento(t);
+const ehDocumento = (t) => require('../../../../infra/provedores/documento').ehDocumento(t);
 
 async function prepararDossie(s, t) {
   const dir = s.pastaAba(t.id),
-    contexto = require('../../../../infra/contexto');
+    contexto = require('../../../../infra/ticket/contexto');
   s.cacheJira = s.cacheJira || {};
   let j = s.cacheJira[t.id];
   if (ehDocumento(t)) {
     await contexto.prepararDocumento(t);
-    j = s.cacheJira[t.id] = require('../../../../provedores/documento').buscarSync({ key: t.chave });
+    j = s.cacheJira[t.id] = require('../../../../infra/provedores/documento').buscarSync({ key: t.chave });
   } else if (!j && s.atualizarJira) {
     await s.atualizarJira(t.id);
     j = s.cacheJira[t.id];

@@ -2,7 +2,7 @@
 const aoVivo = require('../../componentes/ao-vivo');
 const cardCenario = require('../../componentes/card-cenario');
 const caixaEtapas = require('../../componentes/caixa-etapas');
-const { FC } = require('../../infra/marca');
+const { FC } = require('../../componentes/marca');
 
 // Bloco do topo da seção Evidências no QA: cartão do planejamento + Ao vivo. Botões vão ao painel (data-painel, grupo.js).
 const CSS = `<style>${caixaEtapas.CSS}${aoVivo.CSS}${cardCenario.CSS}

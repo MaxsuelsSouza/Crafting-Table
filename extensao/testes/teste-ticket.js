@@ -3,7 +3,7 @@
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
 const assert = require('assert');
-const { lerLink } = require('../provedores/jira');
+const { lerLink } = require('../infra/provedores/jira');
 const { esc } = require('../infra/texto');
 assert.deepStrictEqual(lerLink('https://ferreiracosta.atlassian.net/browse/WMS-123'), { id: 'WMS-123', chave: 'WMS-123', projeto: 'WMS', site: 'https://ferreiracosta.atlassian.net' });
 assert.strictEqual(lerLink(' https://x.atlassian.net/jira/software/projects/WMS/boards/1?selectedIssue=wms-9 ').id, 'WMS-9');
@@ -13,7 +13,7 @@ console.log('ok');
 
 // Abas: o mesmo ticket em Refinamento, Implementações e QA, cada uma com a sua pasta e as suas conversas.
 process.env.HOME = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'ct-'));
-const tk = require('../infra/tickets'), path = require('path');
+const tk = require('../infra/ticket/tickets'), path = require('path');
 tk.criar('https://x.atlassian.net/browse/WMS-7', { listas: ['refinamento', 'qa'] });
 assert.strictEqual(tk.pasta('WMS-7'), path.join(tk.RAIZ, 'WMS-7'));
 assert.strictEqual(tk.pasta('WMS-7', 'qa'), path.join(tk.RAIZ, 'WMS-7', 'qa'));

@@ -1,6 +1,6 @@
 // @ts-check
 const { esc } = require('../infra/texto');
-const { nomeProvedor } = require('../provedores');
+const { nomeProvedor } = require('../infra/provedores');
 const pill = require('./pill');
 
 // Componente "Vinculados": a caixa presa embaixo da lista de tickets (componentes/lista-tickets.js) com os tickets do Jira

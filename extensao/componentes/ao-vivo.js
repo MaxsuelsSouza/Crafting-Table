@@ -7,7 +7,7 @@ const { IC } = require('./icones');
 // da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js), nas Evidências do QA (qa/abas/evidencias/) e no Mergulho dos Incidentes (painel.js).
 // O log fica em <pasta>/.ao-vivo.jsonl ({ em, tipo, texto, detalhe? }); a caixa expandida é marcada por .ao-vivo.expandido.
 // Decisões do Claude (padrão do componente): linha tipo 'decisao' { texto: título, detalhe: motivo } também entra na aba Decisões da mesma pasta
-// (.decisoes.json, origem 'claude'). O maestro converte as linhas "DECISÃO: título | motivo" do Claude nesse tipo (painel/maestro.js).
+// (.decisoes.json, origem 'claude'). O maestro converte as linhas "DECISÃO: título | motivo" do Claude nesse tipo (infra/agentes/maestro/).
 // Conversas (padrão do componente): cada sessão do Claude que termina é anexada à aba Conversas do ticket/módulo da pasta (anexarConversa,
 // chamada pelo maestro ao fim de cada execução e antes de iniciar a próxima).
 // Pausar/retomar (padrão do componente): controle(rodando, { pausar, retomar }) → ⏸ enquanto o Claude trabalha, ▶ quando parado (ou nada, se o módulo
@@ -39,15 +39,15 @@ function registrarDecisao(dir, l) {
 function anexarConversa(dir, sid, titulo) {
   try {
     if (!sid) return false;
-    const ticket = require('../infra/tickets').vincularPorPasta(sid, dir);
+    const ticket = require('../infra/ticket/tickets').vincularPorPasta(sid, dir);
     if (!ticket) { // fora de pasta de ticket (Mapear com IA etc.): a aba Conversas lê esta lista (modulos/conversas.js listar)
-      const lista = path.join(require('../infra/area-ia').RAIZ, 'avulsas.txt');
+      const lista = path.join(require('../infra/agentes/area-ia').RAIZ, 'avulsas.txt');
       fs.mkdirSync(path.dirname(lista), { recursive: true });
       const ja = fs.existsSync(lista) && fs.readFileSync(lista, 'utf8').split('\n').includes(sid);
       if (!ja) fs.appendFileSync(lista, sid + '\n');
     }
     if (titulo) {
-      const raiz = path.join(require('os').homedir(), '.claude', 'projects'), chave = require('../infra/tickets').abaDaPasta(dir)?.chave;
+      const raiz = path.join(require('os').homedir(), '.claude', 'projects'), chave = require('../infra/ticket/tickets').abaDaPasta(dir)?.chave;
       const arq = fs.readdirSync(raiz).map((p) => path.join(raiz, p, `${sid}.jsonl`)).find((f) => fs.existsSync(f));
       if (arq) fs.appendFileSync(arq, (fs.readFileSync(arq, 'utf8').endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: chave ? `${chave} · ${titulo}` : titulo }) + '\n');
     }
@@ -94,7 +94,7 @@ const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO[x.tipo] || x.tipo) ===
 
 // Caixa pronta para a tela: últimas 40 linhas (ou tudo, se expandida), o botão Ver tudo/Recolher (alvo: 'qa' | 'spec' | 'mergulho') e o ⏸/▶ (controles).
 // c: { pausar?: data-acao do ⏸, retomar?: data-acao do ▶, dicaPausar?, dicaRetomar? }; b(acao) monta o atributo (padrão data-acao; o cabeçalho passa o seu).
-const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (c?.retomar && require('../painel/vigia').registrarPlay(c.retomar), !c ? '' : rodando
+const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (c?.retomar && require('../infra/agentes/vigia').registrarPlay(c.retomar), !c ? '' : rodando
   ? (c.pausar ? `<button class="ct-ico ct-pausa" ${b(c.pausar)} title="${esc(c.dicaPausar || 'Pausar: o Claude para e a etapa recomeça ao retomar')}">${IC.pausa}</button>` : '')
   : (c.retomar ? `<button class="ct-ico ct-play" ${b(c.retomar)} title="${esc(c.dicaRetomar || 'Retomar de onde parou')}">${IC.play}</button>` : ''));
 
@@ -173,17 +173,17 @@ const CSS = `
 
 // Pasta do Ao vivo do ticket que pode receber o ⚡: a que está rodando, senão a que já rodou nesta janela.
 const alvoRaio = (s, t) => {
-  const maestro = require('../painel/maestro');
+  const maestro = require('../infra/agentes/maestro');
   const dirs = [s.pasta(t.chave), s.pastaAba(t.id)].filter(Boolean);
   return dirs.find((d) => maestro.rodando(d) && maestro.podeInstruir(d)) || dirs.find((d) => maestro.podeInstruir(d));
 };
 
 // Ver tudo / Recolher (Evidências do QA ou aba Spec); servicos vem do painel.js.
 const acoes = (s) => ({
-  // ⚡ do cabeçalho: pede a instrução e a injeta na sessão do Claude que o Ao vivo está mostrando (painel/maestro.js instruir).
+  // ⚡ do cabeçalho: pede a instrução e a injeta na sessão do Claude que o Ao vivo está mostrando (infra/agentes/maestro/ instruir).
   // Sem sessão no Ao vivo, abre uma nova (maestro.rodar) na pasta do Ao vivo do módulo aberto, com a instrução como prompt.
   async raio() {
-    const t = s.ticketAberto(), maestro = require('./../painel/maestro'), vscode = require('vscode');
+    const t = s.ticketAberto(), maestro = require('../infra/agentes/maestro'), vscode = require('vscode');
     if (!t) return;
     const dir = alvoRaio(s, t);
     const texto = await vscode.window.showInputBox({ title: '⚡ Instrução direta ao Claude',
@@ -192,7 +192,7 @@ const acoes = (s) => ({
     if (dir) {
       if (!(await maestro.instruir(dir, texto))) vscode.window.showWarningMessage('Não consegui enviar: o Claude deste ticket foi iniciado em outra janela.');
     } else {
-      const novo = require('../infra/pastas').naRaiz() ? s.pasta(t.chave) : s.pastaAba(t.id);
+      const novo = require('../infra/ticket/pastas').naRaiz() ? s.pasta(t.chave) : s.pastaAba(t.id);
       if (!novo || !maestro.rodar(novo, { prompt: `[segundo plano · Crafting Table · ticket ${t.chave}] Instrução direta do usuário:\n${texto.trim()}`, titulo: 'Nova sessão · instrução', aoMudar: () => s.render() }))
         vscode.window.showWarningMessage('Não consegui abrir a sessão: já há um Claude rodando neste ticket em outra janela.');
       else anotar(novo, { tipo: 'voce', texto: texto.trim() });

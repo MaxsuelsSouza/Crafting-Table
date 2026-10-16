@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { esc } = require('../infra/texto');
 const { pagina, ESTILO_NOTAS } = require('./comandos').ui;
 const { icone } = require('../componentes/botao');
-const sessao = require('../infra/sessao');
+const sessao = require('../infra/ticket/sessao');
 const transcricao = require('../componentes/transcricao');
 
 // Conversas do Claude Code deste projeto e tudo o que cada uma deixou na máquina.
@@ -48,12 +48,12 @@ const contar = (dir) => { try { return fs.readdirSync(dir).filter((n) => !n.star
 function listar() {
   let nomes = [];
   // Com um ticket aberto no painel: só as conversas dele na aba em que foi aberto, de qualquer projeto.
-  const tk = require('../infra/tickets');
+  const tk = require('../infra/ticket/tickets');
   const doTicket = sessao.foco() && tk.ler(sessao.foco())?.conversas.filter((sid) => tk.listaDa(sid) === sessao.focoLista());
   if (doTicket) nomes = doTicket.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))));
   else try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { nomes = []; }
   if (!doTicket) { // sessões em segundo plano fora de pasta de ticket (anexarConversa): de qualquer projeto
-    let av = []; try { av = fs.readFileSync(path.join(require('../infra/area-ia').RAIZ, 'avulsas.txt'), 'utf8').split('\n').filter(Boolean); } catch {}
+    let av = []; try { av = fs.readFileSync(path.join(require('../infra/agentes/area-ia').RAIZ, 'avulsas.txt'), 'utf8').split('\n').filter(Boolean); } catch {}
     nomes = [...new Set([...nomes, ...av.map((sid) => `${sid}.jsonl`).filter((n) => fs.existsSync(historico(n.slice(0, -6))))])];
   }
   return nomes.map((n) => {
@@ -220,7 +220,7 @@ exports.provider = () => {
 
   return vscode.Disposable.from(
     sessao.onDidChange(() => render()),
-    require('../infra/grupo').registrar('claudeAbas.conversas', {
+    require('../painel/grupo').registrar('claudeAbas.conversas', {
       resolveWebviewView(v) {
         view = v;
         view.webview.options = { enableScripts: true };
@@ -233,8 +233,8 @@ exports.provider = () => {
 };
 
 // ── Vínculo com as conversas do Claude (ticket ↔ conversa) ──
-const { dirSpec } = require('../infra/spec');
-const { lerTexto, NOTAS } = require('../infra/pasta-ticket');
+const { dirSpec } = require('../infra/ticket/spec');
+const { lerTexto, NOTAS } = require('../infra/ticket/pasta-ticket');
 const jsonl = (sid) => historico(sid);
 function inicioDa(sid) {
   const t = (lerTexto(jsonl(sid)) || '').match(/"timestamp":"([^"]+)"/)?.[1];
@@ -242,7 +242,7 @@ function inicioDa(sid) {
 }
 // Conversa com histórico, aberta depois do pedido, que menciona a pasta do ticket (está no texto pré-preenchido).
 function localizarConversa(t) {
-  const tickets = require('../infra/tickets');
+  const tickets = require('../infra/ticket/tickets');
   let nomes;
   try { nomes = fs.readdirSync(projeto()).filter((n) => n.endsWith('.jsonl')); } catch { return null; }
   const desde = t.pedidoEm - 5000;
@@ -259,7 +259,7 @@ function titularConversa(sid, titulo, tentativas = 20) {
   const atual = fs.readFileSync(arq, 'utf8');
   fs.appendFileSync(arq, (atual.endsWith('\n') ? '' : '\n') + JSON.stringify({ type: 'custom-title', sessionId: sid, customTitle: titulo }) + '\n');
 }
-const ultimaConversa = (t) => require('../infra/claude').ultimaConversa(t, sessao.focoLista());
+const ultimaConversa = (t) => require('../infra/agentes/conversa').ultimaConversa(t, sessao.focoLista());
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
 const tituloConversa = (t, lista) => {
@@ -268,7 +268,7 @@ const tituloConversa = (t, lista) => {
   return [t.chave, etapa, t.titulo || t.documento?.nome].filter(Boolean).join(' · ');
 };
 const reconciliar = (s) => {
-  const tickets = require('../infra/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
+  const tickets = require('../infra/ticket/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
   let mudou = false;
   for (const t of tickets.listar()) {
     if (!t.pedidoEm) continue;
@@ -299,7 +299,7 @@ const pedido = (s, t) => {
   const refinamento = require('../refinamento/refinamento'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes'), qa = require('../qa/qa');
   return (sessao.focoLista() === refinamento.ID ? refinamento.pedidoConversa(s, t) // Refinamento: refinamento/conversa.js
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ [qa.ID]: qa.ETAPA_PEDIDO, [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ [qa.ID]: qa.ETAPA_PEDIDO, [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/ticket/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
       + esteiraArquivos(s, t)
@@ -307,7 +307,7 @@ const pedido = (s, t) => {
 };
 // Abre a conversa mais recente do ticket com o texto; sem conversa, abre uma nova e vincula quando a 1ª mensagem chegar.
 const abrirConversa = async (s, t, texto) => {
-  const tickets = require('../infra/tickets');
+  const tickets = require('../infra/ticket/tickets');
   const sid = ultimaConversa(t);
   if (sid) return vscode.commands.executeCommand('claude-vscode.editor.open', sid, texto);
   tickets.gravar({ ...tickets.ler(t.chave), pedidoEm: Date.now(), pedidoLista: sessao.focoLista() });

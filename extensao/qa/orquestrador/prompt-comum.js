@@ -2,9 +2,9 @@
 // Texto comum aos prompts do Claude em segundo plano (massa, cenário, pré-condição, análise do ambiente): skill, qa-state, regras e citações.
 const fs = require('fs');
 const path = require('path');
-const vagas = require('../../agentes/etapas');
+const vagas = require('../../infra/agentes/etapas');
 
-// Skill de cada etapa (Configurações > Plugins, agentes/etapas.js; padrão: ~/.claude/skills/testes-funcionais): ambiente (preparo e diagnóstico) e execução (massa e cenários).
+// Skill de cada etapa (Configurações > Plugins, infra/agentes/etapas.js; padrão: ~/.claude/skills/testes-funcionais): ambiente (preparo e diagnóstico) e execução (massa e cenários).
 const SKILL = () => vagas.pastaSkill('qa.execucao') || '';
 const SKILL_AMB = () => vagas.pastaSkill('qa.ambiente') || '';
 // ── Prompts do Claude em segundo plano (execução). A skill testes-funcionais é o método; as paradas dela viram registro.

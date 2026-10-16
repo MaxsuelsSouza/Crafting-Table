@@ -4,12 +4,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { sddState } = require('../../configuracao/configuracao');
-const vagas = require('../../agentes/etapas');
+const vagas = require('../../infra/agentes/etapas');
 
 // Marketplace de pasta (directory): o Claude resolve ${CLAUDE_PLUGIN_ROOT} para a pasta de origem, não para a cópia em plugins/cache
 // (installPath). A allowlist precisa dos dois caminhos, senão o sdd-state é negado no claude -p e a spec nunca nasce.
 const origensSdd = () => {
-  const id = require('../../agentes/etapas').escolha('refinamento.sdd');
+  const id = require('../../infra/agentes/etapas').escolha('refinamento.sdd');
   if (id.tipo !== 'plugin') return [];
   const [nome, mercado] = String(id.id).split('@');
   try {
@@ -32,7 +32,7 @@ const binsSdd = () => [
     ].filter(Boolean)
   )
 ];
-// Plugins de cada etapa (Configurações > Plugins, agentes/etapas.js). Padrão: "mapa" (mapeamento do código do passo 3) e "foco" (texto curto
+// Plugins de cada etapa (Configurações > Plugins, infra/agentes/etapas.js). Padrão: "mapa" (mapeamento do código do passo 3) e "foco" (texto curto
 // em tudo que o Claude escreve: regras + medição dos .md) moram na extensão e só o maestro carrega (--plugin-dir).
 const MAPA = () => vagas.raiz('refinamento.mapa') || '';
 // Sem Write/Edit em nenhuma execução: o que o Claude grava passa pelo refinamento-gravar (só .md da spec, constituição e memória do passo).

@@ -1,9 +1,9 @@
 // @ts-check
 const fs = require('fs');
 const path = require('path');
-const jira = require('../../../infra/ticket').jira;
-const tickets = require('../../../infra/tickets');
-const { pasta } = require('../../../infra/pasta-ticket');
+const jira = require('../../../infra/provedores/fachada').jira;
+const tickets = require('../../../infra/ticket/tickets');
+const { pasta } = require('../../../infra/ticket/pasta-ticket');
 const { notificar } = require('../../../painel/notificacoes');
 const { IMPACTOS, impactosDe } = require('../../locais');
 const { s } = require('../../orquestrador/servicos');

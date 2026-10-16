@@ -2,7 +2,7 @@
 // Botão Aprovar do passo (só o humano clica): confere o que falta decidir antes; a última aprovação anexa o refinamento.md.
 const vscode = require('vscode');
 const os = require('os');
-const maestro = require('../../../../painel/maestro');
+const maestro = require('../../../../infra/agentes/maestro');
 const { sddState } = require('../../../../configuracao/configuracao');
 const { tarefasDe, impactosDe, ticketDe, estadoSpec } = require('../../../locais');
 const mudancas = require('../../../etapas/comentarios/regras');

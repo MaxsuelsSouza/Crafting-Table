@@ -3,8 +3,8 @@
 // desfazer depois de aplicar; dar ciência.
 const vscode = require('vscode');
 const os = require('os');
-const maestro = require('../../../painel/maestro');
-const { nomeProvedor } = require('../../../provedores');
+const maestro = require('../../../infra/agentes/maestro');
+const { nomeProvedor } = require('../../../infra/provedores');
 const { dirSpec, IMPACTOS, impactosDe, ticketDe } = require('../../locais');
 const { snapshot, restaurar } = require('./snapshot');
 

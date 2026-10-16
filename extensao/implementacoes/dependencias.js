@@ -38,7 +38,7 @@ const deps = {
   // Anexos do ticket, pai e irmãos que parecem evidência → <aba>/evidencias-ticket (jira.baixarAnexo com as credenciais da extensão).
   coletarEvidencias: (dir, anexos, s) =>
     reproducao.coletarEvidencias(dir, anexos, (a) =>
-      require('../provedores').provedorAtivo().baixarAnexo(s.secrets, a)
+      require('../infra/provedores').provedorAtivo().baixarAnexo(s.secrets, a)
     ),
   salvarBranchPrincipal: async (caminho, nome) => {
     const c = require('../configuracao/configuracao'),

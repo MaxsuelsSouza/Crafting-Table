@@ -2,7 +2,7 @@
 
 // Módulo QA: tickets para testar (pela label de QA). Pasta do ticket: ~/.claude/tickets/<CHAVE>/qa/ (tickets.js).
 // Registro do módulo (formato de modelo-modulo/modulo.js): tudo que os pontos comuns (menu, lista, moldura, painel, rodapé, Evidências,
-// conversas, configuração, situação) precisam saber do QA vem daqui. Sem require no topo: infra/tickets.js e o menu carregam este arquivo
+// conversas, configuração, situação) precisam saber do QA vem daqui. Sem require no topo: infra/ticket/tickets.js e o menu carregam este arquivo
 // cedo; a lógica é carregada na hora do uso.
 //
 // Estrutura da pasta:
@@ -39,7 +39,7 @@ const ABAS = [
 // Variável do provedor que o módulo exige além das comuns (configuracao.js, pendências da caixa de vinculados).
 const EXIGE = ['etapasQA'];
 
-// Pill do card na lista (infra/situacao.js).
+// Pill do card na lista (infra/ticket/situacao.js).
 const situacao = (t) => require('./situacao').situacao(t);
 // Corpo das abas próprias (painel.js corpoAba); undefined = a aba não é do QA.
 const corpoAba = (aba, t, d, dir) =>

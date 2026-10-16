@@ -1,7 +1,7 @@
 // @ts-check
 // Pergunta do Claude respondida na aba (opção, outra resposta ou "Tirar dúvida").
 const vscode = require('vscode');
-const maestro = require('../../../../painel/maestro');
+const maestro = require('../../../../infra/agentes/maestro');
 const { estadoSpec } = require('../../../locais');
 const orq = require('../../../orquestrador');
 const { pasta } = require('../comum');

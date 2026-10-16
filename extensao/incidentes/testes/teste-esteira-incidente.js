@@ -44,8 +44,8 @@ globalThis.fetch = /** @type {any} */ (
   }
 );
 
-const tickets = require('../../infra/tickets'),
-  maestro = require('../../painel/maestro');
+const tickets = require('../../infra/ticket/tickets'),
+  maestro = require('../../infra/agentes/maestro');
 const mg = require('../abas/mergulho'),
   rep = require('../etapas/05-reproducao'),
   fluxo = require('../../componentes/fluxo-passos'),

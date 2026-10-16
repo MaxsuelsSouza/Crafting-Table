@@ -4,17 +4,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { esc } = require('../infra/texto');
-const jira = require('../infra/ticket').jira;
-const variaveis = require('../provedores/variaveis');
-const maestro = require('../painel/maestro');
-const banco = require('../plugins/mapa/lib/banco');
+const jira = require('../infra/provedores/fachada').jira;
+const variaveis = require('../infra/provedores/variaveis');
+const maestro = require('../infra/agentes/maestro');
+const banco = require('../infra/plugins/mapa/lib/banco');
 const { botao } = require('../componentes/botao');
 const menuAbas = require('../componentes/menu-abas');
 const cardConfig = require('./card-config');
 const { card, cardTeste, selo, linha, dica, acoes } = cardConfig;
 const conexao = require('./conexao');
-const etapas = require('../agentes/etapas');
-const { agenteAtivo } = require('../agentes');
+const etapas = require('../infra/agentes/etapas');
+const { agenteAtivo } = require('../infra/agentes');
 
 // Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre e um card por seção), com os cliques e os testes de cada seção.
 // Usado pelo painel.js: criar(ctx, ganchos) devolve { corpo, acoes, aberta, aba, checar }; o painel põe corpo() na página, espalha `acoes`
@@ -22,8 +22,8 @@ const { agenteAtivo } = require('../agentes');
 // cfgRepo*, cfgBanco*, cfgTeams*, pluginAlternar, atualizarExtensao. Cofre e Comandos são telas de outros módulos, com os
 // cliques prefixados (cofre:, comandos:, emulador:). Redesenhe quando mudar aba, valor salvo, resultado de um teste, comandos/terminais ou cofre.
 // Também guarda o que o painel lê das settings craftingTable.* (cfg, siteJira, projetoJira, reposAuto, SPECS_PADRAO), os plugins
-// (sddState) e o aviso de instalação (aviso). A aba Plugins só existe para agente com plugins (agentes/index.js); as etapas
-// e o plugin de cada uma vêm de agentes/etapas.js. Cliques dela: mkt*, plugin*, plug* (Editar → verificação por IA → Usar).
+// (sddState) e o aviso de instalação (aviso). A aba Plugins só existe para agente com plugins (infra/agentes/index.js); as etapas
+// e o plugin de cada uma vêm de infra/agentes/etapas.js. Cliques dela: mkt*, plugin*, plug* (Editar → verificação por IA → Usar).
 //   criar(ctx, { render, aoAbrir, voltar }): aoAbrir roda ao abrir (o painel solta o ticket aberto) · voltar = HTML da seta do cabeçalho
 //   tela(v): só o HTML; v: { aba, valores, estado: { agente, jira, board, specs, repos, banco, teams }, reposAuto, plugins, avisoInstalacao, versao, voltar }
 
@@ -65,7 +65,7 @@ const REPO = path.resolve(fs.realpathSync(__dirname), '..', '..');
 let avisoInstalacao = null; // { motivos: string[] } | null: o instalar.sh precisa rodar de novo (preenchido por conferirInstalacao)
 const aviso = () => avisoInstalacao;
 
-// Plugins só aparece para agente com plugins/marketplace (agentes/index.js).
+// Plugins só aparece para agente com plugins/marketplace (infra/agentes/index.js).
 const ABAS = (comPlugins = true) => [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, ...(comPlugins ? [{ id: 'plugins', nome: 'Plugins' }] : []), { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
 const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
 
@@ -644,7 +644,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         'A URL é uma senha: quem tiver consegue postar no chat. Vazou? Apague o fluxo e crie outro.'
       ].join('\n') }, ABRIR, TESTAR);
       if (r === ABRIR) acoes.cfgTeamsAbrir();
-      else if (r === TESTAR) { await require('../integracoes/teams').testar(ctx); checar(['teams']); }
+      else if (r === TESTAR) { await require('../infra/integracoes/teams').testar(ctx); checar(['teams']); }
     },
     cfgTeamsAbrir() { vscode.env.openExternal(vscode.Uri.parse('https://make.powerautomate.com/manage/flows')); },
     async cfgBancoLimpar() { await salvarCfg('bancoConexao', ''); await salvarCfg('bancoAmbiente', ''); checar(['banco']); },
@@ -701,7 +701,7 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
       checar(['repos']);
     },
   };
-  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plug: { ...plug, auto: cfg().get('pluginsAuto') !== false }, agente: agenteAtivo().nome, comPlugins: !!agp(), variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], valores: valoresCfg(), estado: cfgEstado, conexao: { ativo: { id: require('../provedores').provedorAtivo().id, nome: jira.nome }, trocando },
+  const corpo = () => tela({ aba: cfgAba, avisoInstalacao, versao: require('../package.json').version, voltar, plug: { ...plug, auto: cfg().get('pluginsAuto') !== false }, agente: agenteAtivo().nome, comPlugins: !!agp(), variaveis: cfgAba === 'variaveis' ? variaveis.todas() : [], valores: valoresCfg(), estado: cfgEstado, conexao: { ativo: { id: require('../infra/provedores').provedorAtivo().id, nome: jira.nome }, trocando },
     reposAuto: reposAuto(cfg().get('specsDir') || SPECS_PADRAO) });
   return { corpo, acoes, aberta: () => cfgAberta, aba: () => cfgAba, checar };
 };

@@ -1,6 +1,6 @@
 // @ts-check
-// O que um lote de alteração de massa pode ter (veio de infra/banco.js; só o QA escreve no banco).
-const lib = require('../../../../plugins/mapa/lib/banco');
+// O que um lote de alteração de massa pode ter (veio de infra/agentes/banco.js; só o QA escreve no banco).
+const lib = require('../../../../infra/plugins/mapa/lib/banco');
 
 // ── Alteração de massa (a única escrita no banco que a esteira de QA faz): lote proposto pela IA, aprovado por você e executado pela extensão ──
 const limpo = (sql) =>

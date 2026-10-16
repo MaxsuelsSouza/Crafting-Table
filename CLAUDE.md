@@ -33,7 +33,7 @@ Linha 3: **menu** (`menu-abas.js`): `Docs · Central · Ticket · Decisões | Co
 
 Em todas as telas do ticket: 🔔 **Notificações** e ▶ **Comandos**. Não é por módulo; o que um módulo acrescenta depois de Comandos vem do gancho `rodape(dir, acao)` do registro (hoje só o QA: caixa do Ambiente).
 
-### Vigia (global, `extensao/painel/vigia.js`)
+### Vigia (global, `extensao/infra/agentes/vigia.js`)
 
 Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo não precisa fazer nada.
 - Mais de 2 min só lendo/buscando, sem gravar nem executar: abre uma caixa com o que está acontecendo, 3 opções e "Outra resposta…"; a escolha vira instrução para o Claude.
@@ -43,6 +43,15 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 ### Pasta do módulo
 
 Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/`, `extensao/qa/` e `extensao/implementacoes/`.
+
+`infra/` é organizada por assunto, uma pasta por assunto (o que não tem tela):
+- `ticket/`: o ticket no disco e a conversa ligada a ele (`tickets.js`, `pasta-ticket.js`, `pastas.js`, `sessao.js`, `situacao.js`, `spec.js`, `contexto.js`…)
+- `dossie/`: o dossiê do ticket (Implementação e QA) e a régua de confiança
+- `provedores/`: a ferramenta de gestão de trabalho (contrato, `jira/`, documento, credenciais, variáveis) e a `fachada.js` que o resto da extensão usa
+- `agentes/`: o agente de IA (agente ativo, plugins e skills, vagas das etapas, `maestro/` = `claude -p`, `vigia.js`, área de escrita da IA, banco para a IA)
+- `integracoes/`: Teams (`teams/`) e a ponte com a skill testes-funcionais
+- `plugins/`: os plugins do Claude Code que a extensão passa por `--plugin-dir` (`mapa`, `foco`)
+- na raiz, só o que é geral e pequeno (`texto.js`, `controle.js`). Tela (CSS, folhas, host de views) não mora em `infra/`: vai para `componentes/` ou `painel/`.
 
 - `<modulo>.js`: o registro (ID, abas, ▶, ações, script, filtro da busca, artefatos da conversa…). Os pontos comuns leem daqui, sem `if` com regra do módulo. Sem `require` no topo (é carregado cedo).
   Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento e o QA): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `refinamento/ganchos-painel.js`, `qa/situacao.js`), o registro só repassa.

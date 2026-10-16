@@ -1,7 +1,7 @@
 // node teste-vigia.js: o observador global pergunta depois de BUSCA_MS só procurando e depois de mais de 3 cliques no ▶
 process.env.CRAFTING_VIGIA_BUSCA_MS = '1000';
 const assert = require('assert');
-const vigia = require('../painel/vigia');
+const vigia = require('../infra/agentes/vigia');
 let t = 0; const perguntas = [];
 vigia.configurar({ agora: () => t, perguntar: async (p) => { perguntas.push(p); return null; }, render: () => {} });
 (async () => {

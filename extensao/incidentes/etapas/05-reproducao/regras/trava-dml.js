@@ -1,6 +1,6 @@
 // @ts-check
 // Trava de prova da etapa 5 (usada na 5.2): só INSERT em linhas novas (Massa de Teste); a trava recusa DML que cite chave da Massa Real.
-const banco = require('../../../../plugins/mapa/lib/banco');
+const banco = require('../../../../infra/plugins/mapa/lib/banco');
 
 // ── Trava de prova: chaves da Massa Real = números de 4+ dígitos e códigos (strings com dígito, 4+ chars) do massa-real.sql.
 // ponytail: heurística por literal; chave curta (id de 1 a 3 dígitos) escapa. Troque por parse das colunas-chave se virar problema.

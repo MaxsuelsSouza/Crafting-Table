@@ -21,7 +21,7 @@ Module._load = (r, ...a) =>
       )
     : load(r, ...a);
 const orq = require('../orquestrador');
-const tickets = require('../../infra/tickets');
+const tickets = require('../../infra/ticket/tickets');
 const { NIVEL } = require('../etapas/comentarios');
 
 for (const n of [
@@ -83,7 +83,7 @@ assert.match(l[2].resumo, /aplicação/);
 assert.strictEqual(l[3].avisado, true, 'impacto resolvido é marcado como avisado (nível "nenhum" não notifica)');
 
 // Memória do passo: ajuste e respostas rodam em execução nova (continuar=false) e o prompt traz passo, artefato, memória e pedido.
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const chamadas = [];
 maestro.rodar = (p, o) => {
   chamadas.push(o);
@@ -96,7 +96,7 @@ assert.match(chamadas[0].prompt, /plan\.md/);
 assert.match(chamadas[0].prompt, /troque o índice/);
 assert.match(chamadas[0].prompt, /Não há memória/);
 assert.match(chamadas[0].prompt, /Ajuste \d{4}-\d\d-\d\d/);
-const area = require('../../infra/area-ia').areaIA(dir);
+const area = require('../../infra/agentes/area-ia').areaIA(dir);
 assert.strictEqual(orq.memoriaPasso(tk, 3), path.join(area, '.memoria-passo-3.md'));
 assert.ok(fs.existsSync(area), 'etapa cria a área da IA');
 assert.ok(chamadas[0].extras.includes(area), 'área da IA entra no --add-dir');

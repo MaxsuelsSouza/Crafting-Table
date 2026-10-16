@@ -7,7 +7,7 @@ const controle = require('../../../../infra/controle');
 const fluxo = require('../../../../componentes/fluxo-passos');
 const { lerJson } = require('../../../estado');
 const { GRAVAR, FLUXO, REGRAS, SKILL } = require('../regras/ferramentas');
-const vagas = require('../../../../agentes/etapas');
+const vagas = require('../../../../infra/agentes/etapas');
 const { SUBETAPAS, marcarSub, pausar } = require('./estado');
 
 const EVID = 'evidencias',

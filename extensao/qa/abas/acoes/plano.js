@@ -5,8 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const qa = require('../../motor');
 const aoVivo = require('../../../componentes/ao-vivo');
-const sessao = require('../../../infra/sessao');
-const jira = require('../../../infra/ticket').jira;
+const sessao = require('../../../infra/ticket/sessao');
+const jira = require('../../../infra/provedores/fachada').jira;
 const { docLocal, depsPublicar } = require('./dependencias');
 const { gerarPlano } = require('./gerar-plano');
 const acoes = (s) => require('.').acoes(s); // ciclo: o index junta este arquivo
@@ -23,7 +23,7 @@ const plano = (s) => ({
   qaPlanoMencionar() {
     const t = s.ticketAberto(),
       v = t && qa.versaoAtual(s.pastaAba(t.id));
-    if (v) require('../../../infra/claude').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`);
+    if (v) require('../../../infra/agentes/conversa').mencionar(`@${path.join(s.pastaAba(t.id), v.arquivo)}`);
   },
   // Aprovar: plano só local (publicarPendente) é publicado agora, depois do modal; plano que já veio do provedor só aprova.
   async qaPlanoAprovar() {

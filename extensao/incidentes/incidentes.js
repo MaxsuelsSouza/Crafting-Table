@@ -2,7 +2,7 @@
 
 // Módulo Incidentes: tickets do tipo de incidente abertos do board das configurações (de qualquer responsável). Pasta do ticket: ~/.claude/tickets/<CHAVE>/incidentes/ (tickets.js).
 // Registro do módulo (formato de modelo-modulo/modulo.js): tudo que os pontos comuns (lista, moldura, painel, conversas, configuração) precisam saber
-// do Incidente vem daqui. Sem require no topo: infra/tickets.js e o menu carregam este arquivo cedo; a lógica é carregada na hora do uso.
+// do Incidente vem daqui. Sem require no topo: infra/ticket/tickets.js e o menu carregam este arquivo cedo; a lógica é carregada na hora do uso.
 //
 // Estrutura da pasta:
 //   incidentes.js     este registro
@@ -55,7 +55,7 @@ const ARQUIVOS_CONVERSA = {
     'resumo.md'
   ]
 };
-// Pill do card na lista (infra/situacao.js): estado lido de .mergulho.json.
+// Pill do card na lista (infra/ticket/situacao.js): estado lido de .mergulho.json.
 const SITUACAO = { arquivo: '.mergulho.json', rotulo: 'Investigando' };
 
 // Busca dos vinculados (painel/lista.js): só os boards das configurações e só os tipos de incidente (variável tipoIncidente).

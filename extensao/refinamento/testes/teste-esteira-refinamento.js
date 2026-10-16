@@ -46,8 +46,8 @@ Module._load = (r, ...a) =>
       )
     : load(r, ...a);
 
-const tickets = require('../../infra/tickets');
-const maestro = require('../../painel/maestro');
+const tickets = require('../../infra/ticket/tickets');
+const maestro = require('../../infra/agentes/maestro');
 const orq = require('../orquestrador');
 const spec = require('../abas/spec');
 const locais = require('../locais');
@@ -388,7 +388,7 @@ function gravador() {
   assert.ok(!fs.existsSync(path.join(base, 'fora.md')) && !fs.existsSync(path.join(base, 'spec', estado)));
   assert.notStrictEqual(grava('spec.md', '', { ...env, REFINAMENTO_DIR: '' }).status, 0, 'sem destino: recusa');
   // Foco: gravou grande demais ⇒ exit 2 com o aviso devolvido ao Claude
-  const foco = path.join(__dirname, '..', '..', 'plugins', 'foco', 'hooks', 'medir.js');
+  const foco = path.join(__dirname, '..', '..', 'infra', 'plugins', 'foco', 'hooks', 'medir.js');
   if (fs.existsSync(foco)) {
     const longo = `${'Vale ressaltar que, basicamente, em suma, de forma geral isto é assim. '.repeat(400)}\n`;
     const r = grava('spec.md', longo, { ...env, REFINAMENTO_FOCO: foco });

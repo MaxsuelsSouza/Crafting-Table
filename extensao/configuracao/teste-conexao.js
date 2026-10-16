@@ -6,7 +6,7 @@ const Module = /** @type {any} */ (require('module')); const load = Module._load
 Module._load = (r, ...a) => (r === 'vscode' ? {} : load(r, ...a));
 const conexao = require('./conexao');
 const cfg = require('./configuracao');
-const variaveis = require('../provedores/variaveis');
+const variaveis = require('../infra/provedores/variaveis');
 const { listaProvedores, montarEntrada, montarPrompt, validarSaida, filtrarValores, semSegredos } = conexao._teste;
 
 // Provedores: "disponível" vem do registro, não de uma lista fixa.

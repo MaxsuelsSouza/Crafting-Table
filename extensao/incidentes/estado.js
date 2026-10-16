@@ -3,7 +3,7 @@
 // Comum a todas as etapas e à aba Mergulho. Contrato dos artefatos: incidentes/CONTRATO.md.
 const fs = require('fs');
 const path = require('path');
-const maestro = require('../painel/maestro');
+const maestro = require('../infra/agentes/maestro');
 const { ETAPAS } = require('./etapas');
 
 const ESTADO = '.mergulho.json',

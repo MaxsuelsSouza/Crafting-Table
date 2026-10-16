@@ -1,6 +1,6 @@
 // @ts-check
 // Etapas da esteira de Implementação, na ordem em que rodam. Fonte única: o orquestrador, as abas e as Configurações > Plugins
-// (agentes/etapas.js) leem daqui. Só dados (sem require de lógica): agentes/etapas.js carrega este arquivo cedo.
+// (infra/agentes/etapas.js) leem daqui. Só dados (sem require de lógica): infra/agentes/etapas.js carrega este arquivo cedo.
 //   n, nome, arq   número, nome na caixa de etapas e o artefato que prova que a etapa terminou (ARQ: os artefatos das etapas 2 a 7)
 //   vaga           plugin/skill que a etapa usa (VAGAS abaixo; null = só o prompt da extensão)
 //   obs            nota da etapa em Configurações > Plugins
@@ -27,8 +27,8 @@ const ETAPAS = [
   { n: 7, nome: 'Resumo', arq: ARQ[7], vaga: null }
 ];
 
-// Vaga da Implementação em Configurações > Plugins (agentes/etapas.js junta com as dos outros módulos).
-const LOCAL = (n) => path.join(__dirname, '..', '..', 'plugins', n);
+// Vaga da Implementação em Configurações > Plugins (infra/agentes/etapas.js junta com as dos outros módulos).
+const LOCAL = (n) => path.join(__dirname, '..', '..', 'infra', 'plugins', n);
 const VAGAS = {
   'impl.mapa': {
     padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') },

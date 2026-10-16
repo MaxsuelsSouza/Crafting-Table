@@ -1,6 +1,6 @@
 // @ts-check
 // ⏸ manual: cancela a rodada, para o Claude e a verificação em andamento e grava a pausa "manual" (a etapa recomeça ao retomar).
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const controle = require('../../infra/controle');
 const { filhos } = require('../dependencias');
 const { estado, pausar } = require('../estado');

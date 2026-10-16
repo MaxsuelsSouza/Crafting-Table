@@ -1,7 +1,7 @@
 // @ts-check
 // Aprovar: card de dev vira subtarefa (ou item, no papel "quebrar"); o card [QA] cria ou atualiza a subtarefa de QA com o plano.
 const vscode = require('vscode');
-const jira = require('../../../../infra/ticket').jira;
+const jira = require('../../../../infra/provedores/fachada').jira;
 const { TAREFAS, lerTexto, tarefasDe } = require('../../../locais');
 const { ondeNome, filhoDe, respNome } = require('../rotulos');
 const { QA_EXISTENTE, descricaoJira } = require('../jira');

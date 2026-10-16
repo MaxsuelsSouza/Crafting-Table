@@ -8,18 +8,18 @@ const path = require('path');
 // Parte com efeito (conectar, mapear): usa o vscode, o SecretStorage e o maestro (claude -p). O token NUNCA vai para a IA:
 // a IA só lê entrada.json (metadados da conta + definições das variáveis) e grava saida.json.
 
-// Provedores conhecidos (o que a tela lista). `disponivel` não é fixo: vem de haver adaptador no registro (provedores/index.js ADAPTADORES).
+// Provedores conhecidos (o que a tela lista). `disponivel` não é fixo: vem de haver adaptador no registro (infra/provedores/index.js ADAPTADORES).
 const CATALOGO = [
   { id: 'jira', nome: 'Jira', sigla: 'J' }, { id: 'monday', nome: 'Monday', sigla: 'M' }, { id: 'linear', nome: 'Linear', sigla: 'L' },
   { id: 'notion', nome: 'Notion', sigla: 'N' }, { id: 'clickup', nome: 'ClickUp', sigla: 'C' }, { id: 'azure', nome: 'Azure DevOps', sigla: 'A' }
 ];
 /** Lista da tela: o catálogo com `disponivel` = existe adaptador em `adaptadores` (padrão: o registro real); os demais são "em breve". */
-const listaProvedores = (adaptadores = require('../provedores').ADAPTADORES) => CATALOGO.map((p) => ({ ...p, disponivel: typeof adaptadores[p.id] === 'function' }))
+const listaProvedores = (adaptadores = require('../infra/provedores').ADAPTADORES) => CATALOGO.map((p) => ({ ...p, disponivel: typeof adaptadores[p.id] === 'function' }))
   .sort((a, b) => Number(b.disponivel) - Number(a.disponivel));
 
 // ── Mapeamento por IA ──
-// Fora de ~/.claude: o Claude Code nega escrita lá no claude -p (infra/area-ia.js).
-const pastaMapeamento = () => path.join(require('../infra/area-ia').RAIZ, 'mapeamento');
+// Fora de ~/.claude: o Claude Code nega escrita lá no claude -p (infra/agentes/area-ia.js).
+const pastaMapeamento = () => path.join(require('../infra/agentes/area-ia').RAIZ, 'mapeamento');
 const norm = (x) => String(x ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const SEGREDO = /token|senha|password|secret|authorization|credencia/i;
 /** Copia o objeto sem nenhuma chave que pareça segredo (defesa: a entrada da IA nunca leva credencial). */
@@ -121,8 +121,8 @@ const TEMPO_MAX = 5 * 60 * 1000;
 
 /** Roda o mapeamento: descobre, grava a entrada, roda o claude -p e oferece as variáveis. `aoTerminar` redesenha a tela. */
 async function mapear(ctx, { aoTerminar = () => {} } = {}) {
-  const vscode = require('vscode'), maestro = require('../painel/maestro'), variaveis = require('../provedores/variaveis');
-  const { provedorAtivo } = require('../provedores');
+  const vscode = require('vscode'), maestro = require('../infra/agentes/maestro'), variaveis = require('../infra/provedores/variaveis');
+  const { provedorAtivo } = require('../infra/provedores');
   const provedor = provedorAtivo(), pasta = pastaMapeamento();
   const site = String(variaveis.ler('site') || '');
   if (!site || !(await provedor.conectado(ctx.secrets))) return vscode.window.showWarningMessage(`Conecte ao ${provedor.nome} antes de mapear.`);
@@ -166,8 +166,8 @@ async function mapear(ctx, { aoTerminar = () => {} } = {}) {
 
 /** Conecta a um provedor: pede os campos, grava craftingTable.provedor e testa a conexão (eu). Devolve { nome } ou null. */
 async function conectar(ctx, id) {
-  const vscode = require('vscode'), variaveis = require('../provedores/variaveis'), credenciais = require('../provedores/credenciais');
-  const { ADAPTADORES } = require('../provedores');
+  const vscode = require('vscode'), variaveis = require('../infra/provedores/variaveis'), credenciais = require('../infra/provedores/credenciais');
+  const { ADAPTADORES } = require('../infra/provedores');
   if (typeof ADAPTADORES[id] !== 'function') return null;
   const provedor = ADAPTADORES[id]();
   const campoSite = provedor.camposCredencial.find((c) => c.variavel === 'site');

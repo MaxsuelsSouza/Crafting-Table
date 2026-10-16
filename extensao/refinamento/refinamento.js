@@ -1,7 +1,7 @@
 // @ts-check
 
 // Módulo Refinamento: a spec SDD do ticket (passos 0 a 6), dirigida pela extensão. É a pasta raiz do ticket (~/.claude/tickets/<CHAVE>/,
-// tickets.REFINAMENTO); a spec mora no repositório de specs (infra/spec.js).
+// tickets.REFINAMENTO); a spec mora no repositório de specs (infra/ticket/spec.js).
 // Registro do módulo (formato de modelo-modulo/modulo.js): tudo que os pontos comuns (lista, moldura, painel, conversas, situação, menu)
 // precisam saber do Refinamento vem daqui. Sem require no topo: o menu, a situação e a lista carregam este arquivo cedo; a lógica é
 // carregada na hora do uso.
@@ -10,7 +10,7 @@
 //   refinamento.js     este registro
 //   ganchos-painel.js  o que o painel comum pede ao Refinamento (dados das abas, conferência, observar a spec, cabeçalho)
 //   estado.js          modo e papel em .ticket.json (refinamento.*) e a pill do card
-//   locais.js          nomes e leitores do módulo; repassa infra/pasta-ticket.js e infra/spec.js
+//   locais.js          nomes e leitores do módulo; repassa infra/ticket/pasta-ticket.js e infra/ticket/spec.js
 //   conversa.js        pedido da conversa aberta pelo ✦
 //   hierarquia.js      papel do tipo de ticket (quebrar, desenvolver, executar)
 //   pacote.js          monta o refinamento.md
@@ -40,7 +40,7 @@ const ABAS = [
 
 // Modo refinamento ligado (card da lista e cabeçalho).
 const emRefino = (t) => require('./estado').emRefino(t);
-// Pill do card na lista (infra/situacao.js): o modo em .ticket.json.
+// Pill do card na lista (infra/ticket/situacao.js): o modo em .ticket.json.
 const situacao = (t) => require('./estado').situacaoCard(t);
 // Pedido da conversa aberta pelo ticket (modulos/conversas.js).
 const pedidoConversa = (s, t) => require('./conversa').pedidoConversa(s, t);

@@ -41,13 +41,13 @@ global.fetch = /** @type {any} */ (
 const qa = require('../motor'),
   entrada = require('../entrada'),
   { acoes, botaoPlay } = require('../abas/acoes');
-const maestro = require('../../painel/maestro'),
-  vagas = require('../../agentes/etapas'),
-  tickets = require('../../infra/tickets');
-const prov = require('../../provedores/documento'),
-  { areaIA } = require('../../infra/area-ia');
+const maestro = require('../../infra/agentes/maestro'),
+  vagas = require('../../infra/agentes/etapas'),
+  tickets = require('../../infra/ticket/tickets');
+const prov = require('../../infra/provedores/documento'),
+  { areaIA } = require('../../infra/agentes/area-ia');
 const { sincronizar, iniciarCenario } = qa._teste;
-require('../../infra/sessao').focoLista = () => 'qa';
+require('../../infra/ticket/sessao').focoLista = () => 'qa';
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const novoDir = () => {
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-e-')),

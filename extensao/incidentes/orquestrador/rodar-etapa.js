@@ -3,7 +3,7 @@
 // Ao terminar, apos-etapa.js confere o resultado.
 const fs = require('fs');
 const path = require('path');
-const maestro = require('../../painel/maestro');
+const maestro = require('../../infra/agentes/maestro');
 const { ETAPAS, logica } = require('../etapas');
 const { mudar, PAUSA } = require('../estado');
 const { pausar } = require('./pausar');

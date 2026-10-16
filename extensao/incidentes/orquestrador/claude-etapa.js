@@ -1,7 +1,7 @@
 // @ts-check
 // Opções do `claude -p` de uma etapa de 1 a 4 (maestro.rodar): prompt, banco, ferramentas, env do mapa-db, plugins e pastas liberadas.
 const path = require('path');
-const vagas = require('../../agentes/etapas'); // plugin de cada etapa (Configurações > Plugins)
+const vagas = require('../../infra/agentes/etapas'); // plugin de cada etapa (Configurações > Plugins)
 const { ETAPAS } = require('../etapas');
 const { prompt, FERRAMENTAS } = require('../prompt');
 

@@ -1,5 +1,5 @@
 // @ts-check
-const variaveis = require('../provedores/variaveis');
+const variaveis = require('../infra/provedores/variaveis');
 
 // Hierarquia dos tipos de ticket (Épico > Feature > História > Subtarefa…). O que cada tipo gera ao ser refinado mora nas variáveis
 // tiposQuebrar (do mais alto ao mais baixo), tiposDesenvolver e tiposExecutar; o código nunca assume nome de tipo. Tipo que não está em

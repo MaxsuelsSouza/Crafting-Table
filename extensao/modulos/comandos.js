@@ -238,7 +238,7 @@ exports.provider = (ctx) => {
       const b = achar(id);
       const shell = await terminalDe(b)?.processId;
       const pids = shell ? (await descendentes(shell)).map((p) => p.pid) : [];
-      require('../infra/claude').mencionar(`[Comando "${b.nome}" da Crafting Table · comando: \`${b.comando}\` · pasta: ${b.pasta} · ${shell ? `rodando no terminal "${b.nome}" (shell PID ${shell}${pids.length ? `, processos ${pids.join(', ')}` : ''})` : 'parado'}]`);
+      require('../infra/agentes/conversa').mencionar(`[Comando "${b.nome}" da Crafting Table · comando: \`${b.comando}\` · pasta: ${b.pasta} · ${shell ? `rodando no terminal "${b.nome}" (shell PID ${shell}${pids.length ? `, processos ${pids.join(', ')}` : ''})` : 'parado'}]`);
     },
     mostrar: ({ id }) => terminalDe(achar(id))?.show(),
     parar: ({ id }) => terminalDe(achar(id))?.dispose()

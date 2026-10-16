@@ -1,8 +1,8 @@
 // @ts-check
 // 3.1 Mapeamento do código: grava mapa-backend.md/mapa-mobile.md na pasta da spec, sem plan.md e sem concluir.
-const { pasta } = require('../../../../infra/pasta-ticket');
+const { pasta } = require('../../../../infra/ticket/pasta-ticket');
 const { anotar } = require('../../../../componentes/ao-vivo');
-const vagas = require('../../../../agentes/etapas');
+const vagas = require('../../../../infra/agentes/etapas');
 const { dirSpec, ticketDe } = require('../../../locais');
 const { estadoDe } = require('../../../estado');
 const { etapa } = require('../../../orquestrador/etapa');

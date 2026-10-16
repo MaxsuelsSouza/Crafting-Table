@@ -4,8 +4,8 @@ const vscode = require('vscode');
 const path = require('path');
 const qa = require('../../motor');
 const aoVivo = require('../../../componentes/ao-vivo');
-const sessao = require('../../../infra/sessao');
-const jira = require('../../../infra/ticket').jira;
+const sessao = require('../../../infra/ticket/sessao');
+const jira = require('../../../infra/provedores/fachada').jira;
 const { docLocal, depsPublicar } = require('./dependencias');
 const acoes = (s) => require('.').acoes(s); // ciclo: o index junta este arquivo
 

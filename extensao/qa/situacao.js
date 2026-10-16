@@ -1,9 +1,9 @@
 // @ts-check
-// Pill do card do QA na lista (infra/situacao.js chama pelo registro, qa.situacao): fase do planejamento e a execução, lidas do .qa.json.
+// Pill do card do QA na lista (infra/ticket/situacao.js chama pelo registro, qa.situacao): fase do planejamento e a execução, lidas do .qa.json.
 // Devolve { texto, cor, dica } ou null (QA ainda não iniciado para o ticket).
 const fs = require('fs');
 const path = require('path');
-const tickets = require('../infra/tickets');
+const tickets = require('../infra/ticket/tickets');
 
 const lerJson = (f) => {
   try {

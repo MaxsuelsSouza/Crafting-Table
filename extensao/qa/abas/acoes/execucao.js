@@ -2,7 +2,7 @@
 // ▶ do QA, Dar início/Retomar, ⏸ e ↻ Refazer massa.
 const vscode = require('vscode');
 const qa = require('../../motor');
-const sessao = require('../../../infra/sessao');
+const sessao = require('../../../infra/ticket/sessao');
 const { EVID, filhosDe, depsQa } = require('./dependencias');
 const { gerarPlano } = require('./gerar-plano');
 const acoes = (s) => require('.').acoes(s); // ciclo: o index junta este arquivo

@@ -38,12 +38,12 @@ global.fetch = /** @type {any} */ (
   }
 );
 
-const prov = require('../../provedores/documento'),
-  tickets = require('../../infra/tickets');
+const prov = require('../../infra/provedores/documento'),
+  tickets = require('../../infra/ticket/tickets');
 const qa = require('../motor'),
   { acoes } = require('../abas/acoes');
-const maestro = require('../../painel/maestro');
-require('../../infra/sessao').focoLista = () => 'qa';
+const maestro = require('../../infra/agentes/maestro');
+require('../../infra/ticket/sessao').focoLista = () => 'qa';
 
 const PLANO =
   '## Cenários de Teste\n\n#### CT01 – Separar pedido\n\n**Dado que** o pedido existe\n**Quando** separa\n**Então** conclui\n\n#### CT02 – Pedido vazio\n\n**Dado que** vazio\n';
@@ -64,7 +64,7 @@ const PLANO =
     pedirSecao: () => {},
     reposDe: () => []
   };
-  const jira = require('../../infra/ticket').jira;
+  const jira = require('../../infra/provedores/fachada').jira;
   assert.ok(jira.ehDocumento(t) && qa.ehLocal(dir));
 
   // ▶ sem plano: sem_plano, sem erro, sem rede
@@ -74,7 +74,7 @@ const PLANO =
   assert.ok(h.includes('salva no documento') && !h.includes('no Jira'));
 
   // Criar planejamento: o Claude (stub) escreve qa-plano.md na área da IA; a extensão publica a subtarefa local.
-  const { areaIA } = require('../../infra/area-ia');
+  const { areaIA } = require('../../infra/agentes/area-ia');
   let promptVisto = '';
   maestro.rodando = () => false;
   maestro.rodar = (d, o) => {
