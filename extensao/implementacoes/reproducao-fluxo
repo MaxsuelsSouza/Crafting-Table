@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // reproducao-fluxo: o Claude da etapa Reprodução da esteira de Implementação registra os cenários e o andamento por aqui.
-// A pasta da aba vem em IMPLEMENTACAO_DIR (a extensão passa). Mesmo registro do fluxo dos Incidentes (incidentes/fluxo.js). Uso:
+// A pasta da aba vem em IMPLEMENTACAO_DIR (a extensão passa). Mesmo registro do fluxo dos Incidentes (componentes/fluxo-passos.js). Uso:
 //   reproducao-fluxo plano <<'FIM' [{"titulo":"Abrir o módulo Separação","texto":"o que fazer e o que esperar"}, …] FIM
 //   reproducao-fluxo iniciar P01
 //   reproducao-fluxo acao P01 "<comando exato que repete o passo>"
 //   reproducao-fluxo evidencia P01 /tmp/print.png   (origem: /tmp ou a pasta da aba, ex.: evidencias-ticket/KAN-1-print.png)
 //   reproducao-fluxo concluir P01 passou|falhou|bloqueado --nota "o que foi visto"   (falhou = o erro aconteceu)
 //   reproducao-fluxo status
-const fluxo = require('../incidentes/fluxo');
+const fluxo = require('../componentes/fluxo-passos');
 const dir = process.env.IMPLEMENTACAO_DIR;
 const [cmd, id, ...resto] = process.argv.slice(2);
 const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };

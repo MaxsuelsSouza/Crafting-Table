@@ -6,19 +6,26 @@
 // Só aceita os nomes do contrato (incidentes/CONTRATO.md); qualquer outro caminho é recusado.
 const fs = require('fs');
 const path = require('path');
-const { origemPermitida } = require('./origem');
+const { origemPermitida } = require('../../infra/origem');
 const dir = process.env.MERGULHO_DIR;
 const [nome, flag, origem] = process.argv.slice(2);
-const sair = (msg, code = 1) => { console[code ? 'error' : 'log'](msg); process.exit(code); };
-const PERMITIDO = /^([1-4]-[a-z-]+\.md|massa-(real|teste)\.sql|resumo\.md|\.pausa\.json|\.reproducao-claude\.json|evidencias\/[\w.-]+\.(png|mp4|webm|gif))$/;
+const sair = (msg, code = 1) => {
+  console[code ? 'error' : 'log'](msg);
+  process.exit(code);
+};
+const PERMITIDO =
+  /^([1-4]-[a-z-]+\.md|massa-(real|teste)\.sql|resumo\.md|\.pausa\.json|\.reproducao-claude\.json|evidencias\/[\w.-]+\.(png|mp4|webm|gif))$/;
 if (!dir) sair('mergulho-gravar: MERGULHO_DIR não definida (rode pelo Mergulho na Crafting Table)');
 if (!nome || !PERMITIDO.test(nome)) sair(`mergulho-gravar: nome não permitido: ${nome || '(vazio)'}`);
 try {
   const destino = path.join(dir, nome);
   fs.mkdirSync(path.dirname(destino), { recursive: true });
   if (flag === '--de') {
-    if (!origemPermitida(dir, origem)) sair(`mergulho-gravar: origem não permitida (só /tmp ou a pasta da aba): ${origem || '(vazia)'}`);
+    if (!origemPermitida(dir, origem))
+      sair(`mergulho-gravar: origem não permitida (só /tmp ou a pasta da aba): ${origem || '(vazia)'}`);
     fs.copyFileSync(origem, destino);
   } else fs.writeFileSync(destino, fs.readFileSync(0));
   sair(`gravado: ${nome}`, 0);
-} catch (e) { sair(`mergulho-gravar: ${e.message}`); }
+} catch (e) {
+  sair(`mergulho-gravar: ${e.message}`);
+}

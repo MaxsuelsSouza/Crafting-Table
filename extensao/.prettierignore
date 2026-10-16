@@ -1,0 +1,5 @@
+# Formatador só na pasta do módulo Incidentes (npm run formatar). O resto da extensão fica como está.
+/*
+!/incidentes/
+!/.prettierrc.json
+incidentes/**/*.md

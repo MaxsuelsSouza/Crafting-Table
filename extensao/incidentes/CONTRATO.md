@@ -1,11 +1,11 @@
 # Contrato dos artefatos do Mergulho (Incidente)
 
 Pasta da aba: `~/.claude/tickets/<CHAVE>/incidentes/`. A extensão apaga o arquivo da etapa antes de rodar e confere, depois, que ele existe e não está vazio.
-Quem grava: o Claude só por `mergulho-gravar` (nomes permitidos) e `mergulho-fluxo`; o resto é da extensão.
+Quem grava: o Claude só por `bin/mergulho-gravar` (nomes permitidos) e `bin/mergulho-fluxo`; o resto é da extensão. Lógica de cada etapa: `etapas/NN-*.js`.
 
 | Arquivo | Quem grava | Para quê |
 |---|---|---|
-| `entrada.json` / `entrada.md` | extensão (`dossie.montarIncidente`, início da etapa 1) | relato, evidências e ambiente com a confiança de cada fonte (aprovado, gerado, bruto, verbal, ausente); `modo` investigar/perguntar; `exigeAprovacaoInicial` |
+| `entrada.json` / `entrada.md` | extensão (`entrada.js`, início da etapa 1) | relato, evidências e ambiente com a confiança de cada fonte (aprovado, gerado, bruto, verbal, ausente); `modo` investigar/perguntar; `exigeAprovacaoInicial` |
 | `.jira-contexto.md` | extensão | descrição, subtarefas, comentários (e o documento) em texto |
 | `1-triagem.md` … `4-diagnostico.md` | Claude | uma por etapa; terminam com "Origem das afirmações" e "Lacunas" (pedido no prompt) |
 | `massa-real.sql` | Claude (etapa 3) | a prova; sem ela a etapa 3 deve registrar "Pendência: massa real" em `3-dados-logs.md` ou a extensão pausa (`massa`) |

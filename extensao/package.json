@@ -305,9 +305,12 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "@types/vscode": "^1.80.0",
+    "prettier": "3.3.3",
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "tipos": "tsc -p jsconfig.json"
+    "tipos": "tsc -p jsconfig.json",
+    "formatar": "prettier --write incidentes incidentes/bin/*",
+    "formatar:conferir": "prettier --check incidentes incidentes/bin/*"
   }
 }

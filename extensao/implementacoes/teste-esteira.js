@@ -16,7 +16,7 @@ globalThis.fetch = /** @type {any} */ (() => { throw new Error('REDE: fetch'); }
 
 const tickets = require('../infra/tickets');
 const maestro = require('../painel/maestro');
-const controle = require('../incidentes/controle');
+const controle = require('../infra/controle');
 const esteira = require('./esteira');
 const dossie = require('./dossie');
 const prompts = require('./prompts');
@@ -317,7 +317,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
 
   // ═══ 12. Ticket do tipo Bug: a Reprodução vem antes do Entendimento; falhou + evidência confirma, sem isso pausa ═══
   {
-    const fluxo = require('../incidentes/fluxo'), reproducao = require('./reproducao');
+    const fluxo = require('../componentes/fluxo-passos'), reproducao = require('./reproducao');
     assert.strictEqual(dossie.ehBug('Bug'), true); assert.strictEqual(dossie.ehBug('Defeito'), true); assert.strictEqual(dossie.ehBug('Story'), false);
     const jira = { key: 'X', tipo: 'Bug', resumo: 'x', descricao: '<p>Ao cancelar a nota o sistema trava e mostra erro 500 na tela de baixa</p>', comentarios: [], subtarefas: [],
       anexos: [{ id: '7', nome: 'erro.png', url: 'u', de: 'PAI-1' }, { id: '8', nome: 'planilha.xlsx', url: 'u' }] };

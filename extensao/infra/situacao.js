@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const tickets = require('./tickets');
+const inc = require('../incidentes/incidentes');
 
 const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -33,7 +34,7 @@ function situacaoDe(t, modulo) {
       : m === 'aguardando_inicio' ? { texto: 'Preparando spec', cor: 'ia', dica: '' } : null;
   }
   if (modulo === 'impl') { const e = lerJson(path.join(dir('impl'), '.esteira.json')); return e ? etapas(e, 'Implementando') : null; }
-  if (modulo === 'incidentes') { const e = lerJson(path.join(dir('incidentes'), '.mergulho.json')); return e ? etapas(e, 'Investigando') : null; }
+  if (modulo === inc.ID) { const e = lerJson(path.join(dir(inc.ID), inc.SITUACAO.arquivo)); return e ? etapas(e, inc.SITUACAO.rotulo) : null; }
   if (modulo === 'qa') {
     const q = lerJson(path.join(dir('qa'), '.qa.json'));
     if (!q) return null;

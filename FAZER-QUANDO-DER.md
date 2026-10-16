@@ -10,6 +10,11 @@ O que foi conversado e **ainda não foi mandado fazer**. Nada aqui mudou o compo
 | Unificar ícones duplicados | `IC.lixo` x `LIXO` (`card-ticket.js`), `IC.atualizar` x `ATUALIZAR` (`vinculados.js`) | Duplicados |
 | Unificar a pill de tipo do ticket | `card-ticket.js` (`tipoPill`) e `moldura.js` (IIFE do cabeçalho) | Duplicada, com versões diferentes |
 | Ao vivo montado por módulo | `spec.js`, `esteira.js`, `mergulho.js`, `qa.js` montam a caixa e o fallback cada um; CSS/script também em `qa.js` e `evidencias.js` | Duplicado |
+| Organizar os outros módulos como o Incidente | Refinamento, Implementações e QA na estrutura da pasta `incidentes/` (registro em `<modulo>.js`, `etapas/01-….js`, `abas/`, `bin/`, `testes/`) e os pontos comuns lendo do registro | Só Incidentes organizado. Os outros seguem com `if` por módulo em `painel.js`, `moldura.js`, `lista.js`, `situacao.js` |
+| Régua de confiança em `infra/` | `sobreTicket`, `capacidadesDe`, `NIVEIS`, `rank`, `nivelDe` e `paraMarkdown` saírem de `implementacoes/dossie.js` para `infra/confianca.js` (o dossiê e `incidentes/entrada.js` importam de lá) | Incidentes depende de `implementacoes/dossie.js` |
+| `ler` e `ORIGEM` em `infra/` | Saírem de `refinamento/locais.js` (usado por painel, moldura, aba Docs, rodapé, conversas e `incidentes/orquestrador/portao-ticket.js`); `locais.js` reexporta | Infra morando dentro do Refinamento |
+| Ao vivo sem nome de aba fixo | `componentes/ao-vivo.js` (linha ~205) tem `['qa', 'spec', 'mergulho', 'esteira']` fixo; passar a vir do registro de cada módulo | Componente comum conhece abas dos módulos |
+| Aba Mergulho como Central | O Incidente usa as abas `mergulho` e `evidenciasInc` (ids próprios, também em `componentes/ao-vivo.js`); o padrão é a vaga `central` | Não migrado (ids mantidos na organização) |
 | Cabeçalho da prévia de vinculado | `lista.js` (`telaPrevia`) tem o próprio `<header>` com ← e 🎫 | Fora do componente de botões |
 
 Itens do **plano de ajuste** (✦ fixo e tooltip genérico, menu com Decisões, ▶/⏸ no componente de botões): `plano-ajuste-padrao-modulo.md` na pasta de documentos da conversa.

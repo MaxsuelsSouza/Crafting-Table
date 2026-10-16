@@ -164,4 +164,4 @@ instalar.sh instalação em um comando
 
 ## Criar um módulo novo
 
-Todo módulo nasce com o mesmo padrão (lista: menu · pesquisa · ↑↓ · ＋ Ticket · cards · Sem ticket · Vinculados; ticket: ← título ✦ ⚡ 🎫 🗑, pill + ⟳, menu Docs · Central · Ticket · Decisões | Conversas, rodapé com 🔔 e ▶ Comandos). O padrão está em [`CLAUDE.md`](CLAUDE.md) e o molde para copiar em [`extensao/modelo-modulo/`](extensao/modelo-modulo/).
+Todo módulo nasce com o mesmo padrão (lista: menu · pesquisa · ↑↓ · ＋ Ticket · cards · Sem ticket · Vinculados; ticket: ← título ✦ ⚡ 🎫 🗑, pill + ⟳, menu Docs · Central · Ticket · Decisões | Conversas, rodapé com 🔔 e ▶ Comandos). O padrão está em [`CLAUDE.md`](CLAUDE.md) e o molde para copiar em [`extensao/modelo-modulo/`](extensao/modelo-modulo/). Organização da pasta (uma etapa por arquivo em `etapas/`, `abas/`, `bin/`, `testes/`): exemplo em [`extensao/incidentes/`](extensao/incidentes/).

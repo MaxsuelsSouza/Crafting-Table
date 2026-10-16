@@ -40,6 +40,28 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 - Mais de 3 cliques no ▶ em 1 min sem o Ao vivo andar: caixa de "parece travado" (esperar, seguir de onde parou, parar).
 - O ▶ do módulo precisa passar por `aoVivo.controle` (é onde o vigia aprende o nome da ação).
 
+### Pasta do módulo
+
+Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplo pronto: `extensao/incidentes/`.
+
+- `<modulo>.js`: o registro (ID, abas, ▶, ações, script, filtro da busca, artefatos da conversa…). Os pontos comuns leem daqui, sem `if` com regra do módulo. Sem `require` no topo (é carregado cedo).
+- `orquestrador/` (um arquivo por regra: rodar, pausar, aprovar, retomar, responder…; `index.js` exporta) e `estado.js`: o que é comum a todas as etapas.
+- `etapas/`: `index.js` com a lista das etapas (dados) e **um arquivo por etapa**, numerado: `01-triagem.js`, `02-…`. Cada etapa exporta só os ganchos dela (`tarefa`, `antes`, `depois`, `responder`…; ver o `orquestrador/index.js`).
+  Etapa grande vira pasta com o mesmo nome (`05-reproducao/`): `index.js` (encadeia), `subetapas/` (`5.1-plano.js`…), `regras/` e `dependencias.js`.
+- `abas/` (telas), `bin/` (scripts que o Claude chama), `testes/` (`teste-*.js`).
+- Formatação: Prettier (`extensao/.prettierrc.json`), hoje só em `incidentes/` (`.prettierignore`). Mexeu lá? `npm run formatar` em `extensao/` (`formatar:conferir` só confere).
+
+### Arquivos pequenos (sempre, em código novo ou alterado)
+
+Não crie arquivo "robusto" que junta várias regras. Vale para módulo novo, para código novo em módulo antigo e para o que você mexer.
+
+- **Um arquivo = uma regra/assunto.** Arquivo que passa de ~150 linhas ou mistura assuntos (prompt + execução + tela + validação) vira pasta com `index.js` (só encadeia e exporta) e um arquivo por regra. Exemplos: `incidentes/orquestrador/`, `incidentes/etapas/05-reproducao/`.
+- Prompt, regra de validação, dependências externas (VS Code, banco, emulador) e tela ficam em arquivos separados.
+- `require('./pasta')` continua funcionando quando o arquivo vira pasta (`index.js`): quem usa não muda.
+- Arquivos que se chamam em ciclo fazem o `require` um do outro dentro da função, não no topo.
+- Lógica que outro módulo também usa não mora em módulo nenhum: vai para `infra/` ou `componentes/`.
+- Antes de reestruturar algo que já existe, mostre a árvore proposta e espere o ok. Ao mover, mova o código como está (sem reescrever textos de prompt nem o estilo).
+
 ### Regras
 
 - Peça nova que se repete em 2+ módulos vira componente em `componentes/` (cabeçalho do arquivo: o que é, onde é usado, como usar), nunca cópia.

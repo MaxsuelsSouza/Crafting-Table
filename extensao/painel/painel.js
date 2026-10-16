@@ -50,8 +50,8 @@ function corpoAba(t, aba, d) {
   if (aba === 'analise') return analise.corpoAba(d);
   if (aba === 'tarefas') return tarefas.telaTarefas(t, d.tarefas, d.impactos);
   if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
-  if (aba === 'mergulho') return require('../incidentes/mergulho').corpo(t, d, pastaAba(t.id));
-  if (aba === 'evidenciasInc') return require('../incidentes/evidencias').corpo(t, d, pastaAba(t.id));
+  const inc = require('../incidentes/incidentes').corpoAba(aba, t, d, pastaAba(t.id)); // Mergulho e Evidências do Incidente
+  if (inc !== undefined) return inc;
   if (aba === 'esteira') return require('../implementacoes/esteira').corpo(t, d, pastaAba(t.id));
   if (aba === 'dossie') return require('../implementacoes/esteira').corpoDossie(t, d, pastaAba(t.id));
   if (aba === 'reproducao') return require('../implementacoes/reproducao').corpo(t, d, pastaAba(t.id));
@@ -131,7 +131,7 @@ exports.provider = (ctx) => {
       baixando: abaDocs.baixando
     };
     if (aba === 'ticket' && jira.ehDocumento(t)) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(pasta(t.id))] };
-    else if (['evidenciasInc', 'mergulho', 'reproducao'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
+    else if ([...require('../incidentes/incidentes').ABAS_MIDIA, 'reproducao'].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
     const corpoTicket = telaTicket(t, aba, d), paginaAtual = `${t.id}|${aba}`;
     if (soVivo && paginaAtual === ultimaPagina) view.webview.postMessage({ tipo: 'vivo', html: corpoTicket });
     else view.webview.html = pagina(nonce, corpoTicket, aba === 'docs' && dirAba
@@ -193,7 +193,7 @@ exports.provider = (ctx) => {
   };
   vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,

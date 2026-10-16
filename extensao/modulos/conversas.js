@@ -286,7 +286,7 @@ const reconciliar = (s) => {
 // Implementações e Incidentes: dossiê/entrada e artefatos da esteira que já existem na pasta da aba (contexto do ticket, entendimento, varredura, plano), para a conversa começar de onde a esteira parou.
 const ARQUIVOS_ESTEIRA = {
   [require('../implementacoes/implementacoes').ID]: { rotulo: 'Esteira de implementação', nomes: ['dossie.md', '.contexto-ticket.md', '.briefing.md', 'entendimento.md', 'varredura.md', 'plano-mudanca.md', 'implementacao.log.md', 'verificacao.json'] },
-  [require('../incidentes/incidentes').ID]: { rotulo: 'Mergulho do incidente', nomes: ['entrada.md', '1-triagem.md', '2-artefatos.md', '3-dados-logs.md', '4-diagnostico.md', 'massa-real.sql', 'massa-teste.sql', 'fluxo.json', 'reproducao.json', 'resumo.md'] }
+  [require('../incidentes/incidentes').ID]: require('../incidentes/incidentes').ARQUIVOS_CONVERSA
 };
 const esteiraArquivos = (s, t) => {
   const e = ARQUIVOS_ESTEIRA[sessao.focoLista()];

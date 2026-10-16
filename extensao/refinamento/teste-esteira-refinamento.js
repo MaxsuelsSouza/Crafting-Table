@@ -22,7 +22,7 @@ const maestro = require('../painel/maestro');
 const orq = require('./orquestrador');
 const spec = require('./spec');
 const locais = require('./locais');
-const controle = require('../incidentes/controle');
+const controle = require('../infra/controle');
 
 // ── Claude simulado ──
 const rodadas = []; // cada maestro.rodar: { opts, dir }

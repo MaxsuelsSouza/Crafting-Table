@@ -2,6 +2,8 @@
 
 Copie `modulo.js` para `extensao/<modulo>/<modulo>.js` e registre nos pontos abaixo. O padrão visual está em `CLAUDE.md` (seção "Padrão de módulo").
 
+Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplo pronto: `extensao/incidentes/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
+
 ## Registro (nesta ordem)
 
 | # | Arquivo | O que acrescentar |
@@ -18,4 +20,4 @@ Copie `modulo.js` para `extensao/<modulo>/<modulo>.js` e registre nos pontos aba
 - Lista: pesquisa, ↑↓ e ＋ Ticket na mesma barra; contador de tickets acima do botão; card "Sem ticket" por último; caixa Vinculados só com a ferramenta cadastrada.
 - Ticket: ← · título · ✦ conversa · ⚡ · 🎫 · 🗑; pill de status e ⟳; botões vêm de `componentes/botoes-ticket.js`; menu `Docs · Central · Ticket · Decisões | Conversas`; Central (nome livre) só com Ao vivo.
 - Rodapé: 🔔 e ▶ Comandos (nada a fazer: vem da moldura).
-- Testes: copie um `teste-*.js` do módulo mais próximo (`incidentes/` é o menor).
+- Testes: copie um `teste-*.js` do módulo mais próximo (`incidentes/testes/` é o menor).

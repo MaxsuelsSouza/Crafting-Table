@@ -93,8 +93,8 @@ const carregarMeus = async (s, forcar) => {
     if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, boardsJira(), [].concat(variaveis.ler('etapasExtras'))).catch((e) => { avisoBoard = e.message; return null; });
     const coluna = (etapasJira || []).find((c) => c.nome === filtro);
     if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
-    const boardId = k === incidentes.ID ? (await jira.boardsPorNome(s.secrets, siteJira(), projeto, boardsJira())).map((b) => b.id) : undefined; // Incidentes: só os boards das configurações
-    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: k === incidentes.ID ? String(variaveis.ler('tipoIncidente')) : '', boardId, projeto });
+    const inc = k === incidentes.ID ? await incidentes.filtroBusca({ jira, secrets: s.secrets, site: siteJira(), projeto, boards: boardsJira(), variaveis }) : null; // Incidentes: boards das configurações e tipos de incidente
+    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: inc?.tipos || '', boardId: inc?.boardId, projeto });
     itens = vinculados.filtrar(itens, vinculadosDe(k).status);
     meusPor[k] = { itens, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: s.globalState.get('meusOcultos') || [], em: Date.now() };
   } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }

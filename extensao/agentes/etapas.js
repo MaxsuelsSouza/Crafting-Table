@@ -52,15 +52,7 @@ const VAGAS = {
     padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db, mapa-git e mapa-conferir (--plugin-dir)',
     contrato: 'Bins <raiz>/bin/mapa-git (git só leitura), mapa-db (SELECT só leitura, recusa produção) e mapa-conferir <mapa.md> --repo --db-log (confere as evidências) para a Varredura do código e o Plano de mudança da esteira de Implementação.'
   },
-  'incidentes.mapa': {
-    padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db e mapa-git (--plugin-dir)',
-    contrato: 'Bins <raiz>/bin/mapa-db (SELECT só leitura na base configurada, log em MAPA_DB_LOG, recusa produção) e <raiz>/bin/mapa-git (git só leitura) para triagem, artefatos, dados e logs e diagnóstico do incidente.'
-  },
-  'incidentes.reproducao': {
-    padrao: { tipo: 'skill', id: 'testes-funcionais', nome: 'testes-funcionais', caminho: path.join(SKILLS, 'testes-funcionais') }, como: 'SKILL.md e referências lidos',
-    contrato: 'Documentação do app para montar a massa de teste (INSERTs novos e distintos a partir da cópia de produção, só leitura), planejar o fluxo de 5 a 12 passos e reproduzir no emulador por Maestro/adb '
-      + '(references/jornada-mobile-maestro.md), com print por adb exec-out screencap. Sem AskUserQuestion.'
-  }
+  ...require('../incidentes/etapas').VAGAS // vagas do Incidente: incidentes/etapas/index.js
 };
 
 // subetapas: [{ nome, vaga }] — a etapa-mãe não tem vaga própria; cada subetapa tem a sua (Etapa 4 → 4.1, 4.2).
@@ -93,13 +85,7 @@ const MODULOS = [
     { nome: 'Massa de dados', vaga: 'qa.execucao' },
     { nome: 'Execução de cada cenário', vaga: 'qa.execucao' },
     { nome: 'Publicar', vaga: null }] },
-  { id: 'incidentes', nome: 'Incidentes', etapas: [
-    { nome: 'Triagem', vaga: 'incidentes.mapa' },
-    { nome: 'Artefatos e input do PO', vaga: 'incidentes.mapa' },
-    { nome: 'Dados e logs', vaga: 'incidentes.mapa' },
-    { nome: 'Diagnóstico', vaga: 'incidentes.mapa' },
-    { nome: 'Ambiente e reprodução', vaga: 'incidentes.reproducao' },
-    { nome: 'Evidências', vaga: null }] }
+  { id: 'incidentes', nome: 'Incidentes', etapas: require('../incidentes/etapas').ETAPAS.map(({ nome, vaga }) => ({ nome, vaga })) }
 ];
 // Marca de cada etapa na ordem do módulo: "Etapa N" (ou "Todas as etapas") + nome; subs = [{ marca: "N.1", nome, vaga }]. titulos = o texto corrido ("Etapa N. Nome").
 const marcas = (m) => { let n = 0; return m.etapas.map((e) => { const marca = e.todas ? 'Todas as etapas' : `Etapa ${++n}`;

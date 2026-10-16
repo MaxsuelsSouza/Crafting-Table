@@ -1,8 +1,8 @@
 // @ts-check
-// node teste-fluxo.js
+// node componentes/teste-fluxo-passos.js
 const assert = require('assert');
 const fs = require('fs'), os = require('os'), path = require('path');
-const fx = require('./fluxo');
+const fx = require('./fluxo-passos');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fluxo-'));
 
 assert.strictEqual(fx.html(dir), ''); // sem plano: nada na tela

@@ -1,0 +1,54 @@
+#!/usr/bin/env node
+// mergulho-fluxo: o Claude da reprodução (claude -p, etapa 5 do Mergulho) registra o fluxo e o andamento dos passos por aqui.
+// A pasta da aba vem em MERGULHO_DIR (a extensão passa). Uso:
+//   mergulho-fluxo plano <<'FIM' [{"titulo":"Abrir o módulo Separação","texto":"o que fazer e o que esperar"}, …] FIM
+//   mergulho-fluxo iniciar P01
+//   mergulho-fluxo acao P01 "<comando exato (maestro/adb) que repete o passo>"
+//   mergulho-fluxo evidencia P01 /tmp/print.png
+//   mergulho-fluxo concluir P01 passou|falhou|bloqueado --nota "o que foi visto"
+//   mergulho-fluxo status
+const fluxo = require('../../componentes/fluxo-passos');
+const dir = process.env.MERGULHO_DIR;
+const [cmd, id, ...resto] = process.argv.slice(2);
+const sair = (msg, code = 1) => {
+  console[code ? 'error' : 'log'](msg);
+  process.exit(code);
+};
+if (!dir) sair('mergulho-fluxo: MERGULHO_DIR não definida (rode pelo Mergulho na Crafting Table)');
+try {
+  if (cmd === 'plano') {
+    let l;
+    try {
+      l = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    } catch {
+      sair('mergulho-fluxo: o plano precisa ser JSON pela entrada padrão');
+    }
+    fluxo.plano(dir, l);
+    sair(`plano criado: ${fluxo.ler(dir).passos.length} passos`, 0);
+  }
+  if (cmd === 'iniciar') {
+    fluxo.iniciar(dir, id);
+    sair(`${id}: executando`, 0);
+  }
+  if (cmd === 'acao') {
+    fluxo.acao(dir, id, resto.join(' '));
+    sair(`${id}: ação registrada`, 0);
+  }
+  if (cmd === 'evidencia')
+    sair(
+      fluxo
+        .evidencia(dir, id, resto)
+        .map((f) => `salvo: ${f}`)
+        .join('\n'),
+      0
+    );
+  if (cmd === 'concluir') {
+    const i = resto.indexOf('--nota');
+    fluxo.concluir(dir, id, resto[0], i >= 0 ? resto.slice(i + 1).join(' ') : '');
+    sair(`${id}: ${resto[0]}`, 0);
+  }
+  if (cmd === 'status') sair(fluxo.estadoParaPrompt(dir) || '(sem fluxo)', 0);
+  sair('mergulho-fluxo: comando desconhecido. Veja o topo de incidentes/bin/mergulho-fluxo.');
+} catch (e) {
+  sair(`mergulho-fluxo: ${e.message}`);
+}

@@ -34,7 +34,7 @@ const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticke
 const ABAS = {
   refinamento: [DOCS, { id: 'spec', nome: 'Spec' }, TICKET, { id: 'analise', nome: 'Análise' }, { id: 'tarefas', nome: 'Tarefas' }, DECISOES, { id: 'duvidas', nome: 'Dúvidas' }],
   impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, { id: 'reproducao', nome: 'Reprodução' }, TICKET, DECISOES],
-  incidentes: [DOCS, { id: 'mergulho', nome: 'Mergulho' }, { id: 'evidenciasInc', nome: 'Evidências' }, TICKET, DECISOES],
+  incidentes: require('../incidentes/incidentes').ABAS,
   qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
   semTicket: [DOCS, DECISOES]
 };
@@ -81,7 +81,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
     : id === 'tarefas' ? [tarefasDe(pastaDe(t.id)).filter((x) => x.status === 'pendente' || x.revisao).length, 'tarefa(s) esperando sua decisão'] : [0, '']);
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
-  const play = refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'incidentes' ? require('../incidentes/mergulho').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
+  const play = refino ? botaoRefino(t, b) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
   const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
     tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">
@@ -181,8 +181,6 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     e.stopPropagation();
     enviar({ acao: el.dataset.acao, id: el.dataset.id, op: el.dataset.op, key: el.dataset.key, texto: el.closest('.folha')?.querySelector('textarea[data-texto]')?.value });
   });
-  // Mergulho (incidentes): a observação do PO grava ao sair do campo.
-  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs]')) enviar({ acao: 'mergulhoObs', texto: e.target.value }); });
   // Esteira (implementações): a explicação do dev grava ao sair do campo.
   document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs-impl]')) enviar({ acao: 'esteiraObs', texto: e.target.value }); });
 
@@ -204,8 +202,9 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
 
   // A página é redesenhada a cada linha nova do Ao vivo: a caixa e o corpo voltam para onde estavam.
   ${aoVivo.script('vivo')}
-  ${require('../incidentes/fluxo').script()}
-  ${require('../incidentes/evidencias').script()}
+  ${require('../componentes/fluxo-passos').script()}
+  // Incidentes (aba Mergulho e Evidências): observação do PO e tela cheia dos cards de SQL.
+  ${require('../incidentes/incidentes').script()}
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;

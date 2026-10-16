@@ -46,7 +46,7 @@ const projetoJira = () => [].concat(variaveis.ler('projeto') || []);
 const boardsJira = () => [].concat(variaveis.ler('boardPrincipal') || []);
 const siteJira = () => String(variaveis.ler('site') || '');
 // Variável que cada módulo exige além das comuns (modo = id do módulo da lista).
-const EXIGE = { qa: ['etapasQA'], impl: ['etapasImplementacao'], incidentes: ['tipoIncidente'] };
+const EXIGE = { qa: ['etapasQA'], impl: ['etapasImplementacao'], [require('../incidentes/incidentes').ID]: require('../incidentes/incidentes').EXIGE };
 const ROTULO_VAR = Object.fromEntries(variaveis.definicoes.map((d) => [d.chave, d.rotulo.toLowerCase()]));
 // O que falta configurar para os vinculados buscarem no provedor: site, projeto, conta (e-mail + token), board principal e as
 // variáveis do módulo (modo). Cada item vira o aviso de configuração na caixa.

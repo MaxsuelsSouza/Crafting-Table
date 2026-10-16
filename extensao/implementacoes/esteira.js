@@ -10,7 +10,7 @@ const { execFileSync, spawn } = require('child_process');
 const aoVivo = require('../componentes/ao-vivo');
 const caixaEtapas = require('../componentes/caixa-etapas');
 const maestro = require('../painel/maestro');
-const controle = require('../incidentes/controle');
+const controle = require('../infra/controle');
 const vagas = require('../agentes/etapas');
 const { markdown } = require('../componentes/markdown');
 const { esc } = require('../infra/texto');
@@ -224,11 +224,11 @@ async function rodarReproducao(s, t, d, rodada) {
   if (!ok) mudar(dir, { fase: 'parado' });
   s.render();
 }
-const fluxoExiste = (dir) => require('../incidentes/fluxo').ler(dir).passos.length > 0;
+const fluxoExiste = (dir) => require('../componentes/fluxo-passos').ler(dir).passos.length > 0;
 
 // Terminou: confirma pelos cenários (erro = algum "falhou", com evidência). Senão pausa e pergunta; o usuário decide tentar de novo ou seguir.
 async function aposReproducao(s, t, d, rodada) {
-  const dir = s.pastaAba(t.id), fluxo = require('../incidentes/fluxo');
+  const dir = s.pastaAba(t.id), fluxo = require('../componentes/fluxo-passos');
   if (!controle.valida(dir, rodada)) return s.render();
   fluxo.descartarEmAndamento(dir); // caiu no meio de um cenário: ele volta para a fila
   const p = lerPausa(dir), r = reproducao.resultado(dir);

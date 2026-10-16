@@ -1,14 +1,16 @@
 // @ts-check
-// Fluxo da reprodução (etapa 5 do Mergulho): os passos necessários para replicar o incidente no emulador, com o estado de cada um.
+// Componente "Fluxo de passos": os passos para reproduzir um problema no emulador, com o estado de cada um, em <aba>/fluxo.json.
+// Usado por: Incidentes (etapa 5 do Mergulho, bin incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução, bin implementacoes/reproducao-fluxo).
 // Quando o usuário pausa, os passos já feitos ficam salvos (com a ação que o Claude usou); ao retomar, o Claude refaz esses passos
-// rápido, sem reanalisar, e segue do primeiro pendente. Estado em <aba>/fluxo.json. Sem vscode: o Claude grava por bin mergulho-fluxo.
+// rápido, sem reanalisar, e segue do primeiro pendente. Sem vscode nos dados: o Claude grava pelo bin do módulo.
 // Cada passo tem o formato do cenário do QA ({ id, titulo, texto, status, execucoes }), então o card é o do QA (qa/card-cenario.js).
+// Como usar: html(dir, uri) na tela, script() no <script> da moldura e acoes(s) no painel (fluxoAbrir, fluxoPasta, fluxoCopiar, fluxoRefazer).
 //   plano(dir, [{ titulo, texto }])  cria P01…  ·  iniciar(dir, id)  ·  concluir(dir, id, status, nota)  ·  evidencia(dir, id, arquivos)
 //   acao(dir, id, texto)  ação exata (comando maestro/adb) que repete o passo  ·  descartarEmAndamento(dir)  ·  html(dir, uri)
 const fs = require('fs');
 const path = require('path');
 const cardCenario = require('../qa/card-cenario');
-const { origemPermitida } = require('./origem');
+const { origemPermitida } = require('../infra/origem');
 
 const ARQ = 'fluxo.json', RESULTADOS = ['passou', 'falhou', 'bloqueado'];
 const lerJson = (f, pad) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return pad; } };
@@ -62,7 +64,7 @@ const estadoParaPrompt = (dir) => ler(dir).passos.map((p) => `${p.id} [${p.statu
 const CSS = `${cardCenario.CSS}
   .cens { margin: 0 12px 12px; display: flex; flex-direction: column; gap: 6px; }
   .cen .cdet code { display: block; white-space: pre-wrap; font-size: 11px; margin: 4px 0; color: var(--text); }`;
-// Card do fluxo (abaixo do Ao vivo, na aba Mergulho). Vazio antes de o Claude planejar (etapa 5); uri: arquivo local → URI da webview.
+// Card do fluxo (abaixo do Ao vivo). Vazio antes de o Claude planejar; uri: arquivo local → URI da webview.
 const html = (dir, uri) => {
   const f = ler(dir);
   if (!f.passos.length) return '';
@@ -73,4 +75,13 @@ const html = (dir, uri) => {
 };
 const script = () => cardCenario.script('fluxoAbertos');
 
-module.exports = { ARQ, ler, plano, iniciar, concluir, evidencia, acao, descartarEmAndamento, refazer, arquivosDe, estadoParaPrompt, html, script };
+// Cliques do card: abrir evidência, pasta, copiar caminho e refazer um passo; só caminhos dentro da pasta da aba do ticket aberto.
+const dentroDaAba = (s, nome) => { const t = s.ticketAberto(), dir = t && s.pastaAba(t.id), f = dir && typeof nome === 'string' && path.resolve(nome); return f && (f === dir || f.startsWith(dir + path.sep)) ? f : null; };
+const acoes = (s) => ({
+  fluxoAbrir({ nome }) { const f = dentroDaAba(s, nome), vscode = require('vscode'); if (f) vscode.commands.executeCommand('vscode.open', vscode.Uri.file(f), vscode.ViewColumn.Beside); },
+  fluxoPasta({ nome }) { const f = dentroDaAba(s, nome); if (f) { fs.mkdirSync(f, { recursive: true }); require('vscode').env.openExternal(require('vscode').Uri.file(f)); } },
+  async fluxoCopiar({ nome }) { const f = dentroDaAba(s, nome); if (f) { await require('vscode').env.clipboard.writeText(f); require('vscode').window.showInformationMessage('Caminho das evidências do passo copiado.'); } },
+  fluxoRefazer({ id }) { const t = s.ticketAberto(); if (t && typeof id === 'string' && refazer(s.pastaAba(t.id), id)) s.render(); }
+});
+
+module.exports = { ARQ, ler, plano, iniciar, concluir, evidencia, acao, descartarEmAndamento, refazer, arquivosDe, estadoParaPrompt, html, script, acoes };

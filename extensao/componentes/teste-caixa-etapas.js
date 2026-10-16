@@ -1,7 +1,7 @@
 // @ts-check
-// node teste-caixa-etapas.js
+// node componentes/teste-caixa-etapas.js
 const assert = require('assert');
-const { caixa, CSS } = require('../componentes/caixa-etapas');
+const { caixa, CSS } = require('./caixa-etapas');
 
 // Sem subetapas: uma linha por etapa, estado em rótulo, ✓ na concluída, nenhuma lista de subetapas.
 const simples = caixa({ titulo: 'Mergulho', acao: '<button>x</button>', atual: 2, etapas: [

@@ -13,7 +13,7 @@ const { cfg, reposAuto, SPECS_PADRAO, sddState } = require('../configuracao/conf
 const vagas = require('../agentes/etapas');
 const { notificar } = require('../painel/notificacoes');
 const { anotar } = require('../componentes/ao-vivo');
-const controle = require('../incidentes/controle');
+const controle = require('../infra/controle');
 const pacote = require('./pacote');
 const { dirSpec, ondeSalvar, arquivoPasso, HANDOFF, TAREFAS, IMPACTOS, duvidasDe, tarefasDe, impactosDe, ticketDe, estadoSpec, refinoDe, gravarRefino, briefingDe, BRIEFING } = require('./locais');
 

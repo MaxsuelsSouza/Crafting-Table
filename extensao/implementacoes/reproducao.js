@@ -1,13 +1,13 @@
 // @ts-check
 // Reprodução do bug (etapa da esteira antes do Entendimento, só para ticket do tipo Bug/Defeito/Incidente): o Claude sobe a aplicação, executa o
 // passo a passo relatado e confirma se o erro acontece. Cada cenário tem o formato do QA ({ id, titulo, texto, status, execucoes }) e usa o mesmo
-// card (qa/card-cenario.js) e o mesmo registro do fluxo dos Incidentes (incidentes/fluxo.js, fluxo.json na pasta da aba). "falhou" = o erro aconteceu.
+// card (qa/card-cenario.js) e o mesmo registro do fluxo dos Incidentes (componentes/fluxo-passos.js, fluxo.json na pasta da aba). "falhou" = o erro aconteceu.
 // Evidências: as que já estão no ticket, no pai ou nos irmãos (anexos do Jira) são baixadas para <aba>/evidencias-ticket/ e indexadas em
 // .evidencias-ticket.json; o Claude as anexa ao cenário que falhou (reproducao-fluxo evidencia) junto com as que ele mesmo capturar.
 // Resultado: reproducao.md (a extensão grava, para o Entendimento e o QA lerem). Sem vscode: roda em teste.
 const fs = require('fs');
 const path = require('path');
-const fluxo = require('../incidentes/fluxo');
+const fluxo = require('../componentes/fluxo-passos');
 const cardCenario = require('../qa/card-cenario');
 const { esc } = require('../infra/texto');
 const { ehBug, REPRODUCAO } = require('./dossie');

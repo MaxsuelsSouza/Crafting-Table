@@ -217,8 +217,8 @@ const ultimo = () => pedidos[pedidos.length - 1];
 
   // ════ 4. INCIDENTES (pdf; sem pdf cai no md)
   {
-    const mg = require('../incidentes/mergulho'), controle = require('../incidentes/controle');
-    const { rodarEtapa, anexosFaltando, estado, mudar } = mg._teste;
+    const controle = require('../infra/controle');
+    const { rodarEtapa, anexosFaltando } = require('../incidentes/orquestrador'), { estado, mudar } = require('../incidentes/estado');
     const t = ts.pdf || ts.md, pasta = tickets.pasta(t.chave), dir = path.join(pasta, 'incidente'); fs.mkdirSync(dir, { recursive: true });
     const cache = {};
     const s = { pastaAba: () => dir, pasta: () => pasta, render() {}, ticketAberto: () => tickets.ler(t.chave), reposDe: () => [], cacheJira: cache, atualizarJira: async () => { throw new Error('REDE: atualizarJira'); } };
