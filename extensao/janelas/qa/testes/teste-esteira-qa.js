@@ -3,6 +3,9 @@
 // do claude -p conferidos com um claude falso no PATH da casa), qa-state real, rede bloqueada, tudo em pastas temporárias.
 // Cobre: portão antes de publicar, segurança (ferramentas, proibidas, banco), evidência obrigatória, controle (interrompida, timeout), pausa que pergunta e dossiê.
 const assert = require('assert');
+// Nunca o ~/.wms-testes.env real: sem credencial, a pré-condição cai no caminho do Claude simulado.
+process.env.WMS_ENV_FILE = '/nao-existe/.wms-testes.env';
+for (const k of Object.keys(process.env)) if (k.startsWith('WMS_') && k !== 'WMS_ENV_FILE') delete process.env[k];
 const fs = require('fs'),
   os = require('os'),
   path = require('path');
@@ -88,6 +91,30 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     assert.ok(
       ['git commit', 'git push', 'git merge', 'git rebase'].every((c) => qa.PROIBIDAS.includes(`Bash(${c}:*)`))
     );
+    // Contexto enxuto (fase A do diagnóstico do WMS-14752): sem MCP, sem skills, plugins do usuário desligados, só as ferramentas da etapa, modelo do QA.
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, '.claude', 'settings.json'),
+      JSON.stringify({ enabledPlugins: { 'ponytail@ponytail': true, 'fcx-agora@fcxlabs': true } })
+    );
+    fs.rmSync(sa);
+    const d2 = novoDir();
+    const fim = require('../orquestrador/claude').claude(
+      d2,
+      { prompt: 'x', ferramentas: qa.FERRAMENTAS_MASSA('/m'), env: { ARGS_FILE: sa } },
+      { modelo: 'sonnet', esforco: 'medium', timeoutMin: 0 }
+    );
+    for (let i = 0; i < 100 && !fs.existsSync(sa); i++) await dormir(20);
+    await fim;
+    const a2 = fs.readFileSync(sa, 'utf8').split('\n'),
+      val = (k) => a2[a2.indexOf(k) + 1];
+    assert.ok(a2.includes('--strict-mcp-config') && a2.includes('--disable-slash-commands'), a2.join(' '));
+    assert.strictEqual(val('--tools'), 'Read,Glob,Grep,Bash');
+    assert.deepStrictEqual(JSON.parse(val('--settings')).enabledPlugins, {
+      'ponytail@ponytail': false,
+      'fcx-agora@fcxlabs': false
+    });
+    assert.deepStrictEqual([val('--model'), val('--effort')], ['sonnet', 'medium']);
   }
   // Ferramentas: a massa não tem Bash livre; mapa-db só quando há mapa.
   assert.ok(
@@ -917,7 +944,6 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       ]
     );
     assert.ok(log[1].sql.length === 2 && log[1].desfazer.length === 2 && log[1].conexao === 'qas-wms');
-    assert.ok(qa.massaHtml(d).includes('Desfazer no banco') && qa.massaHtml(d).includes('data-acao="qaMassaDesfazer"'));
     // retomada: a massa já existe, os cenários rodam sem nova busca
     veio.length = 0;
     fazer = async (dir, o) => passa(dir, o.titulo.match(/CT\d+/)[0]);
@@ -998,13 +1024,18 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       assert.strictEqual(qa.estado(dc).pausa?.motivo, 'massa-sql-erro');
       qa.recusarProposta(dc);
       proposta();
-      resposta = 'aprovo';
-      await acoes(sc).qaResponder({}); // Responder…: texto livre
+      resposta = 'aprovo'; // "ok"/"sim"/"aprovo" digitado = Aprovar: abre o MESMO modal com o SQL (antes virava recusa, caso do WMS-14752)
+      await acoes(sc).qaResponder({});
+      assert.strictEqual(qa.estado(dc).pausa?.motivo, 'massa-sql-erro'); // passou pelo modal e foi ao executor (sem banco, recusado)
+      qa.recusarProposta(dc);
+      proposta();
+      resposta = 'use o pedido 123 em vez desse';
+      await acoes(sc).qaResponder({}); // Responder…: texto livre que não é aprovação nunca executa SQL
       assert.deepStrictEqual(
         [
           !!qa.propostaMassa(dc),
           sqlRodado.length - antesSql,
-          fs.readFileSync(path.join(dc, '.respostas.md'), 'utf8').includes('aprovo')
+          fs.readFileSync(path.join(dc, '.respostas.md'), 'utf8').includes('pedido 123')
         ],
         [false, 0, true]
       );

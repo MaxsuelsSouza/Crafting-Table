@@ -1,6 +1,9 @@
 // @ts-check
 // node extensao/janelas/qa/testes/teste-qa.js
 const assert = require('assert');
+// Nunca o ~/.wms-testes.env real: sem credencial, a pré-condição cai no caminho do Claude simulado.
+process.env.WMS_ENV_FILE = '/nao-existe/.wms-testes.env';
+for (const k of Object.keys(process.env)) if (k.startsWith('WMS_') && k !== 'WMS_ENV_FILE') delete process.env[k];
 const fs = require('fs'),
   os = require('os'),
   path = require('path');
@@ -430,13 +433,7 @@ assert.strictEqual(
   prompts.length = 0;
   pausarNo = null;
   await qa.executar(d5, deps);
-  assert.deepStrictEqual(
-    [st5(), prompts],
-    [
-      ['passou', 'passou'],
-      ['QA · Pré-condição · login', 'QA · CT02 · B']
-    ]
-  ); // a pré-condição roda de novo a cada retomada
+  assert.deepStrictEqual([st5(), prompts], [['passou', 'passou'], ['QA · CT02 · B']]); // retomada no mesmo dia e com o mesmo código: o login do Claude é reaproveitado (sem nova sessão)
   assert.ok(qa.html(d5).includes('Execução concluída') && qa.html(d5).includes('Publicar no Jira'));
   // Execução invalida a massa: volta à Etapa 4 só para esse cenário, retoma e, na 2ª vez, bloqueia (sem laço infinito).
   const d10 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
@@ -530,7 +527,7 @@ assert.strictEqual(
   qa.refazer(d11, 'CT02');
   prompts.length = 0;
   await qa.executar(d11, deps);
-  assert.deepStrictEqual(prompts, ['QA · Pré-condição · login', 'QA · Levantando massa de dados', 'QA · CT02 · B']);
+  assert.deepStrictEqual(prompts, ['QA · Levantando massa de dados', 'QA · CT02 · B']); // login de hoje reaproveitado
 
   // Cenário expandido: pasta/copiar e as evidências de TODAS as execuções (CT02 tem a descartada e a que passou).
   const ct2 = qa.cenarios(d5).cenarios[1];
@@ -601,7 +598,7 @@ assert.strictEqual(
   assert.deepStrictEqual(qa.statusAmbiente(d6), { tipo: 'erro', analisando: false, nova: true, etapa: 'api' });
   qa.analiseVista(d6);
   assert.strictEqual(qa.statusAmbiente(d6).nova, false);
-  assert.ok(qa.massaHtml(d5).includes('Válida'));
+  assert.ok(/R01<\/span>.*Sem roteiro/.test(qa.roteiroHtml(d5)) && qa.roteiroHtml(d5).includes('Massa já levantada'));
   // Outra janela: estado diz rodando com o pid de um processo vivo (este) que não é a janela atual → rodando; pid morto → parado.
   const d7 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
   const filho = require('child_process').spawn('sleep', ['5']);

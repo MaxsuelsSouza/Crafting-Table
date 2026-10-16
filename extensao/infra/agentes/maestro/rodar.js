@@ -15,10 +15,10 @@ const { linhas } = require('./linhas');
 const GIT_LEITURA = ['status', 'log', 'diff', 'show', 'branch', 'fetch', 'rev-parse', 'rev-list', 'ls-remote', 'for-each-ref', 'merge-base', 'cherry', 'describe', 'blame', 'ls-files', 'cat-file', 'name-rev']
   .flatMap((c) => [`Bash(git ${c}:*)`, `Bash(git -C * ${c}:*)`]);
 
-// Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket.
+// Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket; sessao: retoma esta sessão (id) em vez da última.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
 function rodar(dir, opcoes) {
-  const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, aoMudar = () => {} } = opcoes;
+  const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, sessao = null, aoMudar = () => {} } = opcoes;
   if (rodandoEm(dir)) return false;
   ultimas.set(dir, opcoes); erros.delete(dir);
   const gravar = (l) => anotar(dir, l);
@@ -26,6 +26,7 @@ function rodar(dir, opcoes) {
   try { anterior = fs.readFileSync(path.join(dir, SID), 'utf8').trim() || null; } catch {}
   if (anterior) anexarConversa(dir, anterior); // a sessão que terminou antes desta vai para a aba Conversas (idempotente)
   if (continuar) sid = anterior;
+  if (sessao) sid = sessao;
   let sessaoId = null; // desta execução
   const args = ['-p', prompt + PEDIDO_DECISAO, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
     ...(ferramentas.length ? ['--allowedTools', ...new Set([...ferramentas, ...GIT_LEITURA])] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];

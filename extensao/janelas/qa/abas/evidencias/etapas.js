@@ -75,7 +75,7 @@ function etapasQa(dir, e, rodando) {
     pub
   ];
   const refazMassa =
-    '<button class="ce-hover" data-painel="qaMassaRefazer" title="Move a massa da aba Massa para Massas mortas e pede à IA para levantar massa nova">↻ Refazer massa</button>';
+    '<button class="ce-hover" data-painel="qaMassaRefazer" title="Valida no banco a massa dos cenários pendentes, move para Massas mortas só a que não serve mais e pede à IA massa nova só para quem ficou sem">↻ Refazer massa</button>';
   const etapas = nomes.map((nome, i) => ({
     n: i + 1,
     nome,

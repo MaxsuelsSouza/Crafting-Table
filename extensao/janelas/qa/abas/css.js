@@ -2,18 +2,11 @@
 const aoVivo = require('../../../componentes/ao-vivo');
 const cardCenario = require('../../../componentes/card-cenario');
 const caixaEtapas = require('../../../componentes/caixa-etapas');
-const { FC } = require('../../../componentes/marca');
 
 // Bloco do topo da seção Evidências no QA: cartão do planejamento + Ao vivo. Botões vão ao painel (data-painel, grupo.js).
 const CSS = `<style>${caixaEtapas.CSS}${aoVivo.CSS}${cardCenario.CSS}
   .caixa-t { margin: 0 12px 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); display: flex; gap: 6px; }
   .caixa-t span { margin-left: auto; text-transform: none; letter-spacing: 0; }
-  .papel-massa { margin: 6px 0; padding: 8px 10px; border-radius: var(--r-lg); background: ${FC.bg}; color: ${FC.text}; box-shadow: 0 4px 16px rgb(0 0 0 / 16%); font-family: var(--vscode-editor-font-family, monospace); font-size: 13px; line-height: 1.55; user-select: text; }
-  .papel-massa .campo { display: flex; gap: 8px; align-items: baseline; }
-  .papel-massa .k { font-weight: 700; flex: none; } .papel-massa .k::after { content: ' ='; }
-  .papel-massa .v { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-  .papel-massa .copiar { flex: none; background: transparent; color: inherit; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 4px; padding: 0 5px; opacity: .55; cursor: pointer; }
-  .papel-massa .copiar:hover { opacity: 1; }
   .qa-card { margin: 10px 12px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--border); font-size: 12px; }
   .qa-card.linha { display: flex; align-items: center; gap: 8px; }
   .qa-card.linha b { margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

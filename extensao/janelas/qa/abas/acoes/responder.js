@@ -11,6 +11,13 @@ const { gerarPlano } = require('./gerar-plano');
 // Lote de SQL proposto para a massa: você leu o cartão; o modal confirma a conexão e o ambiente; só então a extensão executa (nunca a IA).
 async function respostaMassaSql(s, t, dir, p, r) {
   const d = depsQa(s, t);
+  if (qa.estado(dir).processando) return; // já executando (clique duplo)
+  // "ok", "sim", "aprovo"… digitados valem como aprovar (o modal com o SQL ainda confirma); antes viravam recusa.
+  if (
+    p.motivo === 'massa-sql' &&
+    /^(ok|okay|sim|s|pode|aprovo|aprovado|aprovar|executa|executar|confirmo|manda)\b/i.test(r)
+  )
+    r = 'Aprovar e executar';
   if (r === 'Recusar' || r === 'Seguir sem essa massa') {
     qa.recusarProposta(dir);
     qa.registrarDecisao(

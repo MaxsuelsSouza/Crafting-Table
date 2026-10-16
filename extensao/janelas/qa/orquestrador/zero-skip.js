@@ -32,10 +32,25 @@ function reabrirBloqueado(dir, id, nota) {
   if (ex) Object.assign(ex, { status: 'descartado', nota: `${ex.nota ? `${ex.nota} · ` : ''}${nota}` });
   gravarJson(path.join(dir, CENARIOS), r);
 }
+// Limite de sessão do Claude ("resets 11:30am"): quando volta, em hora local (o próximo horário igual a esse).
+function voltaDoLimite(erro, agora = new Date()) {
+  const m = String(erro).match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (!m[3]) h = Number(m[1]);
+  else if (m[3].toLowerCase() === 'pm') h += 12;
+  const t = new Date(agora);
+  t.setHours(h, Number(m[2] || 0), 0, 0);
+  if (t <= agora) t.setDate(t.getDate() + 1);
+  return t;
+}
 // Erro de API/tokens do Claude: o cenário em andamento volta à fila e a fila pausa; `interrupcao` no estado diz onde parou. Sempre devolve false.
+// Limite de sessão com horário: a fila retoma sozinha 1 min depois desse horário (se ninguém mexeu no QA até lá).
 function pausarPorApi(dir, d, erro, c) {
   if (c && cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando')
     concluirCenario(dir, c.id, 'descartado', `Erro da API do Claude: ${erro}`);
+  const volta = voltaDoLimite(erro),
+    voltaEm = volta ? volta.toISOString() : null;
   mudar(dir, {
     execucao: 'pausado',
     etapa: null,
@@ -43,12 +58,24 @@ function pausarPorApi(dir, d, erro, c) {
       motivo: 'api-claude',
       cenario: c?.id || null,
       detalhe: String(erro).slice(0, 300),
-      em: new Date().toISOString()
+      em: new Date().toISOString(),
+      voltaEm
     }
   });
+  if (volta)
+    setTimeout(
+      () => {
+        const { estado } = require('../estado');
+        const e = estado(dir);
+        if (e.execucao !== 'pausado' || e.pausa || e.interrupcao?.voltaEm !== voltaEm) return; // alguém já retomou ou mexeu
+        aoVivo.anotar(dir, { tipo: 'acao', texto: 'Limite de sessão do Claude passou: retomando a fila sozinho' });
+        require('./executar').executar(dir, d);
+      },
+      volta.getTime() - Date.now() + 60000
+    ).unref?.();
   aoVivo.anotar(dir, {
     tipo: 'erro',
-    texto: `Claude indisponível (${String(erro).slice(0, 120)}): fila pausada${c ? ` em ${c.id}` : ''}; retome quando voltar`
+    texto: `Claude indisponível (${String(erro).slice(0, 120)}): fila pausada${c ? ` em ${c.id}` : ''}; ${volta ? `retoma sozinha às ${volta.toTimeString().slice(0, 5)}` : 'retome quando voltar'}`
   });
   d.alertar?.(
     `O Claude parou por erro de API ou falta de tokens:\n${String(erro).slice(0, 200)}\n\nA fila foi pausada${c ? ` em ${c.id}` : ''} e nenhum cenário seguinte foi pulado. Retome quando voltar.`
@@ -56,4 +83,4 @@ function pausarPorApi(dir, d, erro, c) {
   return false;
 }
 
-module.exports = { bloquearFluxo, reabrirBloqueado, pausarPorApi };
+module.exports = { bloquearFluxo, reabrirBloqueado, pausarPorApi, voltaDoLimite };

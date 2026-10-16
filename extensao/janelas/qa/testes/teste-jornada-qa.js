@@ -1,6 +1,9 @@
 // @ts-check
 // node janelas/qa/testes/teste-jornada-qa.js — Etapa 6.2: validação do roteiro e a jornada com Maestro, adb e banco falsos.
 const assert = require('assert');
+// Nunca o ~/.wms-testes.env real: sem credencial, a pré-condição cai no caminho do Claude simulado.
+process.env.WMS_ENV_FILE = '/nao-existe/.wms-testes.env';
+for (const k of Object.keys(process.env)) if (k.startsWith('WMS_') && k !== 'WMS_ENV_FILE') delete process.env[k];
 const fs = require('fs'),
   os = require('os'),
   path = require('path');
@@ -149,6 +152,7 @@ async function encadeamento() {
   const { refazer } = require('../etapas/02-cenarios');
   const { executarCenario } = require('../etapas/06-execucao/executar-cenario');
   const { estado } = require('../estado');
+  const descartar = (d0, id) => require('../etapas/06-execucao/roteiros').descartarRoteiro(d0, id);
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-enc-')),
     dir = path.join(raiz, 'qa'),
     area = path.join(raiz, 'area');
@@ -231,6 +235,26 @@ async function encadeamento() {
   assert.strictEqual(await rodarCT(), 'fim');
   assert.deepStrictEqual([status().status, titulos], ['falhou', ['QA · CT01 · diagnóstico']]);
 
+  // Pergunta no roteiro (6.1): a resposta continua a MESMA sessão (--resume), não abre outra do zero.
+  titulos.length = 0;
+  refazer(dir, 'CT01');
+  descartar(dir, 'CT01');
+  const sessoes = [];
+  const rodarOrig = maestro.rodar;
+  maestro.rodar = (d0, o) => (sessoes.push(o.sessao || null), rodarOrig(d0, o));
+  fs.writeFileSync(path.join(dir, '.ao-vivo.sid'), 'sessao-que-perguntou');
+  claudeFaz = () => qs('pausa', '--motivo', 'm', '--pergunta', 'Qual filial?');
+  assert.strictEqual(await rodarCT(), 'parou');
+  assert.deepStrictEqual(estado(dir).retomarSessao, { cenario: 'CT01', sid: 'sessao-que-perguntou' });
+  require('../orquestrador/responder').responder(dir, 'Filial 2');
+  require('../estado').mudar(dir, { execucao: 'rodando' }); // o ▶ faz isto na retomada
+  claudeFaz = () => qs('roteiro', 'CT01', rot(BOM));
+  assert.strictEqual(await rodarCT(), 'fim');
+  assert.deepStrictEqual(sessoes, [null, 'sessao-que-perguntou']);
+  assert.strictEqual(titulos.at(-1), 'QA · CT01 · continuando após a resposta');
+  assert.strictEqual(estado(dir).retomarSessao, null);
+  maestro.rodar = rodarOrig;
+
   // Roteiro ruim duas vezes: pausa no cenário (zero skip), não conclui.
   titulos.length = 0;
   refazer(dir, 'CT01');
@@ -241,5 +265,29 @@ async function encadeamento() {
       : qs('roteiro', 'CT01', rot(BOM));
   assert.strictEqual(await rodarCT(), 'parou');
   assert.match(estado(dir).pausa?.pergunta || JSON.stringify(estado(dir)), /não serviu de novo: espera curta/);
+
+  // Lote (craftingTable.qaLoteRoteiro): 3 cenários, UMA sessão do Claude escreve os 3 roteiros; a jornada roda os 3 sem Claude.
+  const dl = path.join(raiz, 'lote');
+  fs.mkdirSync(dl);
+  sincronizar(dl, '#### CT01 – A\n\nx\n\n#### CT02 – B\n\ny\n\n#### CT03 – C\n\nz', 1);
+  const qsl = (...a) =>
+    execFileSync(path.join(__dirname, '..', 'bin', 'qa-state'), a, {
+      env: { ...process.env, QA_DIR: dl },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }).toString();
+  titulos.length = 0;
+  rcs = [];
+  claudeFaz = (o) => {
+    for (const id of [...new Set(o.prompt.match(/CT0\d/g))]) qsl('roteiro', id, rot(BOM));
+  };
+  require('../estado').mudar(dl, { execucao: 'rodando' });
+  assert.strictEqual(await require('../etapas/06-execucao').rodar(dl, { ...d, loteRoteiro: 3 }, {}), false);
+  assert.deepStrictEqual(
+    [cenarios(dl).cenarios.map((c) => c.status), titulos],
+    [['passou', 'passou', 'passou'], ['QA · CT01 · roteiros de CT01, CT02, CT03']]
+  );
+  assert.strictEqual(estado(dl).loteRoteiro, null);
+  // fora do lote, o qa-state não aceita roteiro de cenário que não está em execução
+  assert.throws(() => qsl('roteiro', 'CT02', rot(BOM)), /não está em execução/);
   fs.rmSync(raiz, { recursive: true, force: true });
 }

@@ -89,7 +89,7 @@ const { promptCenario, promptDiagnostico } = require('./etapas/06-execucao/promp
 const { registrarRoteiro, roteiroDe, pedirNovoRoteiro } = require('./etapas/06-execucao/roteiros');
 const { podePublicar } = require('./etapas/07-publicar');
 const { html } = require('./abas/evidencias');
-const { massaHtml } = require('./abas/massa');
+const { roteiroHtml } = require('./abas/roteiro');
 
 module.exports = {
   desistirMassa,
@@ -137,7 +137,7 @@ module.exports = {
   LOG_AMB,
   FERRAMENTAS_PLANO,
   html,
-  massaHtml,
+  roteiroHtml,
   estado,
   mudar,
   cenarios,

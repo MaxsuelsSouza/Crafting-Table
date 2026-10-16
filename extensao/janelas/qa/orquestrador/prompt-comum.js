@@ -16,7 +16,8 @@ const REGRAS =
   `Para perguntar ao humano: ${QA_STATE} pausa --motivo "<curto>" --pergunta "<o que falta, em uma frase>" [--opcoes "A|B"] e TERMINE em seguida, sem concluir o cenário. ` +
   'Bloqueio de fluxo ou tela, falha de ambiente ou de ferramenta: NÃO conclua nem pule o cenário. Pause com o qa-state (pausa, descrevendo o bloqueio: tela, passo e o que viu) e TERMINE: o humano é avisado e instrui. Zero skip. ' +
   'Proibido: escrever no banco por conta própria (INSERT/UPDATE/DELETE/DDL, liberar usuário ou permissão; a alteração de massa só vai por qa-state massa proposta, que o humano aprova antes de rodar), publicar no provedor, commit, push, merge e rebase. ' +
-  `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita).`;
+  `Grave tudo do QA com ${QA_STATE} (a pasta ~/.claude é bloqueada para escrita); a sintaxe está neste prompt, não leia o fonte do qa-state. ` +
+  'Não leia .decisoes.json, .ao-vivo.jsonl, .mapa-db.jsonl nem .massa.json (registros da extensão, enormes): o que você precisa já está neste prompt.';
 const RESPOSTAS = '.respostas.md',
   PAUSA = '.pausa.json';
 const citarRespostas = (dir) =>

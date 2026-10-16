@@ -52,6 +52,14 @@ const logSql = (dir, o) => {
 async function aplicarProposta(dir, d) {
   const p = propostaMassa(dir);
   if (!p) return { ok: false, erro: 'não há proposta de massa' };
+  // Idempotente: a proposta é tomada antes de executar (clique duplo ou duas janelas não rodam o lote duas vezes).
+  const arq = path.join(dir, PROPOSTA),
+    tomada = `${arq}.executando`;
+  try {
+    fs.renameSync(arq, tomada);
+  } catch {
+    return { ok: false, erro: 'a proposta já está sendo executada' };
+  }
   const b = d.banco || {},
     vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const r = await (d.executarSql || require('./dependencias').executar)(b, p.sql);
@@ -66,6 +74,7 @@ async function aplicarProposta(dir, d) {
     saida: String(r.saida || '').slice(0, 500)
   });
   if (!r.ok) {
+    fs.renameSync(tomada, arq); // nada foi gravado: a proposta volta para tentar de novo ou recusar
     vivo('erro', `A alteração de massa falhou (nada foi gravado): ${String(r.saida).split('\n')[0].slice(0, 160)}`);
     mudar(dir, {
       pausa: {
@@ -85,7 +94,7 @@ async function aplicarProposta(dir, d) {
     origem: 'sql',
     desfazer: p.desfazer
   });
-  fs.rmSync(path.join(dir, PROPOSTA), { force: true });
+  fs.rmSync(tomada, { force: true });
   mudar(dir, { pausa: null });
   vivo(
     'fim',

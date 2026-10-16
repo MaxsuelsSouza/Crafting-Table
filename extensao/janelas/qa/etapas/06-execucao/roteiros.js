@@ -3,7 +3,7 @@
 // O Claude registra pelo qa-state (6.1); a extensão reaproveita enquanto o texto do cenário e a instrução do humano não mudam (↻ sem gastar Claude).
 const fs = require('fs');
 const path = require('path');
-const { lerJson, gravarJson } = require('../../estado');
+const { lerJson, gravarJson, estado } = require('../../estado');
 const { cenarios, CENARIOS } = require('../02-cenarios/mapa');
 const { massa } = require('../05-massa/estado');
 const { substituir, resolverVars, varsDaMassa, validarRoteiro } = require('./regras/roteiro');
@@ -17,9 +17,14 @@ const emExecucao = (dir, id) => {
   return c;
 };
 
+// Lote do 6.1 (estado.loteRoteiro): a mesma sessão registra também os roteiros dos próximos cenários pendentes.
+const doLote = (dir, id) => {
+  const c = cenarios(dir).cenarios.find((x) => x.id === id);
+  return (estado(dir).loteRoteiro || []).includes(id) && ['pendente', 'desatualizado'].includes(c?.status) ? c : null;
+};
 // Valida já com a massa do cenário, para o Claude corrigir na mesma sessão em vez de descobrir na jornada.
 function registrarRoteiro(dir, id, arq) {
-  const c = emExecucao(dir, id);
+  const c = doLote(dir, id) || emExecucao(dir, id);
   let r;
   try {
     r = JSON.parse(fs.readFileSync(arq, 'utf8'));

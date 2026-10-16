@@ -2,7 +2,7 @@
 const path = require('path');
 const { lerJson, gravarJson, estado } = require('../../estado');
 
-// ── Massa de dados (.massa.json, aba Massa). Vale até o próximo refresh do banco (cópia de produção renovada todo dia):
+// ── Massa de dados (.massa.json, aba Roteiro). Vale até o próximo refresh do banco (cópia de produção renovada todo dia):
 // sem um sinal do restore no banco, o refresh é um horário configurável (craftingTable.qaHoraRefresh).
 const MASSA = '.massa.json';
 const massa = (dir) => lerJson(path.join(dir, MASSA), { itens: [] });

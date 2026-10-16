@@ -39,7 +39,7 @@ const execucao = (s) => ({
     await qa.executar(s.pastaAba(t.id), depsQa(s, t));
     s.render();
   },
-  // Etapa 5 (Massa de dados) concluída: ↻ ao passar o mouse apaga a aba Massa e a IA levanta massa nova para todos os cenários.
+  // Etapa 5 (Massa de dados) concluída: ↻ ao passar o mouse valida a massa dos pendentes e a IA levanta massa nova só para quem ficou sem (aba Roteiro).
   async qaMassaRefazer() {
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;

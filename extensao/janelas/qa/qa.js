@@ -13,7 +13,7 @@
 //   entrada.js        dossiê de entrada do QA e o briefing do dev
 //   orquestrador/     ▶ Dar início (ordem das etapas), claude -p, pausa, resposta, zero skip, ⏸ (um arquivo por regra)
 //   etapas/           index.js (lista das etapas e vagas) + uma pasta por etapa: 01-planejamento … 06-execucao, e 07-publicar.js
-//   abas/             evidencias/ (bloco do QA na seção Evidências), massa.js (aba Massa), acoes/ (cliques), botao-play.js, rodape.js
+//   abas/             evidencias/ (bloco do QA na seção Evidências), roteiro.js (aba Roteiro: roteiros + massa), acoes/ (cliques), botao-play.js, rodape.js
 //   bin/              qa-state (o Claude grava por ele)
 //   testes/           teste-*.js (node extensao/janelas/qa/testes/teste-x.js)
 
@@ -33,7 +33,7 @@ const ABAS = [
   { secao: 'claudeAbas.evidencias', nome: 'Evidências' },
   { id: 'ticket', nome: 'Ticket' },
   { id: 'decisoes', nome: 'Decisões' },
-  { id: 'massa', nome: 'Massa' }
+  { id: 'roteiro', nome: 'Roteiro' }
 ];
 
 // Variável do provedor que o módulo exige além das comuns (configuracao.js, pendências da caixa de vinculados).
@@ -43,8 +43,8 @@ const EXIGE = ['etapasQA'];
 const situacao = (t) => require('./situacao').situacao(t);
 // Corpo das abas próprias (painel.js corpoAba); undefined = a aba não é do QA.
 const corpoAba = (aba, t, d, dir) =>
-  aba === 'massa'
-    ? require('./abas/massa').massaHtml(
+  aba === 'roteiro'
+    ? require('./abas/roteiro').roteiroHtml(
         dir,
         require('vscode').workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00'
       )

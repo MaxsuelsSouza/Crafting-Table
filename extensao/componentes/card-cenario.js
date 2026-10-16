@@ -5,7 +5,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Componente "Card de cenário": cada CT do plano de QA. Fechado mostra o código, o título e a pill de status; clicado expande o texto,
 // a pasta/copiar das evidências, cada execução com as suas miniaturas e o botão ↻ Refazer. Usado no mapa de cenários do QA (janelas/qa/abas/evidencias/mapa.js,
 // exibido nas Evidências em modulos/evidencias.js), no fluxo dos Incidentes (componentes/fluxo-passos.js) e na Reprodução das Implementações
-// (janelas/implementacoes/abas/reproducao.js). As classes .cen/.cdet/.cid/.cst também vestem os itens da aba Massa (janelas/qa/abas/massa.js).
+// (janelas/implementacoes/abas/reproducao.js). As classes .cen/.cdet/.cid/.cst também vestem os roteiros (componentes/roteiros.js, aba Roteiro do QA).
 // Para usar numa tela: CSS no <style>, card(c, ctx) no corpo (dentro de <div class="cens">) e script(chave) no <script>.
 // Cliques pelo data-acao/data-painel de sempre: abrir, pastaCenario, copiarCenario (evidencias.js) e qaRefazer (painel.js).
 // Redesenhar quando mudar .cenarios.json ou a pasta de evidências (evidencias.js já vigia). Estado aberto/fechado: vscode.getState()[chave].
@@ -51,7 +51,7 @@ const script = (chave = 'cenAbertos') => `{
       vscode.setState({ ...st(), [${JSON.stringify(chave)}]: [...l] });
     });
   }
-  // Expandir tudo / Recolher tudo (aba Massa): o botão fica no card de cima e age sobre os itens da lista logo abaixo.
+  // Expandir tudo / Recolher tudo (aba Roteiro): o botão fica no card de cima e age sobre os itens da lista logo abaixo.
   for (const b of document.querySelectorAll('[data-expandir-tudo]')) {
     const itens = () => [...document.querySelectorAll('.cens details[data-cen]')];
     const rotulo = () => { b.textContent = itens().length && itens().every((d) => d.open) ? 'Recolher tudo' : 'Expandir tudo'; };

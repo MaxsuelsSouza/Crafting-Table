@@ -10,7 +10,8 @@ function responder(dir, resposta) {
     r = String(resposta || '').trim();
   if (!e.pausa || !r) return false;
   fs.appendFileSync(path.join(dir, RESPOSTAS), `## ${e.pausa.etapa || 'QA'} · ${e.pausa.pergunta}\n${r}\n\n`);
-  mudar(dir, { pausa: null });
+  // Pergunta feita no roteiro (6.1): a resposta vai junto para continuar a mesma sessão.
+  mudar(dir, { pausa: null, ...(e.retomarSessao ? { retomarSessao: { ...e.retomarSessao, resposta: r } } : {}) });
   return true;
 }
 

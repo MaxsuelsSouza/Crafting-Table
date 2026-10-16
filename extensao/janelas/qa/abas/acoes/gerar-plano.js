@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const qa = require('../../motor');
+const { argsEnxutos } = require('../../../../infra/agentes/enxuto');
 const maestro = require('../../../../infra/agentes/maestro');
 const { areaIA } = require('../../../../infra/agentes/area-ia');
 const aoVivo = require('../../../../componentes/ao-vivo');
@@ -58,14 +59,13 @@ async function gerarPlano(s, t, dir, { prompt, titulo, mudanca = false }) {
     prompt: prompt(rasc),
     titulo,
     ferramentas: qa.FERRAMENTAS_PLANO,
+    // Contexto enxuto (sem MCP, skills e plugins); o modelo é o do refinamento (craftingTable.modelo): o plano pede qualidade.
     extras: [
-      '--settings',
-      JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }),
+      ...argsEnxutos(qa.FERRAMENTAS_PLANO, { modelo: cfg().get('modelo') || '' }),
       '--add-dir',
       dir,
       rasc,
-      ...(docLocal(t) ? [path.dirname(dir)] : []),
-      ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])
+      ...(docLocal(t) ? [path.dirname(dir)] : [])
     ],
     aoMudar: () => {
       s.render();

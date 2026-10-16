@@ -11,7 +11,7 @@ const massaTexto = (itens) =>
     : 'nenhuma registrada';
 
 const ROTEIRO = (c, amb, dir) =>
-  `ROTEIRO (JSON) que a extensão executa sem você: { "variaveis": {"NOME": "\${CHAVE_DA_MASSA}"}, "etapas": [ ` +
+  `ROTEIRO (JSON) que a extensão executa sem você: { "descricao": "<1 frase: o que o roteiro faz e o que prova>", "variaveis": {"NOME": "\${CHAVE_DA_MASSA}"}, "etapas": [ ` +
   `{"tipo":"flow","arquivo":"<flow.yaml relativo ao JSON>","env":{"K":"V"}} | {"tipo":"bipe","codigo":"\${CODIGO}","segundos":1} | {"tipo":"espera","segundos":2} | ` +
   `{"tipo":"consulta","nome":"antes","sql":"SELECT … WHERE k = :k ORDER BY 1","binds":{"k":"\${CODIGO}"}} | ` +
   `{"tipo":"consulta","nome":"depois","sql":"<a MESMA consulta>","binds":{…},"comparar_com":"antes","esperado":"igual|diferente"} ] }.\n` +
@@ -22,7 +22,7 @@ const ROTEIRO = (c, amb, dir) =>
 
 const promptCenario = (chave, c, amb, itens, dir = '', exige = []) =>
   `[segundo plano · Crafting Table · QA de ${chave}] Prepare o ROTEIRO do cenário ${c.id} do planejamento de QA, ` +
-  `seguindo o método da skill testes-funcionais (${SKILL()}/SKILL.md e references/jornada-mobile-maestro.md). NÃO execute a jornada: ` +
+  `seguindo o método de jornada da skill testes-funcionais (leia SÓ ${SKILL()}/references/jornada-mobile-maestro.md; o SKILL.md inteiro não é preciso). NÃO execute a jornada: ` +
   `a extensão roda o roteiro (Maestro, bipe, consultas), grava o vídeo e anexa as evidências.${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}\n\n` +
   `Cenário ${c.id} · ${c.titulo}\n${c.texto}\n\n` +
   (c.instrucao ? `INSTRUÇÃO DO HUMANO para esta nova tentativa (siga): ${c.instrucao}\n\n` : '') +
@@ -54,4 +54,10 @@ const promptDiagnostico = (chave, c, amb, itens, dir, pasta, detalhes) =>
   `- o problema é do roteiro (seletor, espera curta, consulta ou comparação erradas): ${QA_STATE} roteiro ${c.id} refazer --nota "<o que corrigir>"\n` +
   `- não dá para decidir pelas fontes: ${QA_STATE} pausa (pergunta ao humano).\n${REGRAS}`;
 
-module.exports = { promptCenario, promptDiagnostico };
+// Resposta do humano à pergunta feita no roteiro: continua a MESMA sessão (--resume), que já tem o método e o que descobriu.
+const promptContinuar = (c, resposta) =>
+  `O humano respondeu à sua pergunta sobre o cenário ${c.id}: ${resposta}\n` +
+  `Continue de onde parou: registre o roteiro com ${QA_STATE} roteiro ${c.id} <arquivo.json> (o cenário foi reaberto) e TERMINE. ` +
+  `Se ainda faltar algo que só o humano sabe, pergunte de novo com ${QA_STATE} pausa.`;
+
+module.exports = { promptCenario, promptDiagnostico, promptContinuar, massaTexto };

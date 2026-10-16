@@ -28,14 +28,18 @@ async function garantirMassa(dir, d, amb, c, seguidas) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const doCenario = massa(dir).itens.filter((i) => (i.cenarios || []).includes(c.id));
   if (!doCenario.length) return { itens: [] }; // cenário que não precisa de massa (ou dispensado na Etapa 5)
-  const candidatos = validosDe(dir, d, [c.id]);
+  // Candidatos: os marcados como válidos, inclusive os vencidos pelo horário do refresh (o banco diz se o registro ainda serve:
+  // true renova a medida; sem como conferir, vale o horário).
+  const candidatos = doCenario.filter((i) => i.estado === 'valida');
   if (candidatos.length) {
     const r = await validarMassa(
       dir,
       d,
       candidatos.map((i) => i.id)
     );
-    const ok = candidatos.filter((i) => r[i.id] !== false);
+    const ok = candidatos.filter(
+      (i) => r[i.id] === true || (r[i.id] === null && validosDe(dir, d, [c.id]).some((v) => v.id === i.id))
+    );
     if (ok.length) {
       seguidas.invalidas = 0;
       if (Object.values(r).some((v) => v === true)) vivo('acao', `${c.id}: massa validada no banco`);

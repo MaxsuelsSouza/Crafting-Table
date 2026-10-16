@@ -39,15 +39,13 @@ const depsQa = (s, t) => {
     horaRefresh: cfg().get('qaHoraRefresh') || '06:00',
     aoMudar: s.render,
     timeoutMin: Number(cfg().get('qaTimeoutCenarioMin') ?? 30),
+    loteRoteiro: Number(cfg().get('qaLoteRoteiro') ?? 6),
     banco: banco.daConfig(cfg()),
     executarSql: (b, stmts) => executarSql(b, stmts),
-    extras: [
-      '--settings',
-      JSON.stringify({ enabledPlugins: { 'i-have-adhd@i-have-adhd': false } }),
-      '--add-dir',
-      dir,
-      ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])
-    ],
+    // Modelo e esforço do QA em segundo plano (os plugins, MCP e skills saem em orquestrador/claude.js).
+    modelo: cfg().get('qaModelo') ?? 'sonnet',
+    esforco: cfg().get('qaEsforco') ?? 'medium',
+    extras: ['--add-dir', dir],
     // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
     comandos: {
       lista: () => require('../../../../modulos/comandos').api?.lista() || [],

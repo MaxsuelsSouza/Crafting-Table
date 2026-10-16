@@ -15,7 +15,7 @@ const rodar = (bin, args, { cwd, timeout = 10 * 60000 } = {}) =>
   );
 
 // ~/.wms-testes.env (WMS_ENV_FILE troca o caminho): a sessão vence o arquivo; vazio ou placeholder <…> é ignorado.
-function envWms() {
+function lerEnvWms() {
   const arq = process.env.WMS_ENV_FILE || path.join(os.homedir(), '.wms-testes.env'),
     r = {};
   let tx = '';
@@ -34,7 +34,16 @@ function envWms() {
     if (k.trim() && val && !val.startsWith('<')) r[k.trim()] = val;
   }
   const de = (k) => process.env[k] || r[k];
-  // O runner passa ao Maestro como MATRICULA, SENHA e APP_ID (subflows/login.yaml da skill).
+  return Object.fromEntries(
+    [...new Set([...Object.keys(r), ...Object.keys(process.env).filter((k) => k.startsWith('WMS_'))])]
+      .map((k) => [k, de(k)])
+      .filter(([, v]) => v)
+  );
+}
+// O runner passa ao Maestro como MATRICULA, SENHA e APP_ID (subflows/login.yaml da skill).
+function envWms() {
+  const e = lerEnvWms(),
+    de = (k) => e[k];
   return Object.fromEntries(
     [
       ['MATRICULA', de('WMS_API_LOGIN')],
@@ -110,4 +119,4 @@ function jornada(d) {
   };
 }
 
-module.exports = { jornada, envWms };
+module.exports = { jornada, envWms, lerEnvWms };

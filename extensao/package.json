@@ -136,6 +136,24 @@
           "minimum": 0,
           "description": "Minutos que o Claude pode levar em um cenário do QA (ou na massa). Estourou: o cenário fica bloqueado com a nota. 0 desliga o limite."
         },
+        "craftingTable.qaModelo": {
+          "type": "string",
+          "default": "sonnet",
+          "description": "Modelo do Claude nas sessões em segundo plano do QA (pré-condição, massa, roteiro e diagnóstico). Vazio: o do ~/.claude/settings.json."
+        },
+        "craftingTable.qaLoteRoteiro": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Quantos roteiros de cenário uma mesma sessão do Claude escreve de uma vez no QA (o da vez + os próximos pendentes). 1 = um por sessão."
+        },
+        "craftingTable.qaEsforco": {
+          "type": "string",
+          "default": "medium",
+          "enum": ["", "low", "medium", "high", "xhigh", "max"],
+          "description": "Esforço (raciocínio) do Claude nas sessões em segundo plano do QA. Vazio: o do ~/.claude/settings.json."
+        },
         "craftingTable.avdPadrao": {
           "type": "string",
           "default": "Small_Phone",

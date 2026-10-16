@@ -13,7 +13,7 @@ const { estado, mudar } = require('../../estado');
 const { pausado } = require('../../orquestrador/rodando');
 const { claude } = require('../../orquestrador/claude');
 const { absorverPausa } = require('../../orquestrador/pausa');
-const { sincronizarMassa, semMassa } = require('./regras/validade');
+const { sincronizarMassa, semMassa, ultimoRefresh } = require('./regras/validade');
 const { MASSA_BUSCA_MIN, promptMassa, FERRAMENTAS_MASSA } = require('./prompt');
 const { desistirMassa } = require('./desistir');
 
@@ -71,9 +71,30 @@ async function levantarMassa(dir, d, amb, cens) {
     cens.filter((c) => !estado(dir).massaDesfecho?.[c.id] && semMassa(dir, [c.id], new Date(), d.horaRefresh).length);
   try {
     // Fase 1: busca por até 5 min (só leitura). Fase 2: produzir a massa por UPDATE (o humano aprova). Sem jeito: desiste do cenário e segue para o próximo.
-    const r1 = await rodar(cens, 'buscar', 'QA · Levantando massa de dados', d.massaBuscaMin ?? MASSA_BUSCA_MIN);
+    // A fase 1 que já não achou nada hoje (desde o refresh) não se repete: o cenário vai direto para a fase 2.
+    const vazias = estado(dir).buscaVazia || {},
+      jaBuscou = (c) => vazias[c.id] && new Date(vazias[c.id]) >= ultimoRefresh(new Date(), d.horaRefresh),
+      buscar = cens.filter((c) => !jaBuscou(c));
+    if (buscar.length < cens.length)
+      vivo(
+        'acao',
+        `Busca de massa já feita hoje sem resultado para ${cens
+          .filter(jaBuscou)
+          .map((c) => c.id)
+          .join(', ')}: indo direto para produzir`
+      );
+    const r1 = buscar.length
+      ? await rodar(buscar, 'buscar', 'QA · Levantando massa de dados', d.massaBuscaMin ?? MASSA_BUSCA_MIN)
+      : { ok: true };
     if (r1.erro || absorverPausa(dir) || estado(dir).pausa || pausado(dir)) return r1;
     const sem = faltam();
+    const agora = new Date().toISOString();
+    mudar(dir, {
+      buscaVazia: {
+        ...vazias,
+        ...Object.fromEntries(sem.filter((c) => buscar.includes(c)).map((c) => [c.id, agora]))
+      }
+    });
     if (!sem.length) return r1;
     vivo(
       'aviso',

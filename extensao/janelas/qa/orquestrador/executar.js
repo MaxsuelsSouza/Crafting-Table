@@ -12,14 +12,16 @@ const { preparar } = require('../etapas/03-ambiente');
 const { analisarAmbiente } = require('../etapas/03-ambiente/analise');
 const { preCondicao } = require('../etapas/04-precondicao');
 const { massa, MASSA } = require('../etapas/05-massa/estado');
-const { semMassa } = require('../etapas/05-massa/regras/validade');
+const { semMassa, massaValida } = require('../etapas/05-massa/regras/validade');
+const { validarMassa } = require('../etapas/05-massa/validar');
 const { retomada } = require('./retomada');
 const { levantarMassa } = require('../etapas/05-massa');
 const { fila } = require('../etapas/06-execucao/cenario');
 const execucao = require('../etapas/06-execucao');
 
 // ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
-// soMassa (↻ da Etapa 5): move a massa da aba para "Massas mortas" e só levanta massa nova para todos os cenários ativos; não executa cenário.
+// soMassa (↻ da Etapa 5): valida no banco a massa dos cenários PENDENTES, move para "Massas mortas" só a que não serve mais
+// (inválida, consumida ou vencida) e levanta massa só para quem ficou sem; não executa cenário. Passou e não executável não entram.
 async function executar(dir, d, { soMassa = false } = {}) {
   if (rodando(dir)) return;
   if (estado(dir).pausa)
@@ -36,8 +38,7 @@ async function executar(dir, d, { soMassa = false } = {}) {
   try {
     if (estado(dir).fase !== 'plano_aprovado') return vivo('aviso', 'Aprove o planejamento antes de dar início');
     vivo('etapa', 'QA · 3. Execução');
-    const ativosC = () => cenarios(dir).cenarios.filter((c) => !c.arquivado && c.status !== 'dispensado');
-    let pend = soMassa ? ativosC() : fila(cenarios(dir));
+    let pend = fila(cenarios(dir));
     if (!pend.length)
       return vivo(
         'fim',
@@ -46,13 +47,27 @@ async function executar(dir, d, { soMassa = false } = {}) {
           : 'Sem cenários para executar'
       );
     if (soMassa) {
-      const m = massa(dir);
+      const ids = pend.map((c) => c.id),
+        dosPendentes = (i) => (i.cenarios || []).some((x) => ids.includes(x));
+      await validarMassa(
+        dir,
+        d,
+        massa(dir)
+          .itens.filter((i) => dosPendentes(i) && massaValida(i, new Date(), d.horaRefresh))
+          .map((i) => i.id)
+      );
+      const m = massa(dir),
+        serve = (i) => massaValida(i, new Date(), d.horaRefresh),
+        mortas = m.itens.filter((i) => dosPendentes(i) && !serve(i));
       gravarJson(path.join(dir, MASSA), {
         ...m,
-        itens: [],
-        mortas: [...(m.mortas || []), ...m.itens.map((i) => ({ ...i, morreuEm: new Date().toISOString() }))]
+        itens: m.itens.filter((i) => !mortas.includes(i)),
+        mortas: [...(m.mortas || []), ...mortas.map((i) => ({ ...i, morreuEm: new Date().toISOString() }))]
       });
-      vivo('acao', 'Massa antiga movida para Massas mortas: levantando massa nova para todos os cenários');
+      vivo(
+        'acao',
+        `Massa dos ${ids.length} pendente(s) validada no banco: ${mortas.length} movida(s) para Massas mortas; levantando só para quem ficou sem`
+      );
     }
     const dono = donoAmbiente();
     if (
@@ -70,6 +85,25 @@ async function executar(dir, d, { soMassa = false } = {}) {
     }
     if (!amb || pausado(dir)) return;
     if (!(await preCondicao(dir, d, amb))) return; // falhou (motivo reportado) ou pausou: a suíte não começa
+    // Massa vencida só pelo horário do refresh: confere no banco antes de ir à Etapa 5 (o registro costuma continuar servindo).
+    if (volta !== 'mesmo-dia') {
+      const ids = pend.map((c) => c.id),
+        vencidas = massa(dir).itens.filter(
+          (i) =>
+            i.estado === 'valida' &&
+            !massaValida(i, new Date(), d.horaRefresh) &&
+            (i.cenarios || []).some((x) => ids.includes(x))
+        );
+      if (vencidas.length) {
+        const r = await validarMassa(
+          dir,
+          d,
+          vencidas.map((i) => i.id)
+        );
+        const n = Object.values(r).filter((v) => v === true).length;
+        if (n) vivo('acao', `${n} massa(s) de antes do refresh conferida(s) no banco e reaproveitada(s)`);
+      }
+    }
     const agora = new Date(),
       falta =
         volta === 'mesmo-dia'
