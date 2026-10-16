@@ -344,13 +344,17 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     maestro.rodar = (dir, o) => { if (/Pré-condição/.test(o.titulo)) { cliEnv(dir, {}, 'precondicao', '--status', 'ok', '--nota', 'sessão autenticada'); setTimeout(() => o.aoMudar(), 0); return true; } veio.push(o); Promise.resolve(fazer(dir, o)).then(() => o.aoMudar()); return true; };
     const cliEnv = (dir, env, ...a) => execFileSync(path.join(__dirname, 'qa-state'), a, { env: { ...process.env, QA_DIR: dir, ...env }, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
     const propor = (dir, o) => cliEnv(dir, o.env, 'massa', 'proposta', '--papel', 'pedido faturado', '--cenarios', 'CT01,CT02', '--dados', '{"NUMPEDIDO":77,"STATUS":"F"}',
-      '--sql', "UPDATE pedido SET status = 'F' WHERE numpedido = 77; INSERT INTO log_nota (id, nota) VALUES (1, 77)", '--desfazer', "UPDATE pedido SET status = 'A' WHERE numpedido = 77; DELETE FROM log_nota WHERE id = 1 AND nota = 77", '--porque', 'nenhum pedido faturado na cópia');
+      '--sql', "UPDATE pedido SET status = 'F' WHERE numpedido = 77; UPDATE log_nota SET nota = 77 WHERE id = 1", '--desfazer', "UPDATE pedido SET status = 'A' WHERE numpedido = 77; UPDATE log_nota SET nota = 0 WHERE id = 1", '--porque', 'nenhum pedido faturado na cópia');
     const passa = (dir, id) => { const ev = path.join(os.tmpdir(), `s-${process.pid}-${id}.txt`); fs.writeFileSync(ev, 'ok'); cliEnv(dir, {}, 'evidencia', id, ev); cliEnv(dir, {}, 'cenario', id, 'concluir', '--status', 'passou'); };
 
     const d = await novo();
-    fazer = async (dir, o) => { if (/massa/.test(o.titulo)) propor(dir, o); };
+    fazer = async (dir, o) => { if (/Produzindo/.test(o.titulo)) propor(dir, o); };
     await qa.executar(d, deps);
-    assert.ok(veio[0].prompt.includes('PROPONHA o lote') && veio[0].env.QA_BANCO_ESCRITA === '1');
+    // fase 1 (busca, só leitura) → não achou → fase 2 (produzir por UPDATE, com escrita liberada para propor)
+    assert.deepStrictEqual(veio.map((v) => v.titulo), ['QA · Levantando massa de dados', 'QA · Produzindo massa por UPDATE']);
+    assert.ok(!veio[0].prompt.includes('PROPONHA') && !veio[0].env.QA_BANCO_ESCRITA && veio[0].prompt.includes('FASE 1'));
+    assert.ok(veio[1].prompt.includes('FASE 2') && veio[1].prompt.includes('PROPONHA') && veio[1].env.QA_BANCO_ESCRITA === '1');
+    assert.throws(() => cliEnv(d, { QA_BANCO_ESCRITA: '1' }, 'massa', 'proposta', '--cenarios', 'CT01', '--sql', 'x', '--desfazer', 'y'), /só vale|recusado/);
     assert.deepStrictEqual([qa.estado(d).pausa.motivo, qa.estado(d).pausa.opcoes, qa.estado(d).execucao, sqlRodado.length], ['massa-sql', ['Aprovar e executar', 'Recusar'], 'pausado', 0]);
     const h = qa.html(d);
     assert.ok(h.includes("UPDATE pedido SET status = &#39;F&#39; WHERE numpedido = 77") && h.includes('SQL de desfazer (2)') && h.includes('nenhum pedido faturado na cópia') && h.includes('data-op="0"'));
@@ -379,7 +383,7 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
 
     // recusar: nada executa, a proposta some
     const dr = await novo(); const antes = sqlRodado.length; veio.length = 0;
-    fazer = async (dir, o) => { if (/massa/.test(o.titulo)) propor(dir, o); };
+    fazer = async (dir, o) => { if (/Produzindo/.test(o.titulo)) propor(dir, o); };
     await qa.executar(dr, deps);
     qa.recusarProposta(dr);
     assert.deepStrictEqual([sqlRodado.length - antes, qa.estado(dr).pausa, !!qa.propostaMassa(dr)], [0, null, false]);
@@ -406,10 +410,30 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     let recusouCli = '';
     fazer = async (dir, o) => { if (/massa/.test(o.titulo)) { try { propor(dir, o); } catch (e) { recusouCli = String(e.stderr || e.message); } } };
     await qa.executar(dp, { ...deps, banco: { conexao: 'x', ambiente: 'producao', sqlcl: '', sensiveis: [] } });
-    assert.ok(!veio[0].prompt.includes('PROPONHA o lote') && !veio[0].env.QA_BANCO_ESCRITA && /não está liberada/.test(recusouCli));
+    assert.ok(!veio[0].prompt.includes('PROPONHA') && !veio[0].env.QA_BANCO_ESCRITA && /não está liberada/.test(recusouCli));
+    assert.deepStrictEqual(veio.map((v) => v.titulo), ['QA · Levantando massa de dados']); // sem banco liberado não há fase 2: desiste e segue
+    assert.deepStrictEqual(qa.cenarios(dp).cenarios.map((c) => c.status), ['bloqueado', 'bloqueado']);
     fs.writeFileSync(path.join(dp, qa.PROPOSTA), JSON.stringify({ papel: 'p', cenarios: ['CT01'], dados: {}, sql: ['UPDATE t SET a = 1 WHERE id = 1'], desfazer: ['UPDATE t SET a = 2 WHERE id = 1'], porque: '' }));
     const bloq = await qa.aplicarProposta(dp, { banco: { conexao: 'x', ambiente: 'producao', sqlcl: '' } }); // executor padrão
     assert.deepStrictEqual([bloq.ok, qa.massa(dp).itens.length], [false, 0]);
+    // desistir: fase 2 sem UPDATE possível → CT01 bloqueado sem massa; a fila segue para o CT02 (zero pausa); INSERT na fase 2 é recusado
+    {
+      const dg = await novo(); veio.length = 0; let recusouInsert = '';
+      fazer = async (dir, o) => {
+        if (/Levantando/.test(o.titulo)) return;
+        if (/Produzindo/.test(o.titulo)) {
+          try { cliEnv(dir, o.env, 'massa', 'proposta', '--cenarios', 'CT01', '--sql', 'INSERT INTO t (a) VALUES (1)', '--desfazer', 'DELETE FROM t WHERE a = 1'); } catch (e) { recusouInsert = String(e.stderr || e.message); }
+          cliEnv(dir, o.env, 'massa', 'desistir', '--cenarios', 'CT01', '--nota', 'sem registro-base');
+          cliEnv(dir, o.env, 'massa', 'dispensa', '--cenarios', 'CT02');
+          return;
+        }
+        passa(dir, o.titulo.match(/CT\d+/)[0]);
+      };
+      await qa.executar(dg, deps);
+      assert.ok(/só vale UPDATE/.test(recusouInsert));
+      assert.deepStrictEqual([qa.cenarios(dg).cenarios.map((c) => c.status), qa.estado(dg).pausa || null, qa.estado(dg).execucao], [['bloqueado', 'passou'], null, 'parado']);
+      assert.ok(qa.cenarios(dg).cenarios[0].execucoes.at(-1).nota.includes('sem registro-base'));
+    }
     assert.deepStrictEqual(rede, []);
   }
   console.log('ok esteira qa');

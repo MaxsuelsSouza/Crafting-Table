@@ -7,6 +7,7 @@
 //     --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
 //   qa-state massa proposta --papel "…" --cenarios CT01 --dados '{…}' --sql "UPDATE … WHERE …;INSERT …" --desfazer "UPDATE … WHERE …" --porque "…"
 //     (só na Etapa 4 e com banco liberado: o humano lê e aprova, a extensão executa; a IA nunca roda escrita)
+//   qa-state massa dispensa|desistir --cenarios CT01 [--nota "por quê"]   (só na Etapa 4: dispensa = cenário não precisa de massa; desistir = não achou nem dá para produzir por UPDATE)
 //   qa-state massa M3 valida|consumida|invalida
 //   qa-state pausa --motivo "<curto>" --pergunta "<o que falta>" [--opcoes "A|B"]   (falta informação que só o humano tem: pergunta e termina)
 //   qa-state precondicao --status ok|falhou --nota "<o que foi confirmado ou o motivo>"   (só na Pré-condição: health check e login, antes da suíte)
@@ -29,6 +30,14 @@ try {
     try { dados = JSON.parse(opt.dados || '{}'); } catch { sair('qa-state: --dados precisa ser JSON'); }
     qa.proporMassa(dir, { papel: opt.papel, cenarios: String(opt.cenarios || '').split(',').map((x) => x.trim()).filter(Boolean), dados, sql: opt.sql, desfazer: opt.desfazer, porque: opt.porque });
     sair('proposta registrada: o humano vai ler e aprovar. Termine agora, sem executar nada', 0);
+  }
+  if (obj === 'massa' && (a === 'dispensa' || a === 'desistir')) {
+    if (!qa.emEtapaMassa(dir)) sair('qa-state: massa dispensa/desistir só vale na Etapa 4 (Massa de dados)');
+    for (const id of String(opt.cenarios || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+      if (a === 'desistir') qa.desistirMassa(dir, id, opt.nota || 'sem massa');
+      else qa.mudar(dir, { massaDesfecho: { ...qa.estado(dir).massaDesfecho, [id]: { tipo: 'dispensa' } } });
+    }
+    sair(`${a}: ${opt.cenarios}`, 0);
   }
   if (obj === 'massa' && a === 'add') {
     if (!qa.emEtapaMassa(dir)) sair('qa-state: massa add só vale na Etapa 4 (Massa de dados). Na execução do cenário use só a massa recebida: se ela não serve, massa <ID> invalida e cenario <CT> concluir --status sem-massa');
