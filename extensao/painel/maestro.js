@@ -9,6 +9,7 @@ const { spawn } = require('child_process');
 // Sem AskUserQuestion (não existe em -p): perguntas passam pelo sdd-state e pela aba.
 // A sessão fica em .ao-vivo.sid para continuar a mesma conversa (--resume) quando precisar.
 const SID = '.ao-vivo.sid', PID = '.ao-vivo.pid';
+const vigia = require('./vigia'); // observador global: busca longa e ▶ repetido
 const { anotar, anexarConversa } = require('../componentes/ao-vivo'); // caixa "Ao vivo": o que o claude -p faz vai para lá
 const rodando = new Map(); // pasta do ticket -> processo (desta janela)
 const erros = new Map(); // pasta -> motivo do último erro do Claude (is_error do stream, código de saída ou falha ao subir); o QA lê para pausar a fila
@@ -146,6 +147,7 @@ function rodar(dir, opcoes) {
     ...(ferramentas.length ? ['--allowedTools', ...new Set([...ferramentas, ...GIT_LEITURA])] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
+  vigia.iniciar(dir);
   try { fs.writeFileSync(path.join(dir, PID), String(p.pid)); } catch {}
   gravar({ tipo: 'etapa', texto: titulo });
   aoMudar();
@@ -158,6 +160,10 @@ function rodar(dir, opcoes) {
       let e;
       try { e = JSON.parse(l); } catch { continue; }
       if (e.type === 'system' && e.subtype === 'init' && e.session_id) { sessaoId = e.session_id; fs.writeFileSync(path.join(dir, SID), e.session_id); }
+      if (e.type === 'assistant') for (const c of e.message?.content || []) {
+        if (c.type === 'tool_use') vigia.atividade(dir, c.name, linhaFerramenta(c)?.texto || c.name);
+        else if (c.type === 'text' && c.text.trim()) vigia.progresso(dir);
+      }
       if (e.type === 'result' && e.is_error) erros.set(dir, String(e.result || e.subtype || 'erro').slice(0, 300));
       linhas(e).forEach(gravar);
     }
@@ -165,7 +171,7 @@ function rodar(dir, opcoes) {
   let erro = '';
   p.stderr.on('data', (b) => { erro += b; });
   let falhou = false;
-  const soltar = () => { rodando.delete(dir); if (pidDe(dir) === p.pid) fs.rmSync(path.join(dir, PID), { force: true }); };
+  const soltar = () => { rodando.delete(dir); vigia.encerrar(dir); if (pidDe(dir) === p.pid) fs.rmSync(path.join(dir, PID), { force: true }); };
   p.on('close', (code) => {
     soltar();
     if (sessaoId) anexarConversa(dir, sessaoId, titulo); // terminou (ou foi pausada): vira conversa da aba, com o título da etapa

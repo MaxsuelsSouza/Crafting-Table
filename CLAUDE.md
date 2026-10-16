@@ -21,7 +21,7 @@ De cima para baixo:
 Linha 1, da esquerda para a direita: **←** voltar · **título** · (direita) **▶/⏸** · **✦ abrir agente** · **⚡ raio** · **🎫 ticket** · **🗑 excluir**
 - Os botões são do componente `botoes-ticket.js`: uma flag por botão (`visiveis`) e `extras` para acrescentar outros. Não desenhe botão do cabeçalho à mão.
 - ✦ abre a conversa vinculada ao ticket. **Meta (ver plano de ajuste):** sempre a mesma conversa, com tooltip genérico (não só "Claude"). Hoje abre a mais recente do módulo.
-- ⚡ injeta um prompt na sessão aberta no Ao vivo (`maestro.instruir`).
+- ⚡ sempre ativo: injeta um prompt na sessão aberta no Ao vivo (`maestro.instruir`); sem sessão, abre uma nova com o prompt (`maestro.rodar`).
 - `cabecalho-ticket.js` existe (monta o `<header>` com esses botões) mas **ainda não é usado**: o cabeçalho em uso é `cabecalho()` da `moldura.js`.
 
 Linha 2: **pill de status** do ticket (`pill.js`) e o botão **⟳ atualizar**.
@@ -32,6 +32,13 @@ Linha 3: **menu** (`menu-abas.js`): `Docs · Central · Ticket · Decisões | Co
 ### Rodapé (`componentes/rodape.js`)
 
 Em todas as telas do ticket: 🔔 **Notificações** e ▶ **Comandos**. Não é por módulo.
+
+### Vigia (global, `extensao/painel/vigia.js`)
+
+Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo não precisa fazer nada.
+- Mais de 2 min só lendo/buscando, sem gravar nem executar: abre uma caixa com o que está acontecendo, 3 opções e "Outra resposta…"; a escolha vira instrução para o Claude.
+- Mais de 3 cliques no ▶ em 1 min sem o Ao vivo andar: caixa de "parece travado" (esperar, seguir de onde parou, parar).
+- O ▶ do módulo precisa passar por `aoVivo.controle` (é onde o vigia aprende o nome da ação).
 
 ### Regras
 

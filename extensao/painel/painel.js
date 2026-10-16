@@ -12,6 +12,7 @@ const { IC } = require('../componentes/icones');
 const { markdown } = require('../componentes/markdown');
 const { LIDAS, notificar } = require('./notificacoes'); // sino do ticket
 const maestro = require('./maestro');
+const vigia = require('./vigia');
 const aoVivo = require('../componentes/ao-vivo'); // caixa "Ao vivo": só as ações (Ver tudo / Recolher)
 const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
 const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
@@ -29,7 +30,7 @@ const conversas = require('../modulos/conversas'); // conversas do Claude: vínc
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
 const { SEM_TICKET } = require('../componentes/card-ticket');
-const { pasta, pastaDe, pastaAba, idAba, gravar } = require('../infra/pastas'); // pastas do ticket
+const { pasta, pastaDe, pastaAba, naRaiz, idAba, gravar } = require('../infra/pastas'); // pastas do ticket
 const { PRINCIPAL, CSS_MOLDURA, abasDe, cabecalho, estilo, pagina } = require('./moldura');
 const rodape = require('../componentes/rodape'); // cabeçalho, rodapé, CSS e página da webview
 
@@ -190,6 +191,7 @@ exports.provider = (ctx) => {
     pasta, pastaAba, gravar, notificar, reposDe: orq.reposDe, orq, abrirAba: (chave, a) => this_abrir(chave, a), pedirSecao: (s) => pedirSecao(s), mudarAba: (nome) => { aba = nome; },
     secrets: ctx.secrets, globalState: ctx.globalState, cacheJira, atualizarJira: (c) => atualizarJira(c)
   };
+  vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
   orq.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
   const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, analise, spec, conversas, duvidas, mudancas, tarefas, aoVivo, require('../incidentes/mergulho'), require('../incidentes/evidencias'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
@@ -264,7 +266,7 @@ exports.provider = (ctx) => {
     resolveWebviewView(v) {
       view = v;
       view.webview.options = { enableScripts: true };
-      view.webview.onDidReceiveMessage((m) => (m.tipo === 'foco' ? ((notasEmFoco = !!m.ativo), !m.ativo && renderAdiado && setTimeout(() => !notasEmFoco && renderAdiado && render(), 400)) : m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('../modulos/' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : acoes[m.acao]?.call(acoes, m)));
+      view.webview.onDidReceiveMessage((m) => (m.tipo === 'foco' ? ((notasEmFoco = !!m.ativo), !m.ativo && renderAdiado && setTimeout(() => !notasEmFoco && renderAdiado && render(), 400)) : m.tipo ? notas.receber(m, { pastaAba, postar: (x) => view?.webview.postMessage(x), mencionar }) : /^(cofre|comandos|emulador):/.test(m.acao) ? require('../modulos/' + m.acao.split(':')[0]).api?.acao({ ...m, acao: m.acao.split(':')[1] }) : (() => { const t = ticketAberto(); vigia.clique(m.acao, t && (naRaiz() ? pasta(t.chave) : pastaAba(t.id))); return acoes[m.acao]?.call(acoes, m); })()));
       view.onDidChangeVisibility(() => { if (view.visible) { conversas.reconciliar(servicos); render(); } });
       conversas.reconciliar(servicos);
       render();

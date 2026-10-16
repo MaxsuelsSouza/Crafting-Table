@@ -10,6 +10,7 @@ assert.ok(!['Ajustar quadro', 'Aqa', 'Backend: endpoint'].some(ehQA));
 const subs = [{ resumo: '[QA] Execução' }, { resumo: 'QA planejamento de testes' }, { resumo: 'Backend' }, { resumo: '[QA] Teste de Qualidade' }];
 assert.deepStrictEqual(candidatas(subs).map((s) => s.resumo), ['[QA] Teste de Qualidade', 'QA planejamento de testes', '[QA] Execução']);
 assert.ok(temPlano('#### CT01 – Validar') && temPlano('**Dado que** o pedido') && temPlano('CT-02'));
+{ const { cenariosDo } = qa._teste; assert.strictEqual(cenariosDo('**CT01 — 50 ups** · RF01 · t14\n**Dado que** x\n**CT02 — Outro** · RF02\n**Dado que** y').length, 2); }
 assert.ok(!temPlano('Sub-tarefa criada automaticamente para planejamento de testes de QA.'));
 
 // ADF → Markdown da descrição: no adaptador do Jira (testes/teste-provedor.js); aqui as subtarefas já chegam em Markdown.
@@ -52,6 +53,7 @@ assert.ok(qa.dispensar(d3, 'CT03', 'fora do escopo', 'excluir'));
 { const c = qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03'); assert.ok(c.status === 'dispensado' && c.dispensa.motivo === 'fora do escopo' && c.dispensa.em && c.dispensa.tipo === 'excluir'); assert.ok(!qa.RESULTADOS.includes(c.status)); }
 assert.ok(!qa.cenarios(d3).cenarios.some((c) => c.id === 'CT03' && ['pendente', 'desatualizado'].includes(c.status)));
 assert.ok(qa.podePublicar([{ status: 'passou' }, { status: 'dispensado' }]) && !qa.podePublicar([{ status: 'dispensado' }]));
+assert.ok(qa.dispensar(d3, 'CT01', 'sem como testar', 'nao-testavel') && qa.cenarios(d3).cenarios.find((x) => x.id === 'CT01').dispensa.tipo === 'nao-testavel' && qa.refazer(d3, 'CT01'));
 assert.ok(qa.refazer(d3, 'CT03') && qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03').status === 'pendente' && !qa.cenarios(d3).cenarios.find((x) => x.id === 'CT03').dispensa);
 assert.ok(!qa.html(d3).includes('Cenários · plano')); // sem aprovação, a lista não aparece
 

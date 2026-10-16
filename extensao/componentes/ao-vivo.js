@@ -94,7 +94,7 @@ const recentesPrimeiro = (l) => l.reduce((g, x) => ((TIPO[x.tipo] || x.tipo) ===
 
 // Caixa pronta para a tela: últimas 40 linhas (ou tudo, se expandida), o botão Ver tudo/Recolher (alvo: 'qa' | 'spec' | 'mergulho') e o ⏸/▶ (controles).
 // c: { pausar?: data-acao do ⏸, retomar?: data-acao do ▶, dicaPausar?, dicaRetomar? }; b(acao) monta o atributo (padrão data-acao; o cabeçalho passa o seu).
-const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (!c ? '' : rodando
+const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (c?.retomar && require('../painel/vigia').registrarPlay(c.retomar), !c ? '' : rodando
   ? (c.pausar ? `<button class="ct-ico ct-pausa" ${b(c.pausar)} title="${esc(c.dicaPausar || 'Pausar: o Claude para e a etapa recomeça ao retomar')}">${IC.pausa}</button>` : '')
   : (c.retomar ? `<button class="ct-ico ct-play" ${b(c.retomar)} title="${esc(c.dicaRetomar || 'Retomar de onde parou')}">${IC.play}</button>` : ''));
 
@@ -181,13 +181,22 @@ const alvoRaio = (s, t) => {
 // Ver tudo / Recolher (Evidências do QA ou aba Spec); servicos vem do painel.js.
 const acoes = (s) => ({
   // ⚡ do cabeçalho: pede a instrução e a injeta na sessão do Claude que o Ao vivo está mostrando (painel/maestro.js instruir).
+  // Sem sessão no Ao vivo, abre uma nova (maestro.rodar) na pasta do Ao vivo do módulo aberto, com a instrução como prompt.
   async raio() {
     const t = s.ticketAberto(), maestro = require('./../painel/maestro'), vscode = require('vscode');
     if (!t) return;
     const dir = alvoRaio(s, t);
-    if (!dir) return vscode.window.showInformationMessage('Nenhum Claude em segundo plano neste ticket para receber a instrução.');
-    const texto = await vscode.window.showInputBox({ title: '⚡ Instrução direta ao Claude', prompt: 'Vai para a sessão aberta no Ao vivo; se ele estiver rodando, é interrompido e retoma com isto.', ignoreFocusOut: true });
-    if (texto?.trim() && !(await maestro.instruir(dir, texto))) vscode.window.showWarningMessage('Não consegui enviar: o Claude deste ticket foi iniciado em outra janela.');
+    const texto = await vscode.window.showInputBox({ title: '⚡ Instrução direta ao Claude',
+      prompt: dir ? 'Vai para a sessão aberta no Ao vivo; se ele estiver rodando, é interrompido e retoma com isto.' : 'Não há sessão no Ao vivo: abre uma nova com esta instrução.', ignoreFocusOut: true });
+    if (!texto?.trim()) return;
+    if (dir) {
+      if (!(await maestro.instruir(dir, texto))) vscode.window.showWarningMessage('Não consegui enviar: o Claude deste ticket foi iniciado em outra janela.');
+    } else {
+      const novo = require('../infra/pastas').naRaiz() ? s.pasta(t.chave) : s.pastaAba(t.id);
+      if (!novo || !maestro.rodar(novo, { prompt: `[segundo plano · Crafting Table · ticket ${t.chave}] Instrução direta do usuário:\n${texto.trim()}`, titulo: 'Nova sessão · instrução', aoMudar: () => s.render() }))
+        vscode.window.showWarningMessage('Não consegui abrir a sessão: já há um Claude rodando neste ticket em outra janela.');
+      else anotar(novo, { tipo: 'voce', texto: texto.trim() });
+    }
     s.render();
   },
   vivoRecarregar() { s.render(); },

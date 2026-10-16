@@ -29,7 +29,8 @@ const PADRAO = {
   },
   raio: {
     quando: (c) => !c.semTicket,
-    html: (c) => `<button class="ct-ico" ${c.podeInstruir ? c.b('raio') : 'disabled'} title="${c.podeInstruir ? 'Instrução direta: manda uma mensagem ao Claude que está no Ao vivo' : 'Nenhum Claude em segundo plano neste ticket para receber instrução'}">${IC.raio}</button>`
+    // Sempre ativo: com sessão no Ao vivo manda a instrução para ela; sem sessão, abre uma nova (ao-vivo.js, acoes.raio).
+    html: (c) => `<button class="ct-ico" ${c.b('raio')} title="${c.podeInstruir ? 'Instrução direta: manda uma mensagem ao Claude que está no Ao vivo' : 'Instrução direta: não há sessão no Ao vivo, então abre uma nova com a sua mensagem'}">${IC.raio}</button>`
   },
   jira: {
     quando: (c) => !c.semTicket && !c.ehDocumento,

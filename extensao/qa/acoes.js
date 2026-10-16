@@ -133,10 +133,10 @@ const caixaAmbiente = (dir, acao) => {
 async function dispensarCenario(s, id, tipo) {
   const t = s.ticketAberto();
   if (!t || typeof id !== 'string') return;
-  const ajuste = tipo === 'ajuste', dir = s.pastaAba(t.id);
-  const motivo = await vscode.window.showInputBox({ title: `${ajuste ? 'Pedir ajuste do' : 'Excluir o'} cenário ${id}`, prompt: 'Motivo (obrigatório): o cenário deixa de ser executado por decisão sua', ignoreFocusOut: true, validateInput: (v) => (v.trim() ? null : 'Informe o motivo') });
+  const ajuste = tipo === 'ajuste', naoTestavel = tipo === 'nao-testavel', dir = s.pastaAba(t.id);
+  const motivo = await vscode.window.showInputBox({ title: `${ajuste ? 'Pedir ajuste do' : naoTestavel ? 'Marcar como não testável o' : 'Excluir o'} cenário ${id}`, prompt: 'Motivo (obrigatório): o cenário deixa de ser executado por decisão sua', ignoreFocusOut: true, validateInput: (v) => (v.trim() ? null : 'Informe o motivo') });
   if (!motivo?.trim() || !qa.dispensar(dir, id, motivo, tipo)) return;
-  qa.registrarDecisao(dir, `${ajuste ? 'Ajuste pedido' : 'Cenário excluído'}: ${id} não será executado`, { ticket: t.chave, motivo: motivo.trim() });
+  qa.registrarDecisao(dir, `${ajuste ? 'Ajuste pedido' : naoTestavel ? 'Cenário não testável' : 'Cenário excluído'}: ${id} não será executado`, { ticket: t.chave, motivo: motivo.trim() });
   s.render();
 }
 // Lote de SQL proposto para a massa: você leu o cartão; o modal confirma a conexão e o ambiente; só então a extensão executa (nunca a IA).
@@ -176,7 +176,12 @@ const acoes = (s) => ({
     if (!t || sessao.focoLista() !== 'qa') return;
     s.pedirSecao(EVID);
     if (qa.estado(s.pastaAba(t.id)).fase === 'plano_aprovado') return acoes(s).qaIniciar(); // plano já aprovado: ▶ continua/retoma, igual ao botão do cartão
-    await qa.verificarPlano(s.pastaAba(t.id), t.chave, filhosDe(s, t));
+    const dir = s.pastaAba(t.id);
+    await qa.verificarPlano(dir, t.chave, filhosDe(s, t));
+    const e = qa.estado(dir);
+    if (e.fase === 'sem_plano' && e.fontes?.length && !e.pausa && !qa.rodando(dir)) { // há texto de QA fora do padrão: o Claude interpreta
+      await gerarPlano(s, t, dir, { prompt: (rasc) => qa.promptInterpretar(dir, rasc), titulo: `QA · Interpretando o planejamento (${e.fontes.join(', ')})` });
+    }
     s.render();
   },
   // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila, um claude -p por cenário (qa.executar).
@@ -367,6 +372,7 @@ const acoes = (s) => ({
   // Pedir ajuste só marca e guarda o motivo (não aciona o Claude; para ele aplicar a mudança use "Pedir ajuste" do planejamento, qaPlanoMudar).
   qaCenarioAjuste({ id }) { return dispensarCenario(s, id, 'ajuste'); },
   qaCenarioExcluir({ id }) { return dispensarCenario(s, id, 'excluir'); },
+  qaCenarioNaoTestavel({ id }) { return dispensarCenario(s, id, 'nao-testavel'); },
   // ↻ Refazer (lote): abre a fila de perguntas dos cenários que falharam/bloquearam; cada resposta devolve o cenário à fila (▶ executa).
   qaRefazerLote() {
     const t = s.ticketAberto();

@@ -40,7 +40,11 @@ const temPlano = (texto) => /\bCT-?\d+|\bdado que\b/i.test(texto || '');
 async function procurar(filhos, chave) {
   const subs = await filhos(chave);
   const qa = candidatas(subs);
-  return { plano: qa.find((s) => temPlano(s.md)) || null, qa };
+  // Plano = subtarefa de QA de que o parser tira cenários. Sem isso, as subtarefas de QA com algum texto viram "fontes": o Claude lê e
+  // interpreta (promptInterpretar), em vez de a extensão esperar um padrão de texto.
+  const plano = qa.find((s) => cenariosDo(s.md || '').length) || null;
+  const fontes = plano ? [] : qa.filter((s) => String(s.md || '').trim().length > 40 || temPlano(s.md));
+  return { plano, qa, fontes };
 }
 
 // Grava a versão nova do plano se a descrição mudou. Devolve { v, arquivo, nova }.
@@ -68,7 +72,7 @@ function cenariosDo(md) {
   const linhas = md.split('\n'), achados = [];
   linhas.forEach((l, i) => {
     const m = l.match(INICIO);
-    if (m && (m[1] || l.trim().endsWith('**'))) achados.push({ i, nivel: m[1]?.length || 0, id: `${/^explorat/i.test(m[2]) ? 'EX' : 'CT'}${m[3].padStart(2, '0')}`, titulo: m[4].replace(/\*\*$/, '').trim() });
+    if (m && (m[1] || l.trim().endsWith('**') || /^\*\*[^*]+\*\*/.test(l.trim()))) achados.push({ i, nivel: m[1]?.length || 0, id: `${/^explorat/i.test(m[2]) ? 'EX' : 'CT'}${m[3].padStart(2, '0')}`, titulo: m[4].replace(/\*\*$/, '').trim() });
   });
   return achados.map((a, k) => {
     // Corpo até o próximo cenário; título: até o próximo título de nível igual ou maior; negrito: até qualquer título ou ---.
@@ -800,7 +804,8 @@ async function verificarPlano(dir, chave, filhos) {
   if (!r.plano) {
     vivo('aviso', r.qa.length ? 'Nenhuma delas tem cenários (CT01, Cenário 1, Dado que…): o QA só começa com o planejamento'
       : 'Sem planejamento de QA: o QA só começa com ele. Crie pelo cartão acima');
-    return mudar(dir, { fase: 'sem_plano', subtarefas: r.qa.map((x) => x.key) });
+    if (r.fontes.length) vivo('acao', `Texto de QA em ${r.fontes.map((x) => x.key).join(', ')} fora do formato esperado: o Claude vai ler e interpretar`);
+    return mudar(dir, { fase: 'sem_plano', subtarefas: r.qa.map((x) => x.key), fontes: r.fontes.map((x) => x.key) });
   }
   const n = cenariosDo(r.plano.md).length, v = versionar(dir, r.plano);
   vivo('acao', `Planejamento encontrado em ${r.plano.key}: ${n} cenário(s)`);
@@ -822,6 +827,10 @@ function aprovar(dir) {
   const e = estado(dir), v = versaoAtual(dir);
   if (e.fase !== 'plano_encontrado' || !v) return false;
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
+  if (!cenariosDo(mdDaVersao(dir, v)).length) { // nunca aprovar um plano sem cenários: seria um QA travado em "0 cenário(s)"
+    vivo('aviso', 'Este planejamento não tem nenhum cenário reconhecível: peça ajuste para o Claude reorganizá-lo');
+    return false;
+  }
   const m = sincronizar(dir, mdDaVersao(dir, v), v.v);
   vivo('etapa', 'QA · 2. Cenários');
   vivo('fim', `Planejamento v${v.v} aprovado`);
@@ -884,7 +893,7 @@ function blocoDocumento(dir) {
 const contextoTicket = (j, t) => require('../infra/contexto').contextoDoTicket(j, t);
 
 // Método do planejamento (o do jira-qa-planner, sem a parte que publica): casos de teste no formato que cenariosDo() entende.
-const METODO = 'MÉTODO: leia a descrição, os critérios de aceite e os comentários e monte os casos de teste que os cobrem. '
+const METODO = 'MÉTODO: ANTES de criar do zero, procure nas fontes (subtarefas de QA, descrição, comentários, anexos) um planejamento já existente, em qualquer formato: se houver, transcreva-o fielmente em vez de inventar outro. Leia a descrição, os critérios de aceite e os comentários e monte os casos de teste que os cobrem. '
   + 'Estrutura do arquivo: "## Cenários de Teste" com um título "#### CT01 – <o que valida>" por caso (numeração contínua CT01, CT02…); '
   + 'em cada caso, o passo a passo em Gherkin, uma linha por item em negrito no início: **Dado que** …, **Quando** …, **Então** … (**E** … para continuar); '
   + 'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. '
@@ -897,6 +906,10 @@ const REGRAS_PLANO = (dir, rasc = dir) => `Regras: português; você roda em seg
   + `${citarDossie(dir)}${citarRespostas(dir)}\n${blocoDocumento(dir)}Grave o plano completo, só o conteúdo do planejamento (sem cabeçalho de versão), em ${path.join(rasc, PLANO_LOCAL)}. NÃO publique, NÃO crie subtarefa nem comentário: a Crafting Table publica só depois de o humano ler e aprovar. `
   + `Se faltar algo que só o humano sabe e nenhuma fonte responde, NÃO invente: grave ${path.join(rasc, PAUSA)} com {"motivo":"...","pergunta":"...","opcoes":["..."]} (opcoes pode ser vazio), não grave o plano e termine.`;
 // Criar: o clique em "Criar planejamento" é o OK do humano. rasc: onde a IA pode escrever (infra/area-ia.js); a extensão copia para dir.
+// Interpretar: o texto de QA já existe (subtarefa, descrição, comentário, anexo) mas em formato livre: o Claude identifica e normaliza, sem inventar.
+const promptInterpretar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Este ticket JÁ TEM material de planejamento de testes de QA, em formato livre (pode ser tabela, lista, prosa, Gherkin ou outro). `
+  + 'NÃO crie casos novos: procure nas fontes (subtarefas de QA, descrição, comentários e arquivos anexos) tudo o que for caso de teste/cenário, leia e reescreva cada um, fielmente, no formato abaixo, preservando o sentido e a ordem. '
+  + `Só o que as fontes não trazem (critérios cobertos, riscos) pode ser completado a partir delas.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)} Se NÃO houver nenhum caso de teste nas fontes, grave a pausa perguntando como proceder. Termine dizendo em uma frase quantos casos encontrou.`;
 const promptCriar = (dir, rasc = dir) => `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano pediu o plano ao clicar em "Criar planejamento" e vai ler e aprovar o arquivo antes de qualquer publicação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}`
   + ' Termine dizendo em uma frase quantos casos montou.';
 // Pedir mudança: a IA edita o arquivo local; a extensão republica.
@@ -1065,6 +1078,6 @@ function mapaHtml(dir, r, amb, uri) {
     <div class="cens">${[...ativos, ...arq].map((c) => cardCenario.card(c, ctx)).join('')}</div>`;
 }
 
-module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, iniciarRefazerLote, responderRefazer, cancelarRefazerLote, loteRefazer, executar, pausar, rodando, registrarDecisao,
+module.exports = { proporMassa, aplicarProposta, recusarProposta, desfazerMassa, propostaMassa, PROPOSTA, LOG_SQL, proporPlano, aprovarPublicando, conferirPlano, reconciliar, registrarPausa, absorverPausa, pausaPendente, responder, FERRAMENTAS_MASSA, FERRAMENTAS_EXEC, FERRAMENTAS_ANALISE, PROIBIDAS, RESPOSTAS, PAUSA, faltaEvidencia, exigenciasDe, statusAmbiente, analiseVista, resumoErroAmbiente, verificarPlano, aprovar, versaoAtual, promptCriar, promptInterpretar, promptMudanca, publicarPlano, planoLocal, mdDaVersao, contextoTicket, PLANO_LOCAL, CONTEXTO, analisarAmbiente, gravarAnalise, LOG_AMB, FERRAMENTAS_PLANO, html, massaHtml, estado, mudar, cenarios, refazer, iniciarRefazerLote, responderRefazer, cancelarRefazerLote, loteRefazer, executar, pausar, rodando, registrarDecisao,
   ehLocal, podePublicar, dispensar, concluirCenario, bloquearSemMassa, emEtapaMassa, emPreCondicao, registrarPreCondicao, promptPreCondicao, evidencia, arquivosDe, massa, massaAdd, massaEstado, sincronizarMassa, massaValida, ambiente, donoAmbiente, INDICE, ESTADO, CENARIOS, MASSA, RESULTADOS,
   _teste: { healthCheck, papeisDe, ehQA, candidatas, temPlano, versionar, procurar, cenariosDo, sincronizar, iniciarCenario, fila, ultimoRefresh, semMassa, promptCenario } };

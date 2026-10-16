@@ -35,8 +35,8 @@ const card = (c, { dir, amb, uri, arquivos, acoes = {} }) => {
         <div class="cex">${c.execucoes.slice().reverse().map(execucao).join('')}</div>`
         : '<div class="cex"><div>Ainda não executado.</div></div>'}
       ${!c.arquivado && REFAZER.includes(c.status) ? `<button ${acoes.refazer ? 'data-acao' : 'data-painel'}="${A.refazer}" data-id="${esc(c.id)}">↻ Refazer</button>` : ''}
-      ${c.dispensa ? `<div class="cex"><div>${c.dispensa.tipo === 'ajuste' ? 'Ajuste pedido' : 'Excluído'} em ${esc(dataBr(c.dispensa.em))} · ${esc(c.dispensa.motivo)}</div></div>` : ''}
-      ${!acoes.refazer && !c.arquivado && DISPENSAR.includes(c.status) ? `<button class="sec" data-painel="qaCenarioAjuste" data-id="${esc(c.id)}" title="Pede o motivo e tira o cenário da execução">Pedir ajuste</button> <button class="sec" data-painel="qaCenarioExcluir" data-id="${esc(c.id)}" title="Pede o motivo e tira o cenário da execução">Excluir</button>` : ''}</div></details>`;
+      ${c.dispensa ? `<div class="cex"><div>${{ ajuste: 'Ajuste pedido', 'nao-testavel': 'Não testável' }[c.dispensa.tipo] || 'Excluído'} em ${esc(dataBr(c.dispensa.em))} · ${esc(c.dispensa.motivo)}</div></div>` : ''}
+      ${!acoes.refazer && !c.arquivado && DISPENSAR.includes(c.status) ? `<button class="sec" data-painel="qaCenarioAjuste" data-id="${esc(c.id)}" title="Pede o motivo e tira o cenário da execução">Pedir ajuste</button> <button class="sec" data-painel="qaCenarioExcluir" data-id="${esc(c.id)}" title="Pede o motivo e tira o cenário da execução">Excluir</button> <button class="sec" data-painel="qaCenarioNaoTestavel" data-id="${esc(c.id)}" title="Marca o cenário como não testável (pede o motivo) e o Claude o pula">Não testável</button>` : ''}</div></details>`;
 };
 
 // Script da webview: cenários abertos continuam abertos depois do redesenho. Espera `vscode` (acquireVsCodeApi) já definido.
