@@ -74,16 +74,26 @@ const {
   desfazerMassa
 } = require('./etapas/05-massa/proposta');
 const { desistirMassa } = require('./etapas/05-massa/desistir');
-const { RESULTADOS, fila, iniciarCenario, concluirCenario, bloquearSemMassa } = require('./etapas/06-execucao/cenario');
+const { validarMassa } = require('./etapas/05-massa/validar');
+const {
+  RESULTADOS,
+  fila,
+  iniciarCenario,
+  concluirCenario,
+  naoExecutavel,
+  NAO_EXECUTAVEL
+} = require('./etapas/06-execucao/cenario');
 const { evidencia, arquivosDe } = require('./etapas/06-execucao/evidencias');
 const { exigenciasDe, faltaEvidencia } = require('./etapas/06-execucao/regras/evidencia');
-const { promptCenario } = require('./etapas/06-execucao/prompt');
+const { promptCenario, promptDiagnostico } = require('./etapas/06-execucao/prompt');
+const { registrarRoteiro, roteiroDe, pedirNovoRoteiro } = require('./etapas/06-execucao/roteiros');
 const { podePublicar } = require('./etapas/07-publicar');
 const { html } = require('./abas/evidencias');
 const { massaHtml } = require('./abas/massa');
 
 module.exports = {
   desistirMassa,
+  validarMassa,
   proporMassa,
   aplicarProposta,
   recusarProposta,
@@ -144,7 +154,11 @@ module.exports = {
   podePublicar,
   dispensar,
   concluirCenario,
-  bloquearSemMassa,
+  naoExecutavel,
+  NAO_EXECUTAVEL,
+  registrarRoteiro,
+  roteiroDe,
+  pedirNovoRoteiro,
   emEtapaMassa,
   emPreCondicao,
   registrarPreCondicao,
@@ -177,6 +191,7 @@ module.exports = {
     fila,
     ultimoRefresh,
     semMassa,
-    promptCenario
+    promptCenario,
+    promptDiagnostico
   }
 };

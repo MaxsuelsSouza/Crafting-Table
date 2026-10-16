@@ -30,15 +30,20 @@ function faltaEvidencia(dir, c, ex) {
   if (!anexos.length)
     return `${c.id} não pode passar sem evidência: anexe prints, logs ou o resultado com qa-state evidencia ${c.id} <arquivo...> e conclua de novo`;
   const tabelas = exigenciasDe(dir, c);
+  const cita = (n, tb) => {
+    try {
+      return fs
+        .readFileSync(path.join(dir, ex.evidencias, n), 'utf8')
+        .toLowerCase()
+        .includes(tb);
+    } catch {
+      return false;
+    }
+  };
   for (const tb of tabelas) {
-    const sql = anexos.find(
-      (n) =>
-        /\.sql$/i.test(n) &&
-        fs
-          .readFileSync(path.join(dir, ex.evidencias, n), 'utf8')
-          .toLowerCase()
-          .includes(tb)
-    );
+    // consulta-<nome>.txt da jornada (6.2) já traz o SQL e o resultado.
+    if (anexos.some((n) => /^consulta-.*\.txt$/i.test(n) && cita(n, tb))) continue;
+    const sql = anexos.find((n) => /\.sql$/i.test(n) && cita(n, tb));
     const res = anexos.find((n) => /resultado|result/i.test(n) && !/\.sql$/i.test(n));
     if (!sql || !res)
       return `${c.id} grava na tabela ${tb} (implementação): anexe a consulta SQL (arquivo .sql com a tabela) e o resultado dela (arquivo resultado-*.txt|csv) com qa-state evidencia ${c.id} <arquivo...>`;

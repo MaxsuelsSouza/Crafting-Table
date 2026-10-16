@@ -49,7 +49,7 @@ const VAGAS = {
     como: 'SKILL.md lido como método',
     contrato:
       'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, pausa pelo qa-state (pausa) e aguarda o humano; nunca pula cenário nem segue sem resposta. ' +
-      'O Claude registra pelo qa-state da extensão (massa add, evidencia CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; precondicao --status ok|falhou antes da suíte: health check e login). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
+      'O Claude registra pelo qa-state da extensão (massa add, roteiro CTnn <json> | roteiro CTnn refazer, evidencia CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; precondicao --status ok|falhou antes da suíte: health check e login). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
   }
 };
 

@@ -11,6 +11,8 @@ function refazer(dir, id) {
   if (!c || c.status === 'executando') return false;
   c.status = 'pendente';
   delete c.dispensa;
+  const md = estado(dir).massaDesfecho;
+  if (md?.[id]?.tipo === 'desistiu') mudar(dir, { massaDesfecho: { ...md, [id]: undefined } }); // não executável: a massa é procurada de novo
   c.refazerEm = new Date().toISOString(); // vai para o fim da fila (depois dos que ainda não rodaram)
   fs.rmSync(path.join(dir, 'evidencias', c.id), { recursive: true, force: true }); // só as evidências novas ficam; o histórico (status, notas) permanece
   gravarJson(path.join(dir, CENARIOS), r);
@@ -19,11 +21,11 @@ function refazer(dir, id) {
 
 // ↻ Refazer (lote): os cenários que falharam ou ficaram bloqueados viram uma fila de perguntas (3 opções + outra resposta). Cada resposta
 // devolve o cenário para a fila com a instrução do humano (c.instrucao), que o prompt de execução cita. Estado: .qa.json → refazerLote { ids, idx }.
-const PARA_REFAZER = ['falhou', 'bloqueado'];
+const PARA_REFAZER = ['falhou', 'bloqueado', 'nao-executavel'];
 const opcoesRefazer = (c) => [
   'Refazer do jeito que está',
   'Refazer com massa nova (levantar de novo)',
-  c.status === 'bloqueado'
+  c.status === 'bloqueado' || c.status === 'nao-executavel'
     ? 'Refazer seguindo outro caminho na tela (descreva o bloqueio ao responder)'
     : 'Refazer conferindo com mais cuidado o resultado esperado'
 ];

@@ -13,6 +13,7 @@ const { analisarAmbiente } = require('../etapas/03-ambiente/analise');
 const { preCondicao } = require('../etapas/04-precondicao');
 const { massa, MASSA } = require('../etapas/05-massa/estado');
 const { semMassa } = require('../etapas/05-massa/regras/validade');
+const { retomada } = require('./retomada');
 const { levantarMassa } = require('../etapas/05-massa');
 const { fila } = require('../etapas/06-execucao/cenario');
 const execucao = require('../etapas/06-execucao');
@@ -27,6 +28,7 @@ async function executar(dir, d, { soMassa = false } = {}) {
       texto: `Responda a pergunta antes de retomar: ${estado(dir).pausa.pergunta}`
     });
   reconciliar(dir);
+  const volta = retomada(dir, d); // ⏸ do usuário: mesmo dia (só a massa do cenário pausado) ou depois do refresh (Etapa 5 para os pendentes)
   ativos.add(dir);
   mudar(dir, { execucao: 'rodando', host: process.pid, interrupcao: null });
   d.aoMudar?.();
@@ -69,12 +71,15 @@ async function executar(dir, d, { soMassa = false } = {}) {
     if (!amb || pausado(dir)) return;
     if (!(await preCondicao(dir, d, amb))) return; // falhou (motivo reportado) ou pausou: a suíte não começa
     const agora = new Date(),
-      falta = semMassa(
-        dir,
-        pend.map((c) => c.id),
-        agora,
-        d.horaRefresh
-      );
+      falta =
+        volta === 'mesmo-dia'
+          ? []
+          : semMassa(
+              dir,
+              pend.map((c) => c.id),
+              agora,
+              d.horaRefresh
+            );
     vivo('etapa', 'QA · Massa de dados');
     if (falta.length) {
       vivo(
@@ -98,13 +103,19 @@ async function executar(dir, d, { soMassa = false } = {}) {
         ).length
       )
         return pausarPorApi(dir, d, rm.erro, null);
-    } else vivo('fim', 'Massa de hoje ainda válida: reaproveitada');
+    } else
+      vivo(
+        'fim',
+        volta === 'mesmo-dia'
+          ? 'Retomada no mesmo dia: a massa é validada no banco cenário a cenário'
+          : 'Massa de hoje ainda válida: reaproveitada'
+      );
     if (soMassa) return vivo('fim', 'Massa nova levantada: use ▶ para executar os cenários');
     if (await execucao.rodar(dir, d, amb)) return; // Etapa 6: parou (pausa, bloqueio ou erro da API)
     if (!pausado(dir)) {
       const ativosC = cenarios(dir).cenarios.filter((c) => !c.arquivado),
         n = (s) => ativosC.filter((c) => c.status === s).length;
-      const fim = `QA concluído: ${n('passou')} passaram, ${n('falhou')} falharam, ${n('bloqueado')} bloqueados`;
+      const fim = `QA concluído: ${n('passou')} passaram, ${n('falhou')} falharam, ${n('bloqueado')} bloqueados, ${n('nao-executavel')} não executáveis`;
       vivo('fim', fim);
       d.avisar?.(fim);
     }

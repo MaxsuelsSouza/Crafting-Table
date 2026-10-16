@@ -5,7 +5,7 @@ const { gravarJson } = require('../../estado');
 const { cenarios, CENARIOS } = require('../02-cenarios/mapa');
 const { faltaEvidencia } = require('./regras/evidencia');
 
-// ── Execuções de um cenário. A extensão abre (iniciarCenario); o Claude fecha com `qa-state cenario CTnn concluir`.
+// ── Execuções de um cenário. A extensão abre (iniciarCenario) e fecha quando a jornada 6.2 passa; o Claude fecha com `qa-state cenario CTnn concluir` (6.3 ou cenário sem roteiro).
 // Evidências de cada execução em evidencias/CTnn/<id da execução>/.
 const RESULTADOS = ['passou', 'falhou', 'bloqueado'];
 const carimbo = (d = new Date()) =>
@@ -64,15 +64,17 @@ function concluirCenario(dir, id, status, nota = '') {
   delete c.statusAntes;
   gravarJson(path.join(dir, CENARIOS), r);
 }
-// Cenário que ficou sem massa válida mesmo depois de refazer a Etapa 4: bloqueado, com a nota dizendo por quê (a execução já está fechada como sem-massa).
-function bloquearSemMassa(dir, id, nota) {
+// Não executável: sem massa válida e sem como gerar (busca e UPDATE falharam). É final: a retomada (inclusive no dia seguinte) não mexe nele,
+// não conta como falha e não trava a publicação (sai no relatório com o motivo); só o ↻ Refazer devolve para a fila.
+const NAO_EXECUTAVEL = 'nao-executavel';
+function naoExecutavel(dir, id, nota) {
   const r = cenarios(dir),
     c = r.cenarios.find((x) => x.id === id),
     ex = c?.execucoes?.at(-1);
   if (!c || !ex) return;
-  c.status = 'bloqueado';
-  Object.assign(ex, { status: 'bloqueado', nota });
+  c.status = NAO_EXECUTAVEL;
+  Object.assign(ex, { status: NAO_EXECUTAVEL, nota, fim: ex.fim || new Date().toISOString() });
   gravarJson(path.join(dir, CENARIOS), r);
 }
 
-module.exports = { RESULTADOS, VOLTAM, carimbo, fila, iniciarCenario, concluirCenario, bloquearSemMassa };
+module.exports = { RESULTADOS, VOLTAM, NAO_EXECUTAVEL, carimbo, fila, iniciarCenario, concluirCenario, naoExecutavel };

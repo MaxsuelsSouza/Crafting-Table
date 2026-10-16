@@ -3,6 +3,8 @@
 // A pasta do QA vem em QA_DIR (o maestro passa). Uso:
 //   qa-state cenario CT01 concluir --status passou|falhou|sem-massa --nota "o que foi visto"
 //   qa-state evidencia CT01 <arquivo...>
+//   qa-state roteiro CT01 <roteiro.json>          (6.1: registra o roteiro do cenário; a extensão valida na hora e depois executa)
+//   qa-state roteiro CT01 refazer --nota "<o que corrigir>"   (6.3: a falha é do roteiro; a extensão pede outro uma vez)
 //   qa-state massa add   (só na Etapa 4; recusado na execução do cenário)
 //     --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
 //   qa-state massa proposta --papel "…" --cenarios CT01 --dados '{…}' --sql "UPDATE … WHERE …;INSERT …" --desfazer "UPDATE … WHERE …" --porque "…"
@@ -28,6 +30,14 @@ try {
   if (obj === 'cenario' && b === 'concluir') {
     qa.concluirCenario(dir, a, opt.status, opt.nota || '');
     sair(`${a}: ${opt.status}`, 0);
+  }
+  if (obj === 'roteiro' && b === 'refazer') {
+    qa.pedirNovoRoteiro(dir, a, opt.nota);
+    sair(`${a}: roteiro descartado, a extensão pede outro. Termine agora`, 0);
+  }
+  if (obj === 'roteiro' && b) {
+    qa.registrarRoteiro(dir, a, b);
+    sair(`${a}: roteiro registrado. Termine agora: a extensão executa`, 0);
   }
   if (obj === 'evidencia') {
     sair(

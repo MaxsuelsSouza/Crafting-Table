@@ -1033,7 +1033,7 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     ); // sem banco liberado não há fase 2: desiste e segue
     assert.deepStrictEqual(
       qa.cenarios(dp).cenarios.map((c) => c.status),
-      ['bloqueado', 'bloqueado']
+      ['nao-executavel', 'nao-executavel']
     );
     fs.writeFileSync(
       path.join(dp, qa.PROPOSTA),
@@ -1048,7 +1048,7 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     );
     const bloq = await qa.aplicarProposta(dp, { banco: { conexao: 'x', ambiente: 'producao', sqlcl: '' } }); // executor padrão
     assert.deepStrictEqual([bloq.ok, qa.massa(dp).itens.length], [false, 0]);
-    // desistir: fase 2 sem UPDATE possível → CT01 bloqueado sem massa; a fila segue para o CT02 (zero pausa); INSERT na fase 2 é recusado
+    // desistir: fase 2 sem UPDATE possível → CT01 não executável (sem massa); a fila segue para o CT02 (zero pausa); INSERT na fase 2 é recusado
     {
       const dg = await novo();
       veio.length = 0;
@@ -1082,7 +1082,7 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       assert.ok(/só vale UPDATE/.test(recusouInsert));
       assert.deepStrictEqual(
         [qa.cenarios(dg).cenarios.map((c) => c.status), qa.estado(dg).pausa || null, qa.estado(dg).execucao],
-        [['bloqueado', 'passou'], null, 'parado']
+        [['nao-executavel', 'passou'], null, 'parado']
       );
       assert.ok(qa.cenarios(dg).cenarios[0].execucoes.at(-1).nota.includes('sem registro-base'));
     }

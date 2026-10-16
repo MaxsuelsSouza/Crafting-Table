@@ -480,37 +480,33 @@ assert.strictEqual(
     anotarOrig(dir, l);
   };
   await qa.executar(d10, deps);
-  // massa → CT01 (invalida) → volta à massa só do CT01 → CT01 (invalida de novo) → PAUSA no CT01 pedindo instrução (zero skip: o CT02 não roda).
+  // massa → CT01 (o Claude acha a massa imprestável) → renova só a do CT01 → CT01 (imprestável de novo) → CT01 NÃO EXECUTÁVEL e a fila segue (sem pausa);
+  // CT02 é o 2º cenário seguido com massa inválida → Etapa 5 para os pendentes → CT02 passa.
   assert.deepStrictEqual(prompts, [
     'QA · Pré-condição · login',
     'QA · Levantando massa de dados',
     'QA · CT01 · A',
     'QA · Levantando massa de dados',
-    'QA · CT01 · A'
+    'QA · CT01 · A',
+    'QA · Levantando massa de dados',
+    'QA · CT02 · B'
   ]);
   assert.deepStrictEqual(
-    qa.cenarios(d10).cenarios.map((c) => c.status),
-    ['pendente', 'pendente']
+    [qa.cenarios(d10).cenarios.map((c) => c.status), qa.estado(d10).pausa || null, massaAdds],
+    [['nao-executavel', 'passou'], null, 3]
   );
-  assert.ok(qa.estado(d10).pausa.detalhe.includes('Etapa 4') && massaAdds === 2);
-  assert.deepStrictEqual(
-    [qa.estado(d10).execucao, qa.estado(d10).pausa.motivo, qa.estado(d10).pausa.opcoes],
-    ['pausado', 'bloqueio', ['Tentar de novo']]
-  );
-  assert.ok(alertas.length === 1 && alertas[0].includes('CT01') && qa.html(d10).includes('data-painel="qaResponder"'));
-  // instrução humana: responde e retoma do CT01 (massa válida de novo), depois o CT02
-  assert.ok(qa.responder(d10, 'Tentar de novo'));
+  assert.ok(qa.cenarios(d10).cenarios[0].execucoes.at(-1).nota.includes('massa renovada também não serviu'));
+  assert.ok(notas.some((t) => t.includes('CT01: massa inválida: renovando só a deste cenário')));
+  assert.ok(notas.some((t) => t.includes('CT02: 2º cenário seguido com massa inválida')));
+  assert.ok(qa.podePublicar(qa.cenarios(d10).cenarios)); // não executável fica fora do portão (vai no relatório)
+  // ↻ Refazer o não executável: volta à fila, acha a massa nova válida e passa; o passou não é tocado.
+  assert.ok(qa.refazer(d10, 'CT01'));
   prompts.length = 0;
-  invalidar = 0;
   await qa.executar(d10, deps);
   assert.deepStrictEqual(
     [qa.cenarios(d10).cenarios.map((c) => c.status), prompts.filter((t) => /CT\d/.test(t))],
-    [
-      ['passou', 'passou'],
-      ['QA · CT01 · A', 'QA · CT02 · B']
-    ]
+    [['passou', 'passou'], ['QA · CT01 · A']]
   );
-  assert.ok(notas.some((t) => t.includes('Etapa 5 → voltando para a Etapa 4: massa de CT01 inválida')));
   assert.strictEqual(qa.estado(d10).etapa, null);
   // Uma só invalidação: a 2ª passada na Etapa 4 resolve e o CT01 passa.
   const d11 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));

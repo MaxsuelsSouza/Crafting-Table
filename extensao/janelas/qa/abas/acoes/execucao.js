@@ -27,7 +27,7 @@ const execucao = (s) => ({
     }
     s.render();
   },
-  // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila, um claude -p por cenário (qa.executar).
+  // Dar início / Retomar: sobe o ambiente, confere a massa e executa os cenários da fila: roteiro do Claude, jornada da extensão (qa.executar).
   async qaIniciar() {
     const t = s.ticketAberto();
     if (!t || sessao.focoLista() !== 'qa') return;

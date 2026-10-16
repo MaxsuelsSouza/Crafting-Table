@@ -1,5 +1,5 @@
 // @ts-check
-// Aba Massa: marcar válida/inválida, copiar campo, desfazer no banco e editar à mão.
+// Aba Massa: validar no banco, marcar válida/inválida, copiar campo, desfazer no banco e editar à mão.
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -15,6 +15,23 @@ const massa = (s) => ({
     } catch (e) {
       vscode.window.showErrorMessage(e.message);
     }
+    s.render();
+  },
+  // Validar massa: roda de novo a consulta do item (só SELECT). true → válida (medida agora) · false → inválida · null → não deu para conferir.
+  async qaMassaValidar({ id }) {
+    const t = s.ticketAberto();
+    if (!t || typeof id !== 'string') return;
+    const dir = s.pastaAba(t.id);
+    const r = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Validando a massa ${id} no banco…` },
+      () => qa.validarMassa(dir, depsQa(s, t), [id])
+    );
+    const v = r[id];
+    if (v === null)
+      vscode.window.showWarningMessage(
+        `${id}: não deu para conferir (banco não configurado/liberado ou a consulta falhou)`
+      );
+    else vscode.window.setStatusBarMessage(`${id}: ${v ? 'válida' : 'inválida'}`, 4000);
     s.render();
   },
   async qaMassaCopiar({ id, key }) {

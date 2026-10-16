@@ -1,98 +1,46 @@
 // @ts-check
-// Etapa 6 · Execução de cada cenário: um claude -p por cenário, na ordem da fila (zero skip). Devolve true quando parou (pausa, bloqueio, erro da API).
-//   cenario.js           execuções de um cenário (abrir, concluir), a fila e o bloqueio sem massa
-//   sem-massa.js         a massa do cenário ficou inválida: volta uma vez à Etapa 5
+// Etapa 6 · Execução de cada cenário, na ordem da fila (zero skip). Devolve true quando parou (pausa, bloqueio, erro da API).
+// Por cenário: valida a massa no banco (garantir-massa.js) → 6.1 o Claude escreve o roteiro (ou reaproveita) → 6.2 a extensão roda sem Claude → 6.3 diagnóstico só se falhou.
+//   garantir-massa.js    "Validar massa" antes do cenário; inválida → renova só a dele; 2 seguidas → Etapa 5 para os pendentes; sem jeito → não executável
+//   executar-cenario.js  encadeia 6.1 → 6.2 → 6.3 de um cenário (roteiro ruim volta ao 6.1 uma vez)
+//   subetapas/           6.1-roteiro.js · 6.2-jornada.js · 6.3-diagnostico.js
+//   depois-do-claude.js  pausa, erro da API, tempo, bloqueio e sem-massa depois de cada claude -p
+//   roteiros.js          roteiros/CTnn.json (registrar pelo qa-state, reaproveitar por hash, pedir outro)
+//   dependencias.js      Maestro, adb, banco só leitura, prints, ~/.wms-testes.env
+//   cenario.js           execuções de um cenário (abrir, concluir), a fila e o não executável
 //   evidencias.js        anexos da execução em andamento
-//   regras/evidencia.js  evidência obrigatória (e a consulta da tabela que a implementação grava)
-//   prompt.js            prompt do cenário
-const path = require('path');
+//   regras/              evidencia.js (evidência obrigatória) · roteiro.js (validação) · consulta.js (antes × depois)
+//   prompt.js            prompts do 6.1 e do 6.3
 const aoVivo = require('../../../../componentes/ao-vivo');
 const { pausado } = require('../../orquestrador/rodando');
-const { claude } = require('../../orquestrador/claude');
-const { absorverPausa } = require('../../orquestrador/pausa');
-const { bloquearFluxo, pausarPorApi } = require('../../orquestrador/zero-skip');
 const { cenarios } = require('../02-cenarios/mapa');
-const { massa } = require('../05-massa/estado');
-const { massaValida, semMassa } = require('../05-massa/regras/validade');
-const { fila, iniciarCenario, concluirCenario } = require('./cenario');
-const { exigenciasDe } = require('./regras/evidencia');
-const { promptCenario } = require('./prompt');
-const { voltarParaMassa } = require('./sem-massa');
+const { massa, massaEstado } = require('../05-massa/estado');
+const { desistirMassa } = require('../05-massa/desistir');
+const { fila, iniciarCenario } = require('./cenario');
+const { garantirMassa } = require('./garantir-massa');
+const { executarCenario } = require('./executar-cenario');
 
 async function rodar(dir, d, amb) {
-  const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   let pend;
-  const retentou = new Set(); // cenários que já voltaram à Etapa 4 nesta rodada (1 volta por cenário; na 2ª pausa pedindo instrução, nunca pula)
+  const seguidas = { invalidas: 0 }, // cenários seguidos com massa inválida (2 → Etapa 5 para os pendentes)
+    retentou = new Set(); // cenários que o Claude já devolveu como sem-massa nesta rodada (na 2ª: não executável)
   while (!pausado(dir) && (pend = fila(cenarios(dir))).length) {
-    const c = pend[0],
-      ex = iniciarCenario(dir, c.id, amb.sha);
-    const itens = massa(dir).itens.filter(
-      (i) => (i.cenarios || []).includes(c.id) && massaValida(i, new Date(), d.horaRefresh)
-    );
-    d.gravarTela?.(path.join(dir, ex.evidencias));
-    const exige = exigenciasDe(dir, c);
-    const { estourou, erro } = await claude(
-      dir,
-      {
-        prompt: promptCenario(d.chave, c, amb, itens, dir, exige),
-        titulo: `QA · ${c.id} · ${c.titulo}`,
-        cwd: amb.backend || d.backend
-      },
-      d
-    );
-    d.pararTela?.();
-    if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' && absorverPausa(dir)) {
-      concluirCenario(dir, c.id, 'descartado', 'O Claude perguntou antes de concluir: volta à fila depois da resposta');
-      return true;
-    }
-    const statusAgora = () => cenarios(dir).cenarios.find((x) => x.id === c.id)?.status;
-    if (pausado(dir)) {
-      if (statusAgora() === 'executando') {
-        concluirCenario(dir, c.id, 'descartado', 'QA pausado no meio do cenário');
-        vivo('aviso', `${c.id} descartado (pausa no meio): volta da fila na retomada`);
-      }
-      return true;
-    }
-    // Erro de API/tokens do Claude sem resultado registrado: pausa a fila neste cenário, sem pular os seguintes.
-    if (erro && statusAgora() === 'executando') {
-      pausarPorApi(dir, d, erro, c);
-      return true;
-    }
-    // Zero skip: tempo estourado ou bloqueio relatado pelo Claude não pulam o cenário; pausa nele e espera o humano.
-    if (estourou && statusAgora() === 'executando') {
-      bloquearFluxo(dir, d, c, `passou de ${d.timeoutMin} min sem concluir`);
-      return true;
-    }
-    if (statusAgora() === 'bloqueado') {
-      bloquearFluxo(
-        dir,
-        d,
-        c,
-        cenarios(dir)
-          .cenarios.find((x) => x.id === c.id)
-          .execucoes.at(-1)?.nota || 'bloqueio informado pelo Claude'
-      );
-      return true;
-    }
-    if (
-      cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando' &&
-      itens.length &&
-      semMassa(dir, [c.id], new Date(), d.horaRefresh).length
-    ) {
-      concluirCenario(dir, c.id, 'sem-massa', 'Massa invalidada e o Claude não registrou o resultado'); // invalidou tudo e parou: é falta de massa, não falha
-    }
-    if (
-      cenarios(dir)
-        .cenarios.find((x) => x.id === c.id)
-        ?.execucoes?.at(-1)?.status === 'sem-massa'
-    ) {
-      if (await voltarParaMassa(dir, d, amb, c, retentou)) return true;
+    const c = pend[0];
+    const m = await garantirMassa(dir, d, amb, c, seguidas);
+    if (m.parou) return true;
+    if (m.naoExecutavel) continue;
+    const fim = await executarCenario(dir, d, amb, c, iniciarCenario(dir, c.id, amb.sha), m.itens);
+    if (fim === 'parou') return true;
+    if (fim !== 'sem-massa') continue;
+    // O Claude achou a massa imprestável: ela vira inválida e o cenário volta para a fila (a garantia de massa renova). Na 2ª vez, não executável.
+    if (retentou.has(c.id)) {
+      desistirMassa(dir, c.id, 'a massa renovada também não serviu para o cenário');
       continue;
     }
-    if (cenarios(dir).cenarios.find((x) => x.id === c.id)?.status === 'executando') {
-      bloquearFluxo(dir, d, c, 'o Claude terminou sem registrar o resultado');
-      return true;
-    }
+    retentou.add(c.id);
+    for (const i of massa(dir).itens)
+      if ((i.cenarios || []).includes(c.id) && i.estado === 'valida') massaEstado(dir, i.id, 'invalida');
+    aoVivo.anotar(dir, { tipo: 'aviso', texto: `${c.id}: o Claude achou a massa imprestável: renovando` });
   }
   return false;
 }

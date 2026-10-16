@@ -34,4 +34,13 @@ async function executar(b, stmts, { timeoutMs = 120000 } = {}) {
   return { ok: !r.estourou && !/ORA-\d|SP2-\d|Connection Failed/i.test(saida), saida: saida.slice(-2000) };
 }
 
-module.exports = { executar };
+/**
+ * Consultas só leitura (SELECT) na conexão salva, numa sessão só: [{ ok, colunas, itens, mascaradas, erro }] na ordem, ou { erro } se o banco não abriu.
+ * @param {{ conexao: string, ambiente: string, sqlcl?: string, sensiveis?: string[] }} b
+ */
+async function consultar(b, sqls) {
+  const res = await lib.rodar({ ...b, limite: 200 }, sqls);
+  return res.erro ? { erro: res.erro } : { base: res.base, resultados: res.resultados };
+}
+
+module.exports = { executar, consultar };

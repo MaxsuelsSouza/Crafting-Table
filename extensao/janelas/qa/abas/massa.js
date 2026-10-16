@@ -32,6 +32,7 @@ function massaHtml(dir, hora = '06:00') {
     }</div>
     ${i.consulta ? `<details><summary>Consulta</summary><pre>${esc(i.consulta)}</pre></details>` : ''}
     ${!morta && i.origem === 'sql' && i.desfazer?.length ? `<details><summary>Montada por SQL · desfazer</summary><pre>${esc(i.desfazer.join(';\n'))};</pre><button data-acao="qaMassaDesfazer" data-id="${esc(i.id)}" title="Roda o SQL de desfazer no banco (pede confirmação)">Desfazer no banco</button></details>` : ''}
+    ${morta ? '' : `<button data-acao="qaMassaValidar" data-id="${esc(i.id)}" title="${i.consulta ? 'Roda de novo a consulta deste item no banco: o registro ainda está lá? (válida ou inválida)' : 'Sem consulta guardada: não dá para conferir no banco'}"${i.consulta ? '' : ' disabled'}>Validar massa</button>`}
     ${morta ? '' : i.estado === 'valida' ? `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="invalida">Marcar inválida</button>` : `<button data-acao="qaMassaEstado" data-id="${esc(i.id)}" data-op="valida">Marcar válida</button>`}
     </div></details>`;
   };

@@ -11,9 +11,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(
 // Redesenhar quando mudar .cenarios.json ou a pasta de evidências (evidencias.js já vigia). Estado aberto/fechado: vscode.getState()[chave].
 //   ctx: { dir (pasta do QA), amb (ambiente, para o aviso "build anterior"), uri(arquivo) → endereço da webview, arquivos(execução) → caminhos,
 //          acoes?: { abrir, pasta, copiar, refazer } nomes dos data-acao/data-painel (padrão: os do QA; o fluxo dos Incidentes usa os seus), evidenciasEm?: pasta das evidências (padrão: evidencias/<id>) }
-const STATUS = { pendente: 'Pendente', executando: 'Executando', passou: 'Passou', falhou: 'Falhou', bloqueado: 'Bloqueado', desatualizado: 'Plano mudou', dispensado: 'Não executado (decisão)' };
-const REFAZER = ['passou', 'falhou', 'desatualizado', 'bloqueado', 'dispensado'];
-const DISPENSAR = ['pendente', 'passou', 'falhou', 'desatualizado', 'bloqueado']; // não vale para executando nem para os já dispensados
+const STATUS = { pendente: 'Pendente', executando: 'Executando', passou: 'Passou', falhou: 'Falhou', bloqueado: 'Bloqueado', desatualizado: 'Plano mudou', dispensado: 'Não executado (decisão)', 'nao-executavel': 'Não executável (sem massa)' };
+const REFAZER = ['passou', 'falhou', 'desatualizado', 'bloqueado', 'dispensado', 'nao-executavel'];
+const DISPENSAR = ['pendente', 'passou', 'falhou', 'desatualizado', 'bloqueado', 'nao-executavel']; // não vale para executando nem para os já dispensados
 const IMG = /\.(png|jpe?g|gif|webp)$/i;
 const dataBr = (iso) => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -69,7 +69,7 @@ const CSS = `
   .cen .ctit { flex: 1; min-width: 0; }
   .cen .cst { flex: none; font-size: 10px; padding: 0 6px; border-radius: var(--r-pill); border: 1px solid var(--border); color: var(--text-dim); }
   .cst.passou { color: var(--ok); border-color: var(--ok); } .cst.falhou { color: var(--danger); border-color: var(--danger); }
-  .cst.dispensado { color: var(--muted, #888); border-color: var(--muted, #888); } .cst.desatualizado, .cst.bloqueado { color: var(--warn); border-color: var(--warn); } .cst.executando { color: var(--ia); border-color: var(--ia); }
+  .cst.dispensado, .cst.nao-executavel { color: var(--muted, #888); border-color: var(--muted, #888); } .cst.desatualizado, .cst.bloqueado { color: var(--warn); border-color: var(--warn); } .cst.executando { color: var(--ia); border-color: var(--ia); }
   .cen .cdet { padding: 0 10px 10px; color: var(--text-dim); line-height: 1.5; }
   .cen .cdet pre { white-space: pre-wrap; font: inherit; margin: 6px 0; }
   .cen .cex { margin-top: 6px; } .cen .cex div { font-size: 11px; }

@@ -23,6 +23,14 @@ function evidencia(dir, id, arquivos) {
     return destino;
   });
 }
+// 6.2: o que a jornada gravou direto na pasta da execução (vídeo, prints, consultas, jornada.txt) vira anexo.
+function anexarPasta(dir, id) {
+  const r = cenarios(dir),
+    ex = r.cenarios.find((x) => x.id === id)?.execucoes?.at(-1);
+  if (!ex) return;
+  ex.anexos = [...new Set([...(ex.anexos || []), ...arquivosDe(dir, ex).map((f) => path.basename(f))])];
+  gravarJson(path.join(dir, CENARIOS), r);
+}
 const arquivosDe = (dir, ex) => {
   try {
     return fs
@@ -34,4 +42,4 @@ const arquivosDe = (dir, ex) => {
   }
 };
 
-module.exports = { evidencia, arquivosDe };
+module.exports = { evidencia, anexarPasta, arquivosDe };

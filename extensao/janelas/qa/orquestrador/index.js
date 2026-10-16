@@ -1,6 +1,6 @@
 // @ts-check
 // Orquestrador do QA (lista QA do painel). O ▶ roda tudo em ordem (executar): planejamento → mapa de cenários → ambiente → massa → um
-// `claude -p` por cenário. Estado em arquivos da pasta qa/ do ticket, então pausar/retomar é só parar entre execuções.
+// roteiro por cenário (Claude) que a extensão executa (etapas/06-execucao). Estado em arquivos da pasta qa/ do ticket, então pausar/retomar é só parar entre execuções.
 // A lógica de cada etapa mora em etapas/NN-*; aqui fica só o que é comum a todas. Um arquivo por regra:
 //   executar.js     ▶ Dar início: ambiente → pré-condição → massa → cenários (cada etapa devolve true quando parou)
 //   claude.js       um claude -p em segundo plano até terminar (limite de tempo, erro da API)

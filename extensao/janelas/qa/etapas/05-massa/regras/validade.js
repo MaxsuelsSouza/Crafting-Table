@@ -12,7 +12,7 @@ const massaValida = (i, agora, hora) => i.estado === 'valida' && new Date(i.medi
 const semMassa = (dir, ids, agora, hora) =>
   ids.filter((id) => !massa(dir).itens.some((i) => (i.cenarios || []).includes(id) && massaValida(i, agora, hora)));
 // Sincronia Ao Vivo ↔ aba Massa: antes de tocar no banco, a sessão lê o que a aba já tem. Por cenário: `validas` (itens que ainda servem),
-// `faltam` (sem massa válida: só esses podem ir ao banco) e `esgotadas` (a aba só tem massa já consumida: a busca no banco encerra, não se gera outra).
+// `faltam` (sem massa válida: só esses podem ir ao banco) e `esgotadas` (a aba só tem massa já consumida; informativo: consumida conta como inválida).
 function sincronizarMassa(dir, ids, agora, hora) {
   const itens = massa(dir).itens,
     validas = {},

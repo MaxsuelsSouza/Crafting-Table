@@ -18,7 +18,7 @@ const { MASSA_BUSCA_MIN, promptMassa, FERRAMENTAS_MASSA } = require('./prompt');
 const { desistirMassa } = require('./desistir');
 
 // Etapa 4: o Claude levanta massa para os cenários dados. `etapa: 'massa'` no estado libera o `qa-state massa add` só durante ela.
-// Trava de banco: relê a aba antes; só vai ao banco quem não tem massa válida lá, e cenário com a massa da aba toda consumida encerra a busca.
+// Trava de banco: relê a aba antes; só vai ao banco quem não tem massa válida lá.
 async function levantarMassa(dir, d, amb, cens) {
   const sync = sincronizarMassa(
     dir,
@@ -28,9 +28,8 @@ async function levantarMassa(dir, d, amb, cens) {
   );
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const naAba = Object.values(sync.validas).flat();
-  const busca = cens.filter((c) => sync.faltam.includes(c.id) && !sync.esgotadas.includes(c.id));
-  if (sync.esgotadas.length)
-    vivo('aviso', `Massa da aba toda consumida para ${sync.esgotadas.join(', ')}: busca no banco encerrada`);
+  // Massa consumida conta como inválida: o cenário vai ao banco atrás de outra (regra "massa inválida → renovar").
+  const busca = cens.filter((c) => sync.faltam.includes(c.id));
   if (!busca.length) {
     if (!sync.faltam.length) vivo('fim', 'Aba Massa já tem massa válida para os cenários: banco não consultado');
     return { ok: true, travado: true };
