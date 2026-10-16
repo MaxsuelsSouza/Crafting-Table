@@ -14,6 +14,7 @@ const { jornada } = require('./dependencias');
 const { obterRoteiro } = require('./subetapas/6.1-roteiro');
 const { rodarJornada } = require('./subetapas/6.2-jornada');
 const { diagnosticar } = require('./subetapas/6.3-diagnostico');
+const { prepararInicio } = require('./inicio');
 
 const fimDe = (f) => (f === 'concluido' ? 'fim' : f);
 
@@ -36,7 +37,8 @@ async function executarCenario(dir, d, amb, c, ex, itens) {
         saida: pasta,
         vars: varsDaMassa(itens),
         envBase: deps.envBase,
-        deps
+        deps,
+        inicio: prepararInicio()
       });
     } finally {
       d.pararTela?.();

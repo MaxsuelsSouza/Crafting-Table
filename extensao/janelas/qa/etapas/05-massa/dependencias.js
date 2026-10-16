@@ -1,6 +1,8 @@
 // @ts-check
-// Dependência externa da Etapa 5: roda o lote aprovado no SQLcl (veio de infra/agentes/banco.js).
+// Dependência externa da Etapa 5: roda o lote aprovado no SQLcl (veio de infra/agentes/banco.js) e as consultas só leitura
+// (MCP do SQLcl; o mapa-db só com b.modo 'antigo', que o humano autorizou em orquestrador/banco.js).
 const lib = require('../../../../infra/plugins/mapa/lib/banco');
+const mcp = require('../../../../infra/agentes/mcp-sqlcl');
 const { liberado } = require('../../../../infra/agentes/banco');
 const { validarAlteracao } = require('./regras/sql');
 
@@ -35,11 +37,14 @@ async function executar(b, stmts, { timeoutMs = 120000 } = {}) {
 }
 
 /**
- * Consultas só leitura (SELECT) na conexão salva, numa sessão só: [{ ok, colunas, itens, mascaradas, erro }] na ordem, ou { erro } se o banco não abriu.
+ * Consultas só leitura (SELECT) na conexão salva, num lote só (MCP: sessão já aberta, ~0,1 s; antigo: um SQLcl por lote, ~10 s): [{ ok, colunas, itens, mascaradas, erro }] na ordem, ou { erro } se o banco não abriu.
  * @param {{ conexao: string, ambiente: string, sqlcl?: string, sensiveis?: string[] }} b
  */
 async function consultar(b, sqls) {
-  const res = await lib.rodar({ ...b, limite: 200 }, sqls);
+  const res =
+    b.modo === 'antigo'
+      ? await lib.rodar({ ...b, limite: 200 }, sqls)
+      : await mcp.consultar({ ...b, limite: 200 }, sqls);
   return res.erro ? { erro: res.erro } : { base: res.base, resultados: res.resultados };
 }
 

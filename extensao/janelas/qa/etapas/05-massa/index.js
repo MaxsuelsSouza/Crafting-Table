@@ -1,5 +1,7 @@
 // @ts-check
-// Etapa 5 · Massa de dados (.massa.json, aba Massa): busca só leitura por até 5 min, depois produzir por UPDATE (o humano aprova), senão desiste e segue.
+// Etapa 5 · Massa de dados (.massa.json, aba Massa). Com a receita do 6.0 Gerar (receita/): buscas sem IA, UPDATEs num lote só para aprovar.
+// Sem receita (o caminho antigo): a IA busca só leitura por até 5 min, depois produz por UPDATE (o humano aprova), senão desiste e segue.
+//   receita/             formato, buscar e distribuir, produzir, levantar (com a correção pela conversa do Gerar)
 //   estado.js            .massa.json, massa add/estado e a janela da etapa (emEtapaMassa)
 //   regras/validade.js   validade até o refresh do banco e a sincronia com a aba Massa
 //   regras/sql.js        o que um lote de alteração pode ter (só INSERT/UPDATE/DELETE com WHERE)
@@ -8,13 +10,13 @@
 //   proposta.js          lote SQL proposto pela IA: aprovar, recusar, desfazer
 //   desistir.js          sem massa e sem UPDATE possível: bloqueia o cenário e segue
 const aoVivo = require('../../../../componentes/ao-vivo');
-const vagas = require('../../../../infra/agentes/etapas');
 const { estado, mudar } = require('../../estado');
 const { pausado } = require('../../orquestrador/rodando');
 const { claude } = require('../../orquestrador/claude');
 const { absorverPausa } = require('../../orquestrador/pausa');
 const { sincronizarMassa, semMassa, ultimoRefresh } = require('./regras/validade');
-const { MASSA_BUSCA_MIN, promptMassa, FERRAMENTAS_MASSA } = require('./prompt');
+const { MASSA_BUSCA_MIN, promptMassa } = require('./prompt');
+const { bancoDaSessao } = require('../../orquestrador/banco');
 const { desistirMassa } = require('./desistir');
 
 // Etapa 4: o Claude levanta massa para os cenários dados. `etapa: 'massa'` no estado libera o `qa-state massa add` só durante ela.
@@ -36,33 +38,23 @@ async function levantarMassa(dir, d, amb, cens) {
   }
   cens = busca.filter((c) => estado(dir).massaDesfecho?.[c.id]?.tipo !== 'dispensa');
   if (!cens.length) return { ok: true };
+  // Receita escrita no 6.0 Gerar: a massa sai das buscas dela, sem IA (a IA só volta para corrigir a receita).
+  if (require('./receita').temReceita(dir)) return require('./receita/levantar').levantarPorReceita(dir, d, amb, cens);
   mudar(dir, { etapa: 'massa', massaFase: 'buscar' });
   const b = d.banco,
-    liberado = b && require('../../../../infra/agentes/banco').liberado(b),
-    mapa = liberado ? vagas.raiz('impl.mapa') || '' : '';
+    liberado = b && require('../../../../infra/agentes/banco').liberado(b);
   const rodar = (cs, fase, titulo, timeoutMin) => {
     mudar(dir, { massaFase: fase });
-    const escreve = fase === 'produzir' && liberado;
+    const escreve = fase === 'produzir' && liberado,
+      bk = bancoDaSessao(dir, d); // bk.escreve: MCP, a IA faz o UPDATE (com WHERE) direto
     return claude(
       dir,
       {
-        prompt: promptMassa(
-          d.chave,
-          cs,
-          dir,
-          b ? require('../../../../infra/agentes/banco').texto(b) : '',
-          mapa,
-          escreve,
-          naAba,
-          fase
-        ),
+        prompt: promptMassa(d.chave, cs, dir, bk.texto, '', escreve, naAba, fase, !!bk.escreve),
         titulo,
         cwd: amb.backend || d.backend,
-        ferramentas: FERRAMENTAS_MASSA(mapa),
-        env: {
-          ...(mapa ? require('../../../../infra/agentes/banco').env(b, dir) : {}),
-          ...(escreve ? { QA_BANCO_ESCRITA: '1' } : {})
-        }
+        banco: true, // MCP do SQLcl (ou o mapa-db, se o humano autorizou); Bash livre como nas outras etapas
+        env: escreve ? { QA_BANCO_ESCRITA: '1' } : {}
       },
       { ...d, timeoutMin }
     );

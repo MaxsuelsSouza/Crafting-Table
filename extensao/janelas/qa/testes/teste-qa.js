@@ -7,6 +7,14 @@ for (const k of Object.keys(process.env)) if (k.startsWith('WMS_') && k !== 'WMS
 const fs = require('fs'),
   os = require('os'),
   path = require('path');
+// Conhecimentos de teste com os flows de início já validados (a etapa que os escreve tem teste em teste-jornada-qa.js).
+process.env.QA_CONHECIMENTOS = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-conhec-'));
+{
+  const f = path.join(process.env.QA_CONHECIMENTOS, 'inicio.yaml');
+  fs.writeFileSync(f, 'appId: x\n---\n- launchApp\n');
+  for (const chave of ['inicio', 'voltar-inicio'])
+    require('../conhecimentos').adicionar({ tipo: 'flow', chave, arquivo: f });
+}
 const qa = require('../motor');
 const { ehQA, candidatas, temPlano, versionar, procurar } = qa._teste;
 
@@ -411,6 +419,7 @@ assert.strictEqual(
     horaRefresh: '06:00',
     confirmar: async () => true,
     healthCheck: async () => ({ ok: true }),
+    gerar: false, // caminho cenário a cenário (o 6.0 Gerar tem teste próprio em teste-gerar-qa.js)
     alertar: (t) => alertas.push(t)
   };
   const alertas = [];
@@ -434,7 +443,7 @@ assert.strictEqual(
   pausarNo = null;
   await qa.executar(d5, deps);
   assert.deepStrictEqual([st5(), prompts], [['passou', 'passou'], ['QA · CT02 · B']]); // retomada no mesmo dia e com o mesmo código: o login do Claude é reaproveitado (sem nova sessão)
-  assert.ok(qa.html(d5).includes('Execução concluída') && qa.html(d5).includes('Publicar no Jira'));
+  assert.ok(qa.html(d5).includes('Execução concluída') && qa.html(d5).includes('Relatório e publicar no Jira'));
   // Execução invalida a massa: volta à Etapa 4 só para esse cenário, retoma e, na 2ª vez, bloqueia (sem laço infinito).
   const d10 = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-'));
   await qa.verificarPlano(d10, 'WMS-1', apiPlano);
@@ -639,11 +648,33 @@ assert.strictEqual(
   );
   viv.alternarExpandido(d9);
   assert.ok(!viv.expandido(d9));
+  // Publica com qualquer nível depois que nada está pendente nem bloqueado; o nível sai por regra (o QA pode mudar com motivo).
   assert.ok(
     qa.podePublicar([{ status: 'passou' }, { status: 'falhou', arquivado: true }]) &&
-      !qa.podePublicar([{ status: 'passou' }, { status: 'falhou' }]) &&
+      qa.podePublicar([{ status: 'passou' }, { status: 'falhou' }]) &&
       !qa.podePublicar([{ status: 'passou' }, { status: 'pendente' }]) &&
+      !qa.podePublicar([{ status: 'passou' }, { status: 'bloqueado' }]) &&
       !qa.podePublicar([])
+  );
+  const nivel = (l, o) => qa.veredito(l, o).nivel;
+  const comAviso = { status: 'passou', execucoes: [{ avisos: ['tela mostra 2 casas decimais, plano fala em 3'] }] };
+  assert.deepStrictEqual(
+    [
+      nivel([{ status: 'passou' }, { status: 'passou' }]),
+      nivel([{ status: 'passou' }, comAviso]),
+      nivel([{ status: 'passou' }, { status: 'nao-executavel' }]),
+      nivel([{ status: 'passou' }], { divergencias: 1 }),
+      nivel([comAviso, { status: 'falhou' }]),
+      nivel([{ status: 'passou' }, { status: 'pendente' }])
+    ],
+    [
+      'aprovado',
+      'aprovado-com-ressalvas',
+      'aprovado-com-ressalvas',
+      'aprovado-com-ressalvas',
+      'reprovado',
+      'nao-concluido'
+    ]
   );
   console.log('ok execução');
 })();

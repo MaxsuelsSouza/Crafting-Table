@@ -15,9 +15,12 @@ const { massa, MASSA } = require('../etapas/05-massa/estado');
 const { semMassa, massaValida } = require('../etapas/05-massa/regras/validade');
 const { validarMassa } = require('../etapas/05-massa/validar');
 const { retomada } = require('./retomada');
+const { prepararBanco } = require('./banco');
 const { levantarMassa } = require('../etapas/05-massa');
 const { fila } = require('../etapas/06-execucao/cenario');
 const execucao = require('../etapas/06-execucao');
+const { garantirInicio } = require('../etapas/06-execucao/inicio');
+const { gerar } = require('../etapas/06-execucao/subetapas/6.0-gerar');
 
 // ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
 // soMassa (↻ da Etapa 5): valida no banco a massa dos cenários PENDENTES, move para "Massas mortas" só a que não serve mais
@@ -46,6 +49,7 @@ async function executar(dir, d, { soMassa = false } = {}) {
           ? 'Nenhum cenário pendente. Use ↻ Refazer para executar um de novo'
           : 'Sem cenários para executar'
       );
+    if (!(await prepararBanco(dir, d))) return; // MCP do SQLcl; fora do ar, o mapa-db só com o seu ok
     if (soMassa) {
       const ids = pend.map((c) => c.id),
         dosPendentes = (i) => (i.cenarios || []).some((x) => ids.includes(x));
@@ -85,6 +89,12 @@ async function executar(dir, d, { soMassa = false } = {}) {
     }
     if (!amb || pausado(dir)) return;
     if (!(await preCondicao(dir, d, amb))) return; // falhou (motivo reportado) ou pausou: a suíte não começa
+    if (!soMassa) {
+      if ((await garantirInicio(dir, d, amb)).parou) return; // flows da tela de início: uma vez para todos os tickets
+      // 6.0: UMA sessão escreve camadas, receita de massa e roteiros do card (d.gerar === false: o caminho antigo, cenário a cenário)
+      if (d.gerar !== false && (await gerar(dir, d, amb)).parou) return;
+      pend = fila(cenarios(dir));
+    }
     // Massa vencida só pelo horário do refresh: confere no banco antes de ir à Etapa 5 (o registro costuma continuar servindo).
     if (volta !== 'mesmo-dia') {
       const ids = pend.map((c) => c.id),

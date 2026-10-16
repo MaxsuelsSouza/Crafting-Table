@@ -15,6 +15,8 @@ const { roteiroDe } = require('../roteiros');
 const { estado, mudar } = require('../../../estado');
 const { promptCenario, promptContinuar } = require('../prompt');
 const { depoisDoClaude } = require('../depois-do-claude');
+const { promptRoteiro } = require('../prompt-gerar');
+const { lerSid } = require('../../../orquestrador/sid');
 
 // extra: o que deu errado no roteiro anterior (6.2 recusou ou o 6.3 pediu outro); com ele nunca reaproveita.
 async function obterRoteiro(dir, d, amb, c, itens, extra = '') {
@@ -29,9 +31,11 @@ async function obterRoteiro(dir, d, amb, c, itens, extra = '') {
   const volta = estado(dir).retomarSessao;
   const continuar = !extra && volta?.cenario === c.id && volta.resposta ? volta : null;
   if (volta) mudar(dir, { retomarSessao: null });
+  // Com a conversa do 6.0 Gerar guardada, a correção (ou o roteiro que faltou) volta NELA: já leu o método, o código e o card.
+  const doGerar = !continuar && estado(dir).gerarSid;
   // Lote: só no roteiro normal (sem correção nem retomada), com os próximos da fila que ainda não têm roteiro nem instrução do humano.
   const outros =
-    continuar || extra || !(d.loteRoteiro > 1)
+    continuar || extra || doGerar || !(d.loteRoteiro > 1)
       ? []
       : fila(cenarios(dir))
           .filter((x) => x.id !== c.id && !x.instrucao && !roteiroDe(dir, x))
@@ -51,18 +55,22 @@ async function obterRoteiro(dir, d, amb, c, itens, extra = '') {
       {
         prompt: continuar
           ? promptContinuar(c, continuar.resposta)
-          : outros.length
-            ? promptLote(d.chave, cc, amb, itens, dir, exigenciasDe(dir, c), outros)
-            : promptCenario(d.chave, cc, amb, itens, dir, exigenciasDe(dir, c)),
+          : doGerar
+            ? promptRoteiro(cc, extra || 'o Gerar terminou sem registrar este roteiro')
+            : outros.length
+              ? promptLote(d.chave, cc, amb, itens, dir, exigenciasDe(dir, c), outros)
+              : promptCenario(d.chave, cc, amb, itens, dir, exigenciasDe(dir, c)),
         titulo: `QA · ${c.id} · ${continuar ? 'continuando após a resposta' : extra ? 'novo roteiro' : outros.length ? `roteiros de ${[c, ...outros.map((o) => o.c)].map((x) => x.id).join(', ')}` : c.titulo}`,
         cwd: amb.backend || d.backend,
-        ...(continuar ? { sessao: continuar.sid } : {})
+        banco: true,
+        ...(continuar ? { sessao: continuar.sid } : doGerar ? { sessao: doGerar } : {})
       },
       outros.length && d.timeoutMin > 0 ? { ...d, timeoutMin: d.timeoutMin + 10 * outros.length } : d // +10 min por roteiro adiantado
     );
   } finally {
     if (outros.length) mudar(dir, { loteRoteiro: null });
   }
+  if (doGerar) mudar(dir, { gerarSid: lerSid(dir) || doGerar });
   if (outros.length) {
     const feitos = outros.filter((o) => roteiroDe(dir, o.c)).map((o) => o.c.id);
     aoVivo.anotar(dir, {

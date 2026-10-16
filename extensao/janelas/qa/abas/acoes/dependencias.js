@@ -29,6 +29,11 @@ const depsPublicar = (s, t) => {
   };
 };
 
+const pastasSkill = () => {
+  const vagas = require('../../../../infra/agentes/etapas');
+  return ['qa.execucao', 'qa.ambiente'].map((v) => vagas.pastaSkill(v));
+};
+
 const depsQa = (s, t) => {
   const dir = s.pastaAba(t.id),
     emu = require('../../../../modulos/emulador');
@@ -45,7 +50,10 @@ const depsQa = (s, t) => {
     // Modelo e esforço do QA em segundo plano (os plugins, MCP e skills saem em orquestrador/claude.js).
     modelo: cfg().get('qaModelo') ?? 'sonnet',
     esforco: cfg().get('qaEsforco') ?? 'medium',
-    extras: ['--add-dir', dir],
+    // A pasta do ticket, os repositórios e a skill: fora delas o Claude Code bloqueia até um ls (WMS-14752).
+    extras: [...new Set([dir, ...s.reposDe(t).map((r) => r.caminho), ...pastasSkill()].filter(Boolean))].flatMap(
+      (p) => ['--add-dir', p]
+    ),
     // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
     comandos: {
       lista: () => require('../../../../modulos/comandos').api?.lista() || [],

@@ -11,7 +11,8 @@ const { massa, massaAdd, massaEstado } = require('./estado');
 const PROPOSTA = '.massa-proposta.json',
   LOG_SQL = '.massa-sql.log.jsonl';
 const propostaMassa = (dir) => lerJson(path.join(dir, PROPOSTA), null);
-function proporMassa(dir, { papel, cenarios: cens = [], dados = {}, sql, desfazer, porque = '' }) {
+// receita: itens produzidos pela receita (05-massa/receita/produzir.js): depois de executar, cada um é confirmado pela busca e vira uma massa.
+function proporMassa(dir, { papel, cenarios: cens = [], dados = {}, sql, desfazer, porque = '', receita = null }) {
   const b = require('./regras/sql'),
     v = b.validarAlteracao(sql),
     u = b.validarAlteracao(desfazer);
@@ -29,7 +30,8 @@ function proporMassa(dir, { papel, cenarios: cens = [], dados = {}, sql, desfaze
     sql: v.stmts,
     desfazer: u.stmts,
     porque: String(porque).trim(),
-    em: new Date().toISOString()
+    em: new Date().toISOString(),
+    ...(receita ? { receita } : {})
   };
   gravarJson(path.join(dir, PROPOSTA), p);
   registrarPausa(dir, {
@@ -85,6 +87,22 @@ async function aplicarProposta(dir, d) {
       }
     });
     return { ok: false, erro: r.saida };
+  }
+  if (p.receita) {
+    // Lote da receita: a busca filtrada pela chave confirma cada registro produzido e ele vira massa (com o próprio desfazer).
+    const { confirmarProduzidos } = require('./receita/produzir');
+    const c = await confirmarProduzidos(p.receita, (sqls) =>
+      (d.consultarBanco || require('./dependencias').consultar)(b, sqls)
+    );
+    const ids = c.registros.map((r) => massaAdd(dir, { ...r, origem: 'sql', desfazer: [r.desfazer] }));
+    fs.rmSync(tomada, { force: true });
+    mudar(dir, { pausa: null });
+    for (const e of c.erros) vivo('aviso', e);
+    vivo(
+      'fim',
+      `Massa montada por SQL (${p.sql.length} instrução(ões)): ${ids.join(', ') || 'nenhuma confirmada'}; o desfazer de cada uma está na aba Roteiro`
+    );
+    return { ok: true, id: ids[0] };
   }
   const id = massaAdd(dir, {
     papel: p.papel,

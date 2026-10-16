@@ -50,6 +50,14 @@ const maestro = require('../../../infra/agentes/maestro'),
 const prov = require('../../../infra/provedores/documento'),
   { areaIA } = require('../../../infra/agentes/area-ia');
 const { sincronizar, iniciarCenario } = qa._teste;
+// Flows da tela de início já validados (a etapa que os escreve tem teste próprio em teste-jornada-qa.js).
+{
+  const k = require('../conhecimentos'),
+    f = path.join(home, 'inicio.yaml');
+  fs.writeFileSync(f, 'appId: x\n---\n- launchApp\n');
+  k.adicionar({ tipo: 'flow', chave: 'inicio', arquivo: f });
+  k.adicionar({ tipo: 'flow', chave: 'voltar-inicio', arquivo: f });
+}
 require('../../../infra/ticket/sessao').focoLista = () => 'qa';
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 const novoDir = () => {
@@ -101,8 +109,13 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     const d2 = novoDir();
     const fim = require('../orquestrador/claude').claude(
       d2,
-      { prompt: 'x', ferramentas: qa.FERRAMENTAS_MASSA('/m'), env: { ARGS_FILE: sa } },
-      { modelo: 'sonnet', esforco: 'medium', timeoutMin: 0 }
+      { prompt: 'x', ferramentas: ['Read', 'Glob', 'Grep', 'Bash'], banco: true, env: { ARGS_FILE: sa } },
+      {
+        modelo: 'sonnet',
+        esforco: 'medium',
+        timeoutMin: 0,
+        banco: { conexao: 'Teste', ambiente: 'qas', sensiveis: [], modo: 'mcp' }
+      }
     );
     for (let i = 0; i < 100 && !fs.existsSync(sa); i++) await dormir(20);
     await fim;
@@ -115,17 +128,48 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       'fcx-agora@fcxlabs': false
     });
     assert.deepStrictEqual([val('--model'), val('--effort')], ['sonnet', 'medium']);
+    // Banco pelo MCP do SQLcl: servidor só desta sessão, ferramentas liberadas, sqlcl_run proibido e o hook só SELECT no mesmo --settings.
+    assert.ok(JSON.parse(val('--mcp-config')).mcpServers.sqlcl.args.includes('-mcp'));
+    assert.ok(a2.includes('mcp__sqlcl__sql_run') && a2.includes('mcp__sqlcl__sqlcl_run'));
+    assert.match(JSON.parse(val('--settings')).hooks.PreToolUse[0].hooks[0].command, /so-select\.js/);
   }
-  // Ferramentas: a massa não tem Bash livre; mapa-db só quando há mapa.
+  // Modo antigo (o humano autorizou): mapa-db no lugar do MCP; sem banco configurado, nada.
+  const antigo = qa.bancoDaSessao('/x', { banco: { conexao: 'T', ambiente: 'qas', sensiveis: [], modo: 'antigo' } });
+  assert.ok(antigo.texto.includes('mapa-db') && !antigo.extras.length);
   assert.ok(
-    !qa.FERRAMENTAS_MASSA('/m').includes('Bash') &&
-      qa.FERRAMENTAS_MASSA('/m').includes('Bash(/m/bin/mapa-db:*)') &&
-      !qa.FERRAMENTAS_MASSA('').some((f) => /mapa-db/.test(f))
+    /NÃO configurado/.test(qa.bancoDaSessao('/x', { banco: { conexao: '', ambiente: '', sensiveis: [] } }).texto)
   );
-  assert.ok(qa.FERRAMENTAS_MASSA('/m').includes(`Bash(${path.join(__dirname, '..', 'bin', 'qa-state')}:*)`));
+  // O hook recusa escrita e conexão diferente da configurada.
+  const hook = (e, env = {}) =>
+    require('child_process').spawnSync('node', [require('../../../infra/agentes/mcp-sqlcl/claude').HOOK], {
+      input: JSON.stringify(e),
+      env: { ...process.env, ...env }
+    }).status;
+  // UPDATE só com WHERE de verdade (e o COMMIT dele); sem WHERE, 1=1, INSERT e DELETE recusados; o UPDATE vai para o log de escritas
+  const logSql = path.join(os.tmpdir(), `qa-log-sql-${process.pid}.jsonl`);
+  assert.strictEqual(hook({ tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'update t set a = 1' } }), 2);
+  assert.strictEqual(
+    hook({ tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'update t set a = 1 where 1 = 1' } }),
+    2
+  );
+  assert.strictEqual(hook({ tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'delete from t where id = 3' } }), 2);
+  assert.strictEqual(
+    hook(
+      { tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'update t set a = 1 where id = 3' } },
+      { QA_LOG_SQL: logSql }
+    ),
+    0
+  );
+  assert.strictEqual(hook({ tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'commit' } }), 0);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(logSql, 'utf8')).sql, ['update t set a = 1 where id = 3']);
+  assert.strictEqual(hook({ tool_name: 'mcp__sqlcl__sql_run', tool_input: { sql: 'select 1 from dual' } }), 0);
+  assert.strictEqual(
+    hook({ tool_name: 'mcp__sqlcl__connect', tool_input: { connection_name: 'Prod' } }, { QA_DB_CONEXAO: 'T' }),
+    2
+  );
   const pc = qa._teste.promptCenario('K-1', { id: 'CT01', titulo: 'A', texto: 't' }, {}, [], '', ['log_nota']);
   assert.ok(
-    /Proibido: escrever no banco[^.]*commit, push, merge e rebase/.test(pc) &&
+    /Proibido: INSERT, DELETE e DDL no banco, UPDATE sem WHERE[^.]*commit, push, merge e rebase/.test(pc) &&
       pc.includes('OBRIGATÓRIAS') &&
       pc.includes('log_nota') &&
       pc.includes('qa-state pausa')
@@ -298,6 +342,8 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       filhos: apiPlano,
       horaRefresh: '06:00',
       confirmar: async () => true,
+      saudeBanco: async () => ({ ok: false, erro: 'MCP fora no teste' }), // MCP fora: o modo antigo entra com o confirmar
+      gerar: false, // caminho cenário a cenário (o 6.0 Gerar tem teste próprio em teste-gerar-qa.js)
       healthCheck: async () => ({ ok: true }),
       alertar: (t) => alertas.push(t)
     };
@@ -443,11 +489,11 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       qa.cenarios(dp).cenarios.map((c) => c.status),
       ['passou', 'passou']
     );
-    // permissões da execução: cada claude -p leva as proibidas e a massa não tem Bash livre
-    assert.ok(veio.every((v) => v.proibidas.includes('Bash(git push:*)')));
+    // permissões da execução: Bash livre em todas (sem travar em comando composto), mas git de escrita e SQLcl direto proibidos
+    assert.ok(veio.every((v) => v.proibidas.includes('Bash(git push:*)') && v.proibidas.includes('Bash(sql:*)')));
     assert.ok(
       veio.some((v) => /massa/.test(v.titulo)) &&
-        veio.filter((v) => /massa/.test(v.titulo)).every((v) => !v.ferramentas.includes('Bash'))
+        veio.filter((v) => /massa/.test(v.titulo)).every((v) => v.ferramentas.includes('Bash'))
     );
     // ── Pré-condição (health check + login): antes da suíte, fora da lista de cenários; só com tudo ok os cenários começam.
     {
@@ -618,6 +664,25 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
         ok.v.env.MAPA_DB_LOG === path.join(ok.dd, '.mapa-db.jsonl') &&
         ok.v.prompt.includes('configurado (cópia de produção)')
     );
+    // MCP no ar: a massa recebe o servidor do SQLcl, não o mapa-db
+    {
+      const dd = await novo();
+      veio.length = 0;
+      await qa.executar(dd, {
+        ...deps,
+        saudeBanco: async () => ({ ok: true, base: 'B', ms: 1 }),
+        banco: { conexao: 'c1', ambiente: 'qas', sqlcl: '', sensiveis: [] }
+      });
+      const v = veio.find((x) => /massa/.test(x.titulo));
+      assert.ok(
+        v.ferramentas.includes('mcp__sqlcl__sql_run') &&
+          !v.ferramentas.some((f) => /mapa-db/.test(f)) &&
+          v.env.QA_DB_CONEXAO === 'c1' &&
+          JSON.parse(v.env.QA_BANCO).modo === 'mcp' &&
+          v.env.QA_LOG_SQL.endsWith('.massa-sql.log.jsonl') &&
+          v.prompt.includes('MCP sqlcl')
+      );
+    }
     const prod = await caso({ conexao: 'c1', ambiente: 'producao', sqlcl: '', sensiveis: [] });
     assert.ok(
       !prod.v.ferramentas.some((f) => /mapa-db/.test(f)) &&
@@ -810,6 +875,8 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
       horaRefresh: '06:00',
       confirmar: async () => true,
       healthCheck: async () => ({ ok: true }),
+      saudeBanco: async () => ({ ok: false, erro: 'MCP fora no teste' }),
+      gerar: false,
       banco: { conexao: 'qas-wms', ambiente: 'copia-producao', sqlcl: '', sensiveis: [] },
       executarSql: async (b, stmts) => {
         sqlRodado.push({ b, stmts });

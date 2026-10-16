@@ -7,7 +7,7 @@ const { podePublicar } = require('../../etapas/07-publicar');
 const { ehLocal, nomeProvedor } = require('../../etapas/01-planejamento/dependencias');
 
 const BOTAO_PUBLICAR = (ok, local = false) =>
-  `<button class="sec" data-painel="qaPublicar" ${ok ? '' : 'disabled '}title="${ok ? `Comentário com o resultado e as evidências na subtarefa de QA${local ? ' do documento' : ''} (pede confirmação)` : 'Só é possível publicar quando todos os cenários estiverem com resultado OK (passou)'}">${local ? 'Salvar resultado no documento' : `Publicar no ${nomeProvedor()}`}</button>`;
+  `<button class="sec" data-painel="qaPublicar" ${ok ? '' : 'disabled '}title="${ok ? `A IA escreve o relatório, você confere o nível (aprovado, com ressalvas, reprovado) e ele vai com as evidências na subtarefa de QA${local ? ' do documento' : ''}` : 'Só depois que nenhum cenário estiver pendente ou bloqueado'}">${local ? 'Relatório e salvar no documento' : `Relatório e publicar no ${nomeProvedor()}`}</button>`;
 function execucaoHtml(dir, e, rodando) {
   const r = cenarios(dir).cenarios.filter((c) => !c.arquivado),
     pend = fila({ cenarios: r }).length,

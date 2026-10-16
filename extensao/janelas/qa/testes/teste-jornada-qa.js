@@ -7,6 +7,7 @@ for (const k of Object.keys(process.env)) if (k.startsWith('WMS_') && k !== 'WMS
 const fs = require('fs'),
   os = require('os'),
   path = require('path');
+process.env.QA_CONHECIMENTOS = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-conhec-')); // nunca os Conhecimentos reais
 const { validarRoteiro, substituir, resolverVars } = require('../etapas/06-execucao/regras/roteiro');
 const { comBinds, comparar } = require('../etapas/06-execucao/regras/consulta');
 const { rodarJornada } = require('../etapas/06-execucao/subetapas/6.2-jornada');
@@ -132,7 +133,32 @@ const rodarCom = async (o, extra = {}) => {
   assert.strictEqual(r.status, 'invalido');
   assert.match(r.detalhes[0], /variável sem valor: \$\{NUMPEDIDO\}/);
 
+  // Tela de início: voltar-inicio antes das etapas; se falhar, o inicio do zero; os dois falhando, a jornada para antes do roteiro.
+  chamadas.length = 0;
+  const flowsInicio = { inicio: path.join(base, 'ok.yaml'), voltar: path.join(base, 'sub', 'login.yaml') };
+  let rcsInicio = [1, 0];
+  const depsInicio = {
+    ...deps({ linhas: [[{ st: 'A' }], [{ st: 'B' }]] }),
+    maestro: async (arq, env, o) => (
+      chamadas.push(['maestro', path.basename(arq), o.saidaTeste]),
+      { rc: rcsInicio.shift() ?? 0, saida: 'x' }
+    )
+  };
+  r = await rodarCom({}, { deps: depsInicio, inicio: flowsInicio });
+  assert.strictEqual(r.status, 'passou', r.detalhes.join('\n'));
+  assert.deepStrictEqual(
+    chamadas.filter((c) => c[0] === 'maestro').map((c) => c[1]),
+    ['login.yaml', 'ok.yaml', 'ok.yaml'] // voltar falhou → inicio → o flow do roteiro
+  );
+  assert.ok(chamadas[0][2].endsWith(path.join('maestro', '00-voltar-inicio'))); // prints na pasta do cenário (--test-output-dir)
+  assert.strictEqual(r.detalhes[0], '00 início do teste: ok');
+  rcsInicio = [1, 1];
+  r = await rodarCom({}, { deps: depsInicio, inicio: flowsInicio });
+  assert.strictEqual(r.status, 'falhou');
+  assert.match(r.detalhes[0], /não chegou à tela de início/);
+
   await encadeamento();
+  await inicioEscrito();
   fs.rmSync(base, { recursive: true, force: true });
   console.log('ok jornada qa');
 })().catch((e) => {
@@ -290,4 +316,51 @@ async function encadeamento() {
   // fora do lote, o qa-state não aceita roteiro de cenário que não está em execução
   assert.throws(() => qsl('roteiro', 'CT02', rot(BOM)), /não está em execução/);
   fs.rmSync(raiz, { recursive: true, force: true });
+}
+
+// ── Flow de início: a IA escreve e registra (qa-state inicio), a extensão roda no emulador; falhou → a MESMA sessão corrige (--resume);
+// passou → vira conhecimento (tipo flow) e a próxima vez nem chama a IA.
+async function inicioEscrito() {
+  const { execFileSync } = require('child_process');
+  const maestro = require('../../../infra/agentes/maestro');
+  const k = require('../conhecimentos');
+  const { garantirInicio } = require('../etapas/06-execucao/inicio');
+  const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-ini-')),
+    dir = path.join(raiz, 'qa');
+  fs.mkdirSync(dir);
+  const ini = path.join(raiz, 'inicio.yaml'),
+    volta = path.join(raiz, 'voltar-inicio.yaml');
+  fs.writeFileSync(ini, 'appId: ${APP_ID}\n---\n- launchApp\n');
+  fs.writeFileSync(volta, 'appId: ${APP_ID}\n---\n- back\n');
+  const qs = (...a) =>
+    execFileSync(path.join(__dirname, '..', 'bin', 'qa-state'), a, {
+      env: { ...process.env, QA_DIR: dir },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }).toString();
+  const sessoes = [],
+    rodarOrig = maestro.rodar;
+  maestro.rodar = (d0, o) => {
+    sessoes.push(o.sessao || null);
+    fs.writeFileSync(path.join(dir, '.ao-vivo.sid'), 'sessao-inicio');
+    setTimeout(() => {
+      qs('inicio', ini, volta);
+      o.aoMudar();
+    }, 1);
+    return true;
+  };
+  maestro.rodando = () => false;
+  let rcs = [1, 0, 0];
+  const d = {
+    chave: 'K-1',
+    timeoutMin: 0,
+    jornada: { envBase: {}, maestro: async () => ({ rc: rcs.shift() ?? 0, saida: 'Element not found: Entrar' }) }
+  };
+  assert.deepStrictEqual(await garantirInicio(dir, d, {}), { ok: true });
+  assert.deepStrictEqual(sessoes, [null, 'sessao-inicio']); // a correção continua a mesma conversa
+  assert.ok(k.flow('inicio').arquivo.endsWith('inicio.yaml') && k.flow('voltar-inicio'));
+  assert.throws(() => qs('inicio', ini, volta), /só vale/); // fora da etapa, recusado
+  sessoes.length = 0;
+  assert.deepStrictEqual(await garantirInicio(dir, d, {}), { ok: true });
+  assert.deepStrictEqual(sessoes, []); // já gravado: zero IA
+  maestro.rodar = rodarOrig;
 }

@@ -6,7 +6,7 @@
 //   qa-state roteiro CT01 <roteiro.json>          (6.1: registra o roteiro do cenário; a extensão valida na hora e depois executa)
 //   qa-state roteiro CT01 refazer --nota "<o que corrigir>"   (6.3: a falha é do roteiro; a extensão pede outro uma vez)
 //   qa-state massa add   (só na Etapa 4; recusado na execução do cenário)
-//     --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"]
+//     --papel "pedido faturado" --cenarios CT01,CT02 --dados '{"NUMPEDIDO":1}' [--consulta "SELECT …"] [--desfazer "UPDATE …"] (massa que a IA ajustou por UPDATE)
 //   qa-state massa proposta --papel "…" --cenarios CT01 --dados '{…}' --sql "UPDATE … WHERE …;INSERT …" --desfazer "UPDATE … WHERE …" --porque "…"
 //     (só na Etapa 4 e com banco liberado: o humano lê e aprova, a extensão executa; a IA nunca roda escrita)
 //   qa-state massa dispensa|desistir --cenarios CT01 [--nota "por quê"]   (só na Etapa 4: dispensa = cenário não precisa de massa; desistir = não achou nem dá para produzir por UPDATE)
@@ -14,6 +14,16 @@
 //   qa-state pausa --motivo "<curto>" --pergunta "<o que falta>" [--opcoes "A|B"]   (falta informação que só o humano tem: pergunta e termina)
 //   qa-state precondicao --status ok|falhou --nota "<o que foi confirmado ou o motivo>"   (só na Pré-condição: health check e login, antes da suíte)
 //   qa-state analise <<'FIM' … FIM        (análise do ambiente que parou; texto pela entrada padrão)
+//   qa-state conhecimento buscar <termos...> [--tipo tabela]   (aba Conhecimentos: procure ANTES de descobrir)
+//   qa-state conhecimento add --tipo tabela|consulta|seletor|tela|navegacao|api|regra|flow --chave "<nome único>" --titulo "…"
+//     --conteudo "…" | --arquivo <flow.yaml> [--fonte "arquivo:linha"] [--sha <commit>]   (mesma chave e tipo = atualiza)
+//   qa-state conhecimento listar
+//   qa-state inicio <inicio.yaml> <voltar-inicio.yaml>   (flows da tela de início: a extensão roda no emulador e grava nos Conhecimentos)
+//   qa-state inicio-tela "<nome da tela>"
+//   qa-state card <card.json>          (6.0 Gerar: camada de cada cenário: app|api|banco|nao-verificavel)
+//   qa-state receita <receita.json>    (6.0 Gerar: receita de massa; roda as buscas e mostra quantos registros e as colunas)
+//   qa-state aviso CT01 --nota "<o que conferir>"      (passou, mas com aviso: vira "passou com aviso" no nível)
+//   qa-state relatorio <arquivo.md> --nivel aprovado|aprovado-com-ressalvas|reprovado --porque "…" [--divergencias N]   (Etapa 7)
 //   qa-state status
 const qa = require('../motor');
 const dir = process.env.QA_DIR;
@@ -103,7 +113,9 @@ try {
           .map((x) => x.trim())
           .filter(Boolean),
         dados,
-        consulta: opt.consulta
+        consulta: opt.consulta,
+        // UPDATE feito pela IA no MCP: o desfazer fica no item (aba Roteiro) e a massa conta como manipulada no relatório
+        ...(opt.desfazer ? { origem: 'sql', desfazer: [opt.desfazer] } : {})
       }),
       0
     );
@@ -133,6 +145,105 @@ try {
   if (obj === 'analise') {
     qa.gravarAnalise(dir, [a, b, ...resto].filter(Boolean).join(' ') || require('fs').readFileSync(0, 'utf8'));
     sair('análise gravada', 0);
+  }
+  if (obj === 'conhecimento') {
+    const k = require('../conhecimentos');
+    if (a === 'buscar') {
+      const termos = [b, ...resto].filter((x, i, l) => x && !x.startsWith('--') && !String(l[i - 1]).startsWith('--'));
+      const achados = k.buscar(termos, { tipo: opt.tipo }).slice(0, 8);
+      k.marcarUso(achados.map((i) => i.id));
+      sair(
+        achados.length
+          ? achados
+              .map(
+                (i) =>
+                  `## ${i.id} [${i.tipo}] ${i.chave} · ${i.titulo}${i.fonte ? ` (fonte: ${i.fonte})` : ''}\n${i.arquivo ? `arquivo: ${i.arquivo}\n` : ''}${i.conteudo}`
+              )
+              .join('\n\n')
+          : `nada registrado para "${termos.join(' ')}": descubra e grave com conhecimento add`,
+        0
+      );
+    }
+    if (a === 'add') {
+      const i = k.adicionar({
+        tipo: opt.tipo,
+        chave: opt.chave,
+        titulo: opt.titulo,
+        conteudo: opt.conteudo,
+        arquivo: opt.arquivo,
+        fonte: opt.fonte,
+        sha: opt.sha
+      });
+      sair(`${i.id} gravado em Conhecimentos (${i.tipo} ${i.chave})${i.arquivo ? `: ${i.arquivo}` : ''}`, 0);
+    }
+    if (a === 'listar') sair(k.indice(500).trim(), 0);
+  }
+  if (obj === 'inicio' || obj === 'inicio-tela') {
+    if (qa.estado(dir).etapa !== 'inicio') sair('qa-state: inicio só vale na etapa do flow de início');
+    if (obj === 'inicio-tela') {
+      require('../conhecimentos').definirTelaInicio([a, b, ...resto].filter(Boolean).join(' '));
+      sair('tela de início registrada', 0);
+    }
+    const p = require('path');
+    if (!a || !b) sair('qa-state: uso: inicio <inicio.yaml> <voltar-inicio.yaml>');
+    qa.mudar(dir, { inicioCandidato: { inicio: p.resolve(a), voltar: p.resolve(b) } });
+    sair('flows registrados: termine agora, a extensão roda os dois no emulador', 0);
+  }
+  if (obj === 'card' || obj === 'receita') {
+    if (!['gerar', 'receita'].includes(qa.estado(dir).etapa)) sair(`qa-state: ${obj} só vale no 6.0 Gerar`);
+    let j;
+    try {
+      j = JSON.parse(require('fs').readFileSync(a, 'utf8'));
+    } catch (e) {
+      sair(`qa-state: ${a} não é um JSON legível: ${e.message}`);
+    }
+    const ids = qa
+      .cenarios(dir)
+      .cenarios.filter((c) => !c.arquivado)
+      .map((c) => c.id);
+    const e = qa.estado(dir),
+      lote = (e.gerarExigir || e.loteRoteiro || []).filter((x) => ids.includes(x)); // o que esta volta precisa cobrir
+    if (obj === 'card') {
+      const erros = qa.registrarCard(dir, j, ids, lote);
+      if (erros.length) sair(`card recusado, corrija e registre de novo:\n- ${erros.join('\n- ')}`);
+      sair('card registrado', 0);
+    }
+    const erros = qa.registrarReceita(dir, j, ids, lote);
+    if (erros.length) sair(`receita recusada, corrija e registre de novo:\n- ${erros.join('\n- ')}`);
+    const b = JSON.parse(process.env.QA_BANCO || 'null');
+    if (!b) sair('receita gravada (banco não configurado: as buscas não foram testadas)', 0);
+    const consultar = (sqls) => require('../etapas/05-massa/dependencias').consultar(b, sqls);
+    require('../etapas/05-massa/receita/testar')
+      .testarReceita(dir, j, consultar)
+      .then((r) => {
+        require('../../../infra/agentes/mcp-sqlcl').fechar();
+        console.log(
+          r.vazias.length
+            ? `${r.texto}\nCorrija as buscas sem registro suficiente (ou acrescente produzir) e registre de novo.`
+            : r.texto
+        );
+        process.exit(0);
+      })
+      .catch((e) => sair(`qa-state: ${e.message}`));
+    return;
+  }
+  if (obj === 'aviso') {
+    qa.registrarAviso(dir, a, opt.nota);
+    sair(`${a}: aviso registrado`, 0);
+  }
+  if (obj === 'relatorio') {
+    if (qa.estado(dir).etapa !== 'relatorio') sair('qa-state: relatorio só vale na Etapa 7 (relatório)');
+    const faltam = qa.relatorio().registrarRelatorio(dir, a, {
+      nivel: opt.nivel,
+      porque: opt.porque,
+      divergencias: opt.divergencias
+    });
+    if (faltam.length)
+      sair(
+        `relatório gravado, mas cita arquivos que não existem nas evidências: ${faltam.join(', ')}. Corrija os nomes e registre de novo.`,
+        0
+      );
+    sair('relatório registrado: termine agora', 0);
   }
   if (obj === 'status')
     sair(

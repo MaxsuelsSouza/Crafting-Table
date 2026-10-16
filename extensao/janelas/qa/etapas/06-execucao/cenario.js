@@ -77,4 +77,26 @@ function naoExecutavel(dir, id, nota) {
   gravarJson(path.join(dir, CENARIOS), r);
 }
 
-module.exports = { RESULTADOS, VOLTAM, NAO_EXECUTAVEL, carimbo, fila, iniciarCenario, concluirCenario, naoExecutavel };
+// Aviso num cenário (qa-state aviso): passou, mas com algo a conferir (divergência do plano, comportamento estranho que não reprova,
+// massa manipulada). Vai na última execução; passou + aviso = "passou com aviso" no nível (07-publicar/veredito.js).
+function registrarAviso(dir, id, nota) {
+  const r = cenarios(dir),
+    c = r.cenarios.find((x) => x.id === id),
+    ex = c?.execucoes?.at(-1);
+  if (!c || !ex) throw new Error(`${id} ainda não foi executado`);
+  if (!String(nota || '').trim()) throw new Error('--nota é obrigatória');
+  (ex.avisos ||= []).push(String(nota).trim());
+  gravarJson(path.join(dir, CENARIOS), r);
+}
+
+module.exports = {
+  RESULTADOS,
+  VOLTAM,
+  NAO_EXECUTAVEL,
+  carimbo,
+  fila,
+  iniciarCenario,
+  concluirCenario,
+  naoExecutavel,
+  registrarAviso
+};

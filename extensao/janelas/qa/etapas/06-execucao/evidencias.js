@@ -33,10 +33,11 @@ function anexarPasta(dir, id) {
 }
 const arquivosDe = (dir, ex) => {
   try {
+    // só arquivos: a pasta maestro/ (saída do --test-output-dir) fica de fora; os prints dela já foram copiados para cá (6.2)
     return fs
-      .readdirSync(path.join(dir, ex.evidencias))
-      .filter((n) => !n.startsWith('.'))
-      .map((n) => path.join(dir, ex.evidencias, n));
+      .readdirSync(path.join(dir, ex.evidencias), { withFileTypes: true })
+      .filter((n) => n.isFile() && !n.name.startsWith('.'))
+      .map((n) => path.join(dir, ex.evidencias, n.name));
   } catch {
     return [];
   }

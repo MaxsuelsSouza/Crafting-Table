@@ -6,7 +6,9 @@ const fs = require('fs');
 const path = require('path');
 const { validar: validarSelect } = require('../../../../../infra/plugins/mapa/lib/banco');
 
-const TIPOS = ['flow', 'bipe', 'espera', 'consulta'];
+const { errosHttp } = require('./http');
+
+const TIPOS = ['flow', 'bipe', 'espera', 'consulta', 'http'];
 const VAR = /\$\{(\w+)\}/g;
 
 // ${NOME} → valor, recursivo em objetos e listas; variável desconhecida fica literal (a validação acusa depois).
@@ -83,7 +85,9 @@ function validarRoteiro(roteiro, { base, envBase = {} }) {
   if (!Array.isArray(etapas) || !etapas.length) return ['roteiro sem etapas'];
   const erros = [],
     nomes = new Set();
-  const falta = [...new Set(pendentes(etapas))];
+  // ${VAR} que uma etapa http salva (salvar) só tem valor na hora: não conta como faltando.
+  const salvas = new Set(etapas.flatMap((e) => (e?.tipo === 'http' ? Object.keys(e.salvar || {}) : [])));
+  const falta = [...new Set(pendentes(etapas))].filter((n) => !salvas.has(n));
   if (falta.length) erros.push(`variável sem valor: ${falta.map((n) => '${' + n + '}').join(', ')}`);
   etapas.forEach((e, i) => {
     const onde = `etapa ${i + 1} (${e.tipo || '?'})`;
@@ -91,6 +95,11 @@ function validarRoteiro(roteiro, { base, envBase = {} }) {
     if (e.tipo === 'flow') {
       if (!e.arquivo) return erros.push(`${onde}: sem arquivo`);
       erros.push(...errosDoFlow(path.resolve(base, e.arquivo), { ...envBase, ...(e.env || {}) }));
+    }
+    if (e.tipo === 'http') {
+      erros.push(...errosHttp(e, onde));
+      if (e.nome && nomes.has(e.nome)) erros.push(`${onde}: nome "${e.nome}" repetido`);
+      nomes.add(e.nome);
     }
     if (e.tipo === 'bipe' && !String(e.codigo ?? '').trim()) erros.push(`${onde}: sem código`);
     if (['bipe', 'espera'].includes(e.tipo) && e.segundos !== undefined && !(Number(e.segundos) >= 0))

@@ -8,6 +8,7 @@ const { cenarios, CENARIOS } = require('../02-cenarios/mapa');
 const { massa } = require('../05-massa/estado');
 const { substituir, resolverVars, varsDaMassa, validarRoteiro } = require('./regras/roteiro');
 const { envWms } = require('./dependencias');
+const { camadaDe, errosDaCamada } = require('./regras/camadas');
 
 const ROTEIROS = 'roteiros';
 const arquivo = (dir, id) => path.join(dir, ROTEIROS, `${id}.json`);
@@ -32,9 +33,17 @@ function registrarRoteiro(dir, id, arq) {
     throw new Error(`roteiro não é um JSON legível: ${e.message}`);
   }
   if (Array.isArray(r)) r = { etapas: r };
+  // No 6.0 Gerar a massa ainda não existe: valida com a amostra que a busca da receita devolveu (qa-state receita).
   const base = path.dirname(path.resolve(arq)),
-    vars = varsDaMassa(massa(dir).itens.filter((i) => i.estado === 'valida' && (i.cenarios || []).includes(id)));
-  const erros = validarRoteiro(substituir(r, resolverVars(r, vars)), { base, envBase: envWms() });
+    vars = {
+      ...(estado(dir).receitaAmostra?.[id] || {}),
+      ...varsDaMassa(massa(dir).itens.filter((i) => i.estado === 'valida' && (i.cenarios || []).includes(id)))
+    };
+  const cam = camadaDe(dir, id);
+  const erros = [
+    ...validarRoteiro(substituir(r, resolverVars(r, vars)), { base, envBase: envWms() }),
+    ...(cam ? errosDaCamada(cam.camada, r) : [])
+  ];
   if (erros.length) throw new Error(`roteiro recusado, corrija e registre de novo:\n- ${erros.join('\n- ')}`);
   gravarJson(arquivo(dir, id), {
     ...r,

@@ -123,12 +123,22 @@ const PLANO =
   const orig = qa.arquivosDe;
   qa.arquivosDe = () => [ev];
   h = qa.html(dir);
-  assert.ok(h.includes('Salvar resultado no documento') && !h.includes('Publicar no Jira'));
+  assert.ok(h.includes('Relatório e salvar no documento') && !h.includes('Publicar no Jira'));
+  // A IA (stub) escreve o relatório e sugere o nível pelo qa-state relatorio; a extensão põe o nível no topo e publica com o .md anexado.
+  maestro.rodar = (d, o) => {
+    const md = path.join(areaIA(d), 'relatorio-qa.md');
+    fs.writeFileSync(md, '## Execução do plano\n\n| CT01 | ✅ Passou | `ev.png` |');
+    qa.relatorio().registrarRelatorio(d, md, { nivel: 'aprovado', porque: 'os dois cenários passaram' });
+    setTimeout(() => o.aoMudar(), 5);
+    return true;
+  };
   await acoes(s).qaPublicar();
   qa.arquivosDe = orig;
   const com = JSON.parse(fs.readFileSync(path.join(raiz, '.comentarios.json'), 'utf8'));
   assert.ok(com.length === 1 && com[0].texto.includes('CT01') && com[0].texto.includes('✅ Passou'));
+  assert.ok(com[0].texto.startsWith('**Nível: ✅ Aprovado** · os dois cenários passaram'), com[0].texto);
   assert.ok(fs.existsSync(path.join(raiz, '.publicado', 'DOC-001-1', 'CT01-ev.png')));
+  assert.ok(fs.existsSync(path.join(raiz, '.publicado', 'DOC-001-1', 'relatorio-DOC-001.md')));
   assert.ok(/Salvar no documento/.test(avisos.at(-1)));
   assert.deepStrictEqual(rede, []);
 

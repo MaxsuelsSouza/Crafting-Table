@@ -18,9 +18,27 @@ const ETAPAS = [
     obs: 'roda antes da suíte, fora da lista de cenários',
     arquivo: '04-precondicao'
   },
-  { n: 5, nome: 'Massa de dados', vaga: 'qa.execucao', arquivo: '05-massa' },
-  { n: 6, nome: 'Execução de cada cenário', vaga: 'qa.execucao', arquivo: '06-execucao' },
-  { n: 7, nome: 'Publicar', vaga: null, arquivo: '07-publicar' }
+  {
+    n: 5,
+    nome: 'Massa de dados',
+    vaga: 'qa.execucao',
+    obs: 'pela receita do 6.0 Gerar, sem IA; a IA só corrige a receita',
+    arquivo: '05-massa'
+  },
+  {
+    n: 6,
+    nome: 'Execução de cada cenário',
+    vaga: 'qa.execucao',
+    obs: '6.0 Gerar: uma sessão escreve camadas, receita e roteiros; a jornada roda sem IA',
+    arquivo: '06-execucao'
+  },
+  {
+    n: 7,
+    nome: 'Relatório e publicar',
+    vaga: 'qa.execucao',
+    obs: 'a IA escreve o relatório (moldes/relatorio-qa.md); você confere o nível',
+    arquivo: '07-publicar'
+  }
 ];
 
 // Vagas do QA em Configurações > Plugins (infra/agentes/etapas.js junta com as dos outros módulos).
@@ -49,7 +67,8 @@ const VAGAS = {
     como: 'SKILL.md lido como método',
     contrato:
       'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, pausa pelo qa-state (pausa) e aguarda o humano; nunca pula cenário nem segue sem resposta. ' +
-      'O Claude registra pelo qa-state da extensão (massa add, roteiro CTnn <json> | roteiro CTnn refazer, evidencia CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; precondicao --status ok|falhou antes da suíte: health check e login). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
+      'O Claude registra pelo qa-state da extensão (card <json> com a camada de cada cenário, receita <json> de massa, roteiro CTnn <json> | roteiro CTnn refazer, evidencia CTnn, aviso CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; ' +
+      'precondicao --status ok|falhou antes da suíte: health check e login; relatorio <md> --nivel no fim). Camadas por references/plano-para-suite.md, jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md), relatório por moldes/relatorio-qa.md.'
   }
 };
 

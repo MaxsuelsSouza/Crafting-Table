@@ -63,7 +63,10 @@ const { healthCheck } = require('./etapas/04-precondicao/dependencias');
 const { promptPreCondicao } = require('./etapas/04-precondicao/prompt');
 const { MASSA, massa, massaAdd, massaEstado, emEtapaMassa } = require('./etapas/05-massa/estado');
 const { ultimoRefresh, massaValida, semMassa, sincronizarMassa } = require('./etapas/05-massa/regras/validade');
-const { FERRAMENTAS_MASSA } = require('./etapas/05-massa/prompt');
+const { bancoDaSessao } = require('./orquestrador/banco');
+const { registrarReceita } = require('./etapas/05-massa/receita');
+const { registrarCard } = require('./etapas/06-execucao/regras/camadas');
+const { registrarAviso } = require('./etapas/06-execucao/cenario');
 const {
   PROPOSTA,
   LOG_SQL,
@@ -87,11 +90,14 @@ const { evidencia, arquivosDe } = require('./etapas/06-execucao/evidencias');
 const { exigenciasDe, faltaEvidencia } = require('./etapas/06-execucao/regras/evidencia');
 const { promptCenario, promptDiagnostico } = require('./etapas/06-execucao/prompt');
 const { registrarRoteiro, roteiroDe, pedirNovoRoteiro } = require('./etapas/06-execucao/roteiros');
-const { podePublicar } = require('./etapas/07-publicar');
+const { podePublicar, veredito, relatorio } = require('./etapas/07-publicar');
 const { html } = require('./abas/evidencias');
 const { roteiroHtml } = require('./abas/roteiro');
 
 module.exports = {
+  registrarAviso,
+  registrarReceita,
+  registrarCard,
   desistirMassa,
   validarMassa,
   proporMassa,
@@ -109,7 +115,7 @@ module.exports = {
   absorverPausa,
   pausaPendente,
   responder,
-  FERRAMENTAS_MASSA,
+  bancoDaSessao,
   FERRAMENTAS_EXEC,
   FERRAMENTAS_ANALISE,
   PROIBIDAS,
@@ -152,6 +158,8 @@ module.exports = {
   registrarDecisao,
   ehLocal,
   podePublicar,
+  veredito,
+  relatorio,
   dispensar,
   concluirCenario,
   naoExecutavel,

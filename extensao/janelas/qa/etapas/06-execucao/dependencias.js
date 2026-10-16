@@ -1,5 +1,5 @@
 // @ts-check
-// Dependências externas da Etapa 6 (a jornada 6.2): Maestro, adb (serial, bipe), banco só leitura, prints do Maestro e ~/.wms-testes.env.
+// Dependências externas da Etapa 6 (a jornada 6.2): Maestro, adb (serial, bipe), banco só leitura, API (api.js), prints do Maestro e ~/.wms-testes.env.
 // d = dependências do painel (abas/acoes/dependencias.js): d.adb, d.banco.
 const fs = require('fs');
 const os = require('os');
@@ -40,7 +40,7 @@ function lerEnvWms() {
       .filter(([, v]) => v)
   );
 }
-// O runner passa ao Maestro como MATRICULA, SENHA e APP_ID (subflows/login.yaml da skill).
+// O runner passa ao Maestro como MATRICULA, SENHA, APP_ID e FILIAL (subflows/login.yaml da skill; FILIAL: flow de início).
 function envWms() {
   const e = lerEnvWms(),
     de = (k) => e[k];
@@ -48,7 +48,8 @@ function envWms() {
     [
       ['MATRICULA', de('WMS_API_LOGIN')],
       ['SENHA', de('WMS_API_SENHA')],
-      ['APP_ID', de('WMS_APP_ID')]
+      ['APP_ID', de('WMS_APP_ID')],
+      ['FILIAL', de('WMS_FILIAL') || de('WMS_EMPRESA')]
     ].filter(([, v]) => v)
   );
 }
@@ -66,7 +67,8 @@ function jornada(d) {
   const shell = async (...a) => rodar(adb, ['-s', await aparelho(), 'shell', ...a], { timeout: 30000 });
   return {
     envBase: envWms(),
-    maestro: async (arquivo, env, { junit, cwd }) =>
+    // saidaTeste: prints e debug do Maestro direto na pasta do cenário (sem varrer ~/.maestro/tests).
+    maestro: async (arquivo, env, { junit, cwd, saidaTeste }) =>
       rodar(
         maestroBin(),
         [
@@ -77,6 +79,9 @@ function jornada(d) {
           'junit',
           '--output',
           junit,
+          ...(saidaTeste
+            ? ['--test-output-dir', saidaTeste, '--debug-output', saidaTeste, '--flatten-debug-output']
+            : []),
           ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
           arquivo
         ],
@@ -90,16 +95,16 @@ function jornada(d) {
       return { ok: x.rc === 0 && /Broadcast completed/i.test(x.saida), saida: x.saida };
     },
     esperar: (s) => new Promise((ok) => setTimeout(ok, s * 1000)),
+    http: (e) => require('./api').chamarApi(e), // etapa http: a API com o login da skill (api.js)
     consultar: async (sql) => {
       const res = await consultar(d.banco, [sql]);
       if (res.erro) return { ok: false, erro: res.erro };
       const x = res.resultados[0];
       return x.ok ? { ok: true, colunas: x.colunas, itens: x.itens, base: res.base } : { ok: false, erro: x.erro };
     },
-    // PNGs que o Maestro gravou em ~/.maestro/tests desde o início da jornada.
-    prints: (desde) => {
-      const raiz = path.join(os.homedir(), '.maestro', 'tests'),
-        out = [];
+    // PNGs que o Maestro gravou na pasta da execução (--test-output-dir): só a pasta deste cenário, não o histórico inteiro.
+    prints: (pasta) => {
+      const out = [];
       const andar = (p) => {
         let itens = [];
         try {
@@ -110,10 +115,10 @@ function jornada(d) {
         for (const i of itens) {
           const f = path.join(p, i.name);
           if (i.isDirectory()) andar(f);
-          else if (/\.png$/i.test(i.name) && fs.statSync(f).mtime >= desde) out.push(f);
+          else if (/\.png$/i.test(i.name)) out.push(f);
         }
       };
-      andar(raiz);
+      andar(pasta);
       return out;
     }
   };

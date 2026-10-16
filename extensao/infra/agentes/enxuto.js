@@ -23,9 +23,9 @@ function pluginsDesligados(home = os.homedir()) {
 
 /**
  * @param {string[]} ferramentas a lista do --allowedTools (com padrões como Bash(git log:*)); vira a lista de ferramentas da sessão
- * @param {{ modelo?: string, esforco?: string, home?: string }} [o]
+ * @param {{ modelo?: string, esforco?: string, home?: string, hooks?: object }} [o] hooks: os hooks desta sessão (ex.: o só-SELECT do MCP do SQLcl), no mesmo --settings
  */
-function argsEnxutos(ferramentas, { modelo = '', esforco = '', home } = {}) {
+function argsEnxutos(ferramentas, { modelo = '', esforco = '', home, hooks } = {}) {
   const nomes = [...new Set(ferramentas.map((f) => f.replace(/\(.*$/, '').trim()))].filter(
     (n) => n && n !== 'Skill' && !n.startsWith('mcp__')
   );
@@ -35,7 +35,7 @@ function argsEnxutos(ferramentas, { modelo = '', esforco = '', home } = {}) {
     '--tools',
     nomes.join(','),
     '--settings',
-    JSON.stringify({ enabledPlugins: pluginsDesligados(home) }),
+    JSON.stringify({ enabledPlugins: pluginsDesligados(home), ...(hooks ? { hooks } : {}) }),
     ...(modelo ? ['--model', modelo] : []),
     ...(esforco ? ['--effort', esforco] : [])
   ];

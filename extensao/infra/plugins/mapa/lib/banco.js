@@ -229,4 +229,4 @@ async function criarConexao({ sqlcl, nome, alvo, usuario, senha }) {
   return { ok: true };
 }
 
-module.exports = { rodarSqlcl, criarConexao, AMBIENTES, SENSIVEIS_PADRAO, LIMITE_PADRAO, validar, dividir, mascarar, sensivel, idDe, acharSqlcl, rodar, formatar, detectar, testar, lerSecoes, lerJson };
+module.exports = { rodarSqlcl, criarConexao, AMBIENTES, SENSIVEIS_PADRAO, LIMITE_PADRAO, validar, dividir, limparSql, mascarar, sensivel, idDe, acharSqlcl, rodar, formatar, detectar, testar, lerSecoes, lerJson };

@@ -13,7 +13,9 @@
 //   entrada.js        dossiê de entrada do QA e o briefing do dev
 //   orquestrador/     ▶ Dar início (ordem das etapas), claude -p, pausa, resposta, zero skip, ⏸ (um arquivo por regra)
 //   etapas/           index.js (lista das etapas e vagas) + uma pasta por etapa: 01-planejamento … 06-execucao, e 07-publicar.js
-//   abas/             evidencias/ (bloco do QA na seção Evidências), roteiro.js (aba Roteiro: roteiros + massa), acoes/ (cliques), botao-play.js, rodape.js
+//   abas/             evidencias/ (bloco do QA na seção Evidências), roteiro.js (aba Roteiro: roteiros + massa), conhecimentos.js (aba Conhecimentos),
+//                     acoes/ (cliques), botao-play.js, rodape.js
+//   conhecimentos/    o que a IA já descobriu (vale para todos os tickets): guardar, buscar, índice para o prompt
 //   bin/              qa-state (o Claude grava por ele)
 //   testes/           teste-*.js (node extensao/janelas/qa/testes/teste-x.js)
 
@@ -33,7 +35,8 @@ const ABAS = [
   { secao: 'claudeAbas.evidencias', nome: 'Evidências' },
   { id: 'ticket', nome: 'Ticket' },
   { id: 'decisoes', nome: 'Decisões' },
-  { id: 'roteiro', nome: 'Roteiro' }
+  { id: 'roteiro', nome: 'Roteiro' },
+  { id: 'conhecimentos', nome: 'Conhecimentos' }
 ];
 
 // Variável do provedor que o módulo exige além das comuns (configuracao.js, pendências da caixa de vinculados).
@@ -48,7 +51,9 @@ const corpoAba = (aba, t, d, dir) =>
         dir,
         require('vscode').workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00'
       )
-    : undefined;
+    : aba === 'conhecimentos'
+      ? require('./abas/conhecimentos').conhecimentosHtml()
+      : undefined;
 // ▶/⏸ no cabeçalho do ticket (moldura.js).
 const botaoPlay = (dir, b) => require('./abas/botao-play').botaoPlay(dir, b);
 // Cliques do módulo (data-acao/data-painel), juntados pelo painel.js.
