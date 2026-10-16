@@ -1,8 +1,8 @@
 # Modelo de módulo
 
-Copie `modulo.js` para `extensao/<modulo>/<modulo>.js` e registre nos pontos abaixo. O padrão visual está em `CLAUDE.md` (seção "Padrão de módulo").
+Copie `modulo.js` para `extensao/janelas/<modulo>/<modulo>.js` e registre nos pontos abaixo. O padrão visual está em `CLAUDE.md` (seção "Padrão de módulo").
 
-Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/`, `extensao/qa/` e `extensao/implementacoes/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
+Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/janelas/incidentes/`, `extensao/janelas/refinamento/`, `extensao/janelas/qa/` e `extensao/janelas/implementacoes/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
 
 ## Registro (nesta ordem)
 
@@ -17,7 +17,7 @@ Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · 
 
 ## Ganchos opcionais do registro
 
-Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if` com a regra do módulo. Exemplo de quase todos: `extensao/refinamento/refinamento.js` (lógica em `refinamento/ganchos-painel.js`); `rodape`, `evidencias` e `ETAPA_PEDIDO`: `extensao/qa/qa.js`.
+Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if` com a regra do módulo. Exemplo de quase todos: `extensao/janelas/refinamento/refinamento.js` (lógica em `janelas/refinamento/ganchos-painel.js`); `rodape`, `evidencias` e `ETAPA_PEDIDO`: `extensao/janelas/qa/qa.js`.
 
 | Gancho | Quem chama | Para quê |
 |---|---|---|
@@ -40,4 +40,4 @@ Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if`
 - Lista: pesquisa, ↑↓ e ＋ Ticket na mesma barra; contador de tickets acima do botão; card "Sem ticket" por último; caixa Vinculados só com a ferramenta cadastrada.
 - Ticket: ← · título · ✦ conversa · ⚡ · 🎫 · 🗑; pill de status e ⟳; botões vêm de `componentes/botoes-ticket.js`; menu `Docs · Central · Ticket · Decisões | Conversas`; Central (nome livre) só com Ao vivo.
 - Rodapé: 🔔 e ▶ Comandos (nada a fazer: vem da moldura).
-- Testes: copie um `teste-*.js` do módulo mais próximo (`incidentes/testes/` é o menor).
+- Testes: copie um `teste-*.js` do módulo mais próximo (`janelas/incidentes/testes/` é o menor).

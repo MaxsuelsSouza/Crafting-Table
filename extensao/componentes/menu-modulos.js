@@ -5,10 +5,10 @@
 // (painel.js). Redesenhe com a tela (módulo trocado).
 //   modo: id do módulo ligado · extra: HTML à direita (a contagem de tickets)
 
-const impl = require('../implementacoes/implementacoes');
-const inc = require('../incidentes/incidentes');
-const ref = require('../refinamento/refinamento');
-const qa = require('../qa/qa');
+const impl = require('../janelas/implementacoes/implementacoes');
+const inc = require('../janelas/incidentes/incidentes');
+const ref = require('../janelas/refinamento/refinamento');
+const qa = require('../janelas/qa/qa');
 const MODULOS = [[ref.ID, ref.ROTULO, ref.DICA], [impl.ID, impl.ROTULO, impl.DICA], [qa.ID, qa.ROTULO, qa.DICA], [inc.ID, inc.ROTULO, inc.DICA]];
 const nome = (modo) => MODULOS.find(([id]) => id === modo)?.[1] || modo;
 

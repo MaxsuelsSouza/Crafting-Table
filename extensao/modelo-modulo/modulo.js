@@ -1,5 +1,5 @@
 // @ts-check
-// MODELO DE MÓDULO. Copie esta pasta para extensao/<seu-modulo>/, renomeie modulo.js para <seu-modulo>.js,
+// MODELO DE MÓDULO. Copie esta pasta para extensao/janelas/<seu-modulo>/, renomeie modulo.js para <seu-modulo>.js,
 // troque MODELO/modelo pelo nome do módulo e siga o LEIA-ME.md (registro nos 6 pontos comuns).
 // Esta pasta não é carregada pela extensão: é só o molde.
 //
@@ -45,6 +45,6 @@ const acoes = (_s) => ({
 });
 
 // Ganchos opcionais (dadosAba, antesDaAba, aoDesenhar, observar, pill, faixa, contadorAba, situacao, pedidoConversa, iniciar, aoAtualizar, CSS,
-// rodape, evidencias, ETAPA_PEDIDO): ver LEIA-ME.md e os exemplos em extensao/refinamento/refinamento.js e extensao/qa/qa.js.
+// rodape, evidencias, ETAPA_PEDIDO): ver LEIA-ME.md e os exemplos em extensao/janelas/refinamento/refinamento.js e extensao/janelas/qa/qa.js.
 
 module.exports = { ID, ROTULO, DICA, VINCULADOS, ETAPA, ABAS, corpoCentral, botaoPlay, acoes };

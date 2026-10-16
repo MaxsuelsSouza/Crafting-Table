@@ -1,5 +1,5 @@
 // @ts-check
-// Origem permitida para arquivos que o Claude manda copiar para a pasta da aba (incidentes/bin/mergulho-gravar --de, evidencia do componentes/fluxo-passos.js).
+// Origem permitida para arquivos que o Claude manda copiar para a pasta da aba (janelas/incidentes/bin/mergulho-gravar --de, evidencia do componentes/fluxo-passos.js).
 // Sem dependências: roda dentro dos bins. Só vale arquivo real em /tmp (onde o adb e o ffmpeg gravam) ou dentro da própria pasta da aba.
 const fs = require('fs');
 const os = require('os');

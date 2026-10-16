@@ -263,12 +263,12 @@ const ultimaConversa = (t) => require('../infra/agentes/conversa').ultimaConvers
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
 const tituloConversa = (t, lista) => {
-  const implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes'), qa = require('../qa/qa');
+  const implementacoes = require('../janelas/implementacoes/implementacoes'), incidentes = require('../janelas/incidentes/incidentes'), qa = require('../janelas/qa/qa');
   const etapa = { [implementacoes.ID]: implementacoes.ETAPA, [qa.ID]: qa.ETAPA, [incidentes.ID]: incidentes.ETAPA }[lista];
   return [t.chave, etapa, t.titulo || t.documento?.nome].filter(Boolean).join(' · ');
 };
 const reconciliar = (s) => {
-  const tickets = require('../infra/ticket/tickets'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
+  const tickets = require('../infra/ticket/tickets'), implementacoes = require('../janelas/implementacoes/implementacoes'), incidentes = require('../janelas/incidentes/incidentes');
   let mudou = false;
   for (const t of tickets.listar()) {
     if (!t.pedidoEm) continue;
@@ -286,8 +286,8 @@ const reconciliar = (s) => {
 
 // Implementações e Incidentes: dossiê/entrada e artefatos da esteira que já existem na pasta da aba (contexto do ticket, entendimento, varredura, plano), para a conversa começar de onde a esteira parou.
 const ARQUIVOS_ESTEIRA = {
-  [require('../implementacoes/implementacoes').ID]: require('../implementacoes/implementacoes').ARQUIVOS_CONVERSA,
-  [require('../incidentes/incidentes').ID]: require('../incidentes/incidentes').ARQUIVOS_CONVERSA
+  [require('../janelas/implementacoes/implementacoes').ID]: require('../janelas/implementacoes/implementacoes').ARQUIVOS_CONVERSA,
+  [require('../janelas/incidentes/incidentes').ID]: require('../janelas/incidentes/incidentes').ARQUIVOS_CONVERSA
 };
 const esteiraArquivos = (s, t) => {
   const e = ARQUIVOS_ESTEIRA[sessao.focoLista()];
@@ -296,8 +296,8 @@ const esteiraArquivos = (s, t) => {
   return achados.length ? `${e.rotulo} (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
 };
 const pedido = (s, t) => {
-  const refinamento = require('../refinamento/refinamento'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes'), qa = require('../qa/qa');
-  return (sessao.focoLista() === refinamento.ID ? refinamento.pedidoConversa(s, t) // Refinamento: refinamento/conversa.js
+  const refinamento = require('../janelas/refinamento/refinamento'), implementacoes = require('../janelas/implementacoes/implementacoes'), incidentes = require('../janelas/incidentes/incidentes'), qa = require('../janelas/qa/qa');
+  return (sessao.focoLista() === refinamento.ID ? refinamento.pedidoConversa(s, t) // Refinamento: janelas/refinamento/conversa.js
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
     : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ [qa.ID]: qa.ETAPA_PEDIDO, [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/ticket/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`

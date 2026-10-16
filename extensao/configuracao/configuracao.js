@@ -46,7 +46,7 @@ const projetoJira = () => [].concat(variaveis.ler('projeto') || []);
 const boardsJira = () => [].concat(variaveis.ler('boardPrincipal') || []);
 const siteJira = () => String(variaveis.ler('site') || '');
 // Variável que cada módulo exige além das comuns (modo = id do módulo da lista).
-const EXIGE = { [require('../qa/qa').ID]: require('../qa/qa').EXIGE, [require('../implementacoes/implementacoes').ID]: require('../implementacoes/implementacoes').EXIGE, [require('../incidentes/incidentes').ID]: require('../incidentes/incidentes').EXIGE };
+const EXIGE = { [require('../janelas/qa/qa').ID]: require('../janelas/qa/qa').EXIGE, [require('../janelas/implementacoes/implementacoes').ID]: require('../janelas/implementacoes/implementacoes').EXIGE, [require('../janelas/incidentes/incidentes').ID]: require('../janelas/incidentes/incidentes').EXIGE };
 const ROTULO_VAR = Object.fromEntries(variaveis.definicoes.map((d) => [d.chave, d.rotulo.toLowerCase()]));
 // O que falta configurar para os vinculados buscarem no provedor: site, projeto, conta (e-mail + token), board principal e as
 // variáveis do módulo (modo). Cada item vira o aviso de configuração na caixa.

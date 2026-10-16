@@ -1,14 +1,14 @@
 // @ts-check
 // Situação de um ticket em cada módulo, lida do disco (sem vscode): o texto e a cor da pill do card na lista.
-//   Refinamento: .ticket.json (refinamento.estado) · Implementações: .esteira.json · Incidentes: .mergulho.json · QA: .qa.json (qa/situacao.js)
+//   Refinamento: .ticket.json (refinamento.estado) · Implementações: .esteira.json · Incidentes: .mergulho.json · QA: .qa.json (janelas/qa/situacao.js)
 // Devolve { texto, cor, dica } ou null (módulo ainda não iniciado para o ticket). cor: as do pill.js (ia | pausada | andando | ok | novo).
 const fs = require('fs');
 const path = require('path');
 const tickets = require('./tickets');
-const inc = require('../../incidentes/incidentes');
-const ref = require('../../refinamento/refinamento');
-const qa = require('../../qa/qa');
-const impl = require('../../implementacoes/implementacoes');
+const inc = require('../../janelas/incidentes/incidentes');
+const ref = require('../../janelas/refinamento/refinamento');
+const qa = require('../../janelas/qa/qa');
+const impl = require('../../janelas/implementacoes/implementacoes');
 
 const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };

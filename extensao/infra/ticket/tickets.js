@@ -15,8 +15,8 @@ const ARQUIVADOS = path.join(RAIZ, '_arquivados');
 
 // Só para dados antigos e para a migração (sem provedor): o formato de chave do Jira. O resto usa lerLink/chaveDaBranch do provedor.
 const chaveDo = (texto) => String(texto || '').match(/[A-Z][A-Z0-9]+-\d+/i)?.[0].toUpperCase() || null;
-const IMPL = require('../../implementacoes/implementacoes').ID;
-const SUBPASTAS = [IMPL, require('../../qa/qa').ID, require('../../incidentes/incidentes').ID];
+const IMPL = require('../../janelas/implementacoes/implementacoes').ID;
+const SUBPASTAS = [IMPL, require('../../janelas/qa/qa').ID, require('../../janelas/incidentes/incidentes').ID];
 // Nome da pasta do ticket: a chave saneada para nome de arquivo seguro (qualquer provedor). Chave do Jira (WMS-123) não muda.
 const nomeSeguro = (chave) => String(chave ?? '').normalize('NFC').replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[._]+/, '').slice(0, 100) || 'ticket';
 const pasta = (chave, lista) => path.join(RAIZ, nomeSeguro(chave), SUBPASTAS.includes(lista) ? lista : '');

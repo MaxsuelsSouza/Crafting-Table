@@ -1,7 +1,7 @@
 // @ts-check
 // O que o ticket traz além do título (sobreTicket) e se o tipo do ticket pede a Reprodução do bug (ehBug).
-// Usado por: o dossiê (montar.js), o Refinamento (refinamento/abas/spec/acoes/iniciar.js), os Incidentes (incidentes/entrada.js) e a
-// Reprodução da Implementação (implementacoes/etapas/01-dossie/reproducao/, abas/reproducao.js).
+// Usado por: o dossiê (montar.js), o Refinamento (janelas/refinamento/abas/spec/acoes/iniciar.js), os Incidentes (janelas/incidentes/entrada.js) e a
+// Reprodução da Implementação (janelas/implementacoes/etapas/01-dossie/reproducao/, abas/reproducao.js).
 const fs = require('fs');
 const path = require('path');
 const tickets = require('../ticket/tickets');

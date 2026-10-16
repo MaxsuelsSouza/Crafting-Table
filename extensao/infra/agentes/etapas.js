@@ -14,10 +14,10 @@ const LOCAL = (n) => path.join(__dirname, '..', 'plugins', n);
 
 // contrato: o que a extensão espera de quem ocupa a vaga (base da verificação por IA de um substituto).
 const VAGAS = {
-  ...require('../../refinamento/etapas').VAGAS, // vagas do Refinamento: refinamento/etapas/index.js
-  ...require('../../qa/etapas').VAGAS, // vagas do QA: qa/etapas/index.js
-  ...require('../../implementacoes/etapas').VAGAS, // vaga da Implementação: implementacoes/etapas/index.js
-  ...require('../../incidentes/etapas').VAGAS // vagas do Incidente: incidentes/etapas/index.js
+  ...require('../../janelas/refinamento/etapas').VAGAS, // vagas do Refinamento: janelas/refinamento/etapas/index.js
+  ...require('../../janelas/qa/etapas').VAGAS, // vagas do QA: janelas/qa/etapas/index.js
+  ...require('../../janelas/implementacoes/etapas').VAGAS, // vaga da Implementação: janelas/implementacoes/etapas/index.js
+  ...require('../../janelas/incidentes/etapas').VAGAS // vagas do Incidente: janelas/incidentes/etapas/index.js
 };
 
 // subetapas: [{ nome, vaga }] — a etapa-mãe não tem vaga própria; cada subetapa tem a sua (Etapa 4 → 4.1, 4.2).
@@ -25,10 +25,10 @@ const VAGAS = {
 // todas: vale para todas as etapas do módulo (aparece no fim, sem número).
 /** @type {{ id: string, nome: string, etapas: { nome: string, vaga?: string | null, obs?: string, subetapas?: { nome: string, vaga: string }[], todas?: boolean }[] }[]} */
 const MODULOS = [
-  { id: 'refinamento', nome: 'Refinamento', etapas: require('../../refinamento/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // refinamento/etapas/index.js
-  { id: 'impl', nome: 'Implementação', etapas: require('../../implementacoes/etapas').ETAPAS.map(({ n, arq, ...e }) => e) }, // implementacoes/etapas/index.js
-  { id: 'qa', nome: 'QA', etapas: require('../../qa/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // qa/etapas/index.js
-  { id: 'incidentes', nome: 'Incidentes', etapas: require('../../incidentes/etapas').ETAPAS.map(({ nome, vaga }) => ({ nome, vaga })) }
+  { id: 'refinamento', nome: 'Refinamento', etapas: require('../../janelas/refinamento/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // janelas/refinamento/etapas/index.js
+  { id: 'impl', nome: 'Implementação', etapas: require('../../janelas/implementacoes/etapas').ETAPAS.map(({ n, arq, ...e }) => e) }, // janelas/implementacoes/etapas/index.js
+  { id: 'qa', nome: 'QA', etapas: require('../../janelas/qa/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // janelas/qa/etapas/index.js
+  { id: 'incidentes', nome: 'Incidentes', etapas: require('../../janelas/incidentes/etapas').ETAPAS.map(({ nome, vaga }) => ({ nome, vaga })) }
 ];
 // Marca de cada etapa na ordem do módulo: "Etapa N" (ou "Todas as etapas") + nome; subs = [{ marca: "N.1", nome, vaga }]. titulos = o texto corrido ("Etapa N. Nome").
 const marcas = (m) => { let n = 0; return m.etapas.map((e) => { const marca = e.todas ? 'Todas as etapas' : `Etapa ${++n}`;

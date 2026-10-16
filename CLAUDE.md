@@ -1,6 +1,6 @@
 # Crafting Table
 
-Extensão do VS Code ao lado do Claude Code, com o ticket no centro. Código em `extensao/`; visão geral em `README.md`.
+Extensão do VS Code ao lado do Claude Code, com o ticket no centro. Código em `extensao/`; visão geral em `README.md`. Módulos de ticket em `extensao/janelas/`, lógica comum em `extensao/infra/`, tela comum em `extensao/componentes/` e arquivos estáticos (ícones e fontes) em `extensao/public/` (`icones/`, `fonts/`).
 
 ## Padrão de módulo
 
@@ -42,7 +42,7 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 
 ### Pasta do módulo
 
-Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/`, `extensao/qa/` e `extensao/implementacoes/`.
+Cada módulo de ticket mora em `extensao/janelas/<modulo>/`. Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/janelas/incidentes/`, `extensao/janelas/refinamento/`, `extensao/janelas/qa/` e `extensao/janelas/implementacoes/`.
 
 `infra/` é organizada por assunto, uma pasta por assunto (o que não tem tela):
 - `ticket/`: o ticket no disco e a conversa ligada a ele (`tickets.js`, `pasta-ticket.js`, `pastas.js`, `sessao.js`, `situacao.js`, `spec.js`, `contexto.js`…)
@@ -54,19 +54,19 @@ Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai par
 - na raiz, só o que é geral e pequeno (`texto.js`, `controle.js`). Tela (CSS, folhas, host de views) não mora em `infra/`: vai para `componentes/` ou `painel/`.
 
 - `<modulo>.js`: o registro (ID, abas, ▶, ações, script, filtro da busca, artefatos da conversa…). Os pontos comuns leem daqui, sem `if` com regra do módulo. Sem `require` no topo (é carregado cedo).
-  Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento e o QA): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `refinamento/ganchos-painel.js`, `qa/situacao.js`), o registro só repassa.
-  Se o nome `<modulo>.js` já era a lógica (caso do QA), a API antiga vira um arquivo que só reexporta (`qa/motor.js`) para o `bin/`, as ações e os testes. O mesmo vale para o arquivo único que foi dividido (`implementacoes/esteira.js`, usado só pelos testes).
+  Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento e o QA): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `janelas/refinamento/ganchos-painel.js`, `janelas/qa/situacao.js`), o registro só repassa.
+  Se o nome `<modulo>.js` já era a lógica (caso do QA), a API antiga vira um arquivo que só reexporta (`janelas/qa/motor.js`) para o `bin/`, as ações e os testes. O mesmo vale para o arquivo único que foi dividido (`janelas/implementacoes/esteira.js`, usado só pelos testes).
 - `orquestrador/` (um arquivo por regra: rodar, pausar, aprovar, retomar, responder…; `index.js` exporta) e `estado.js`: o que é comum a todas as etapas.
 - `etapas/`: `index.js` com a lista das etapas (dados) e **um arquivo por etapa**, numerado: `01-triagem.js`, `02-…`. Cada etapa exporta só os ganchos dela (`tarefa`, `antes`, `depois`, `responder`…; ver o `orquestrador/index.js`).
   Etapa grande vira pasta com o mesmo nome (`05-reproducao/`): `index.js` (encadeia), `subetapas/` (`5.1-plano.js`…), `regras/` e `dependencias.js`.
 - `abas/` (telas), `bin/` (scripts que o Claude chama), `testes/` (`teste-*.js`).
-- Formatação: Prettier (`extensao/.prettierrc.json`), hoje só em `incidentes/`, `refinamento/`, `qa/` e `implementacoes/` (`.prettierignore`). Mexeu lá? `npm run formatar` em `extensao/` (`formatar:conferir` só confere).
+- Formatação: Prettier (`extensao/.prettierrc.json`), hoje só em `janelas/` (os módulos de ticket; `.prettierignore`). Mexeu lá? `npm run formatar` em `extensao/` (`formatar:conferir` só confere).
 
 ### Arquivos pequenos (sempre, em código novo ou alterado)
 
 Não crie arquivo "robusto" que junta várias regras. Vale para módulo novo, para código novo em módulo antigo e para o que você mexer.
 
-- **Um arquivo = uma regra/assunto.** Arquivo que passa de ~150 linhas ou mistura assuntos (prompt + execução + tela + validação) vira pasta com `index.js` (só encadeia e exporta) e um arquivo por regra. Exemplos: `incidentes/orquestrador/`, `incidentes/etapas/05-reproducao/`, `refinamento/abas/spec/`, `refinamento/pacote/`.
+- **Um arquivo = uma regra/assunto.** Arquivo que passa de ~150 linhas ou mistura assuntos (prompt + execução + tela + validação) vira pasta com `index.js` (só encadeia e exporta) e um arquivo por regra. Exemplos: `janelas/incidentes/orquestrador/`, `janelas/incidentes/etapas/05-reproducao/`, `janelas/refinamento/abas/spec/`, `janelas/refinamento/pacote/`.
 - Prompt, regra de validação, dependências externas (VS Code, banco, emulador) e tela ficam em arquivos separados.
 - `require('./pasta')` continua funcionando quando o arquivo vira pasta (`index.js`): quem usa não muda.
 - Arquivos que se chamam em ciclo fazem o `require` um do outro dentro da função, não no topo.

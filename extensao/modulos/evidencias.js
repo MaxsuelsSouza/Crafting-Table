@@ -159,8 +159,8 @@ exports.provider = (ctx) => {
       observador = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(dir), '*'));
       observador.onDidCreate(render); observador.onDidDelete(render); observador.onDidChange(render);
     }
-    // QA: planejamento e Ao vivo do ▶ (registro qa/qa.js, evidencias) no topo; redesenha quando o estado ou o Ao vivo mudam.
-    const qa = require('../qa/qa');
+    // QA: planejamento e Ao vivo do ▶ (registro janelas/qa/qa.js, evidencias) no topo; redesenha quando o estado ou o Ao vivo mudam.
+    const qa = require('../janelas/qa/qa');
     const dirQa = sessao.foco() && sessao.focoLista() === qa.ID ? require('../infra/ticket/tickets').pasta(sessao.foco(), qa.ID) : null;
     if (dirQa !== vigiadoQa) {
       vigiaQa?.close(); vigiaQa = null; vigiadoQa = dirQa;
@@ -183,7 +183,7 @@ exports.provider = (ctx) => {
       raizesAtuais = raizes;
       view.webview.options = { enableScripts: true, localResourceRoots: raizes.map((r) => vscode.Uri.file(r)) };
     }
-    // Evidências por cenário do QA (qa/evidencias/CTnn/<execução>/): também abrem pelo clique.
+    // Evidências por cenário do QA (janelas/qa/evidencias/CTnn/<execução>/): também abrem pelo clique.
     const doQa = dirQa ? qa.evidencias.arquivos(dirQa)
       .map((full) => ({ nome: path.basename(full), full, tipo: IMAGEM.has(path.extname(full).toLowerCase()) ? 'imagem' : VIDEO.has(path.extname(full).toLowerCase()) ? 'video' : 'outro' })) : [];
     todos = [...arquivos, ...extras.flatMap((f) => f.arquivos), ...doQa];

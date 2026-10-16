@@ -3,5 +3,5 @@
   "singleQuote": true,
   "trailingComma": "none",
   "arrowParens": "always",
-  "overrides": [{ "files": ["incidentes/bin/*", "refinamento/bin/*", "implementacoes/bin/*"], "options": { "parser": "babel" } }]
+  "overrides": [{ "files": ["janelas/incidentes/bin/*", "janelas/refinamento/bin/*", "janelas/implementacoes/bin/*"], "options": { "parser": "babel" } }]
 }

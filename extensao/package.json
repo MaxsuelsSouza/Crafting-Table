@@ -2,7 +2,7 @@
   "name": "crafting-table",
   "displayName": "Crafting Table",
   "description": "Bancada de trabalho ao lado do Claude Code: notas, tickets da sua ferramenta de gestão (Jira e outras), documentos da conversa, comandos, evidências e emuladores Android, tudo em abas no mesmo painel.",
-  "icon": "icons/crafting-table.png",
+  "icon": "public/icones/crafting-table.png",
   "publisher": "local",
   "version": "0.1.0",
   "engines": {
@@ -21,12 +21,12 @@
         {
           "id": "craftingTable",
           "title": "Crafting Table",
-          "icon": "icons/crafting-table.png"
+          "icon": "public/icones/crafting-table.png"
         },
         {
           "id": "claudeAbas-tickets",
           "title": "Crafting Table",
-          "icon": "icons/crafting-table.png"
+          "icon": "public/icones/crafting-table.png"
         }
       ]
     },
@@ -52,8 +52,8 @@
         "command": "claudeAbas.abrirClaude",
         "title": "Claude",
         "icon": {
-          "light": "icons/menu/claude-light.svg",
-          "dark": "icons/menu/claude-dark.svg"
+          "light": "public/icones/menu/claude-light.svg",
+          "dark": "public/icones/menu/claude-dark.svg"
         }
       },
       {
@@ -64,16 +64,16 @@
         "command": "claudeAbas.abrirTeams",
         "title": "Teams",
         "icon": {
-          "light": "icons/menu/teams-light.svg",
-          "dark": "icons/menu/teams-dark.svg"
+          "light": "public/icones/menu/teams-light.svg",
+          "dark": "public/icones/menu/teams-dark.svg"
         }
       },
       {
         "command": "claudeAbas.abrirTickets",
         "title": "Tickets",
         "icon": {
-          "light": "icons/menu/ticket-light.svg",
-          "dark": "icons/menu/ticket-dark.svg"
+          "light": "public/icones/menu/ticket-light.svg",
+          "dark": "public/icones/menu/ticket-dark.svg"
         }
       },
       {
@@ -310,7 +310,7 @@
   },
   "scripts": {
     "tipos": "tsc -p jsconfig.json",
-    "formatar": "prettier --write incidentes incidentes/bin/* refinamento refinamento/bin/* qa qa/bin/* implementacoes implementacoes/bin/*",
-    "formatar:conferir": "prettier --check incidentes incidentes/bin/* refinamento refinamento/bin/* qa qa/bin/* implementacoes implementacoes/bin/*"
+    "formatar": "prettier --write janelas janelas/incidentes/bin/* janelas/refinamento/bin/* janelas/qa/bin/* janelas/implementacoes/bin/*",
+    "formatar:conferir": "prettier --check janelas janelas/incidentes/bin/* janelas/refinamento/bin/* janelas/qa/bin/* janelas/implementacoes/bin/*"
   }
 }

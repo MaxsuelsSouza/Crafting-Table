@@ -18,8 +18,8 @@ const aoVivo = require('../componentes/ao-vivo'); // caixa "Ao vivo": só as aç
 const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, anexos do Jira e notas)
 const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
 const configuracao = require('../configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
-const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, dados, ações, orquestrador e vigia de comentários
-const qa = require('../qa/qa'); // registro do QA: aba Massa e ações
+const refinamento = require('../janelas/refinamento/refinamento'); // registro do Refinamento: abas, dados, ações, orquestrador e vigia de comentários
+const qa = require('../janelas/qa/qa'); // registro do QA: aba Massa e ações
 const conversas = require('../modulos/conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -44,9 +44,9 @@ function corpoAba(t, aba, d) {
     : d.jira ? jira.folhaTicket(d.jira) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`;
   const doQa = qa.corpoAba(aba, t, d, pastaAba(t.id)); // aba Massa do QA
   if (doQa !== undefined) return doQa;
-  const inc = require('../incidentes/incidentes').corpoAba(aba, t, d, pastaAba(t.id)); // Mergulho e Evidências do Incidente
+  const inc = require('../janelas/incidentes/incidentes').corpoAba(aba, t, d, pastaAba(t.id)); // Mergulho e Evidências do Incidente
   if (inc !== undefined) return inc;
-  const impl = require('../implementacoes/implementacoes').corpoAba(aba, t, d, pastaAba(t.id)); // Esteira, Dossiê e Reprodução da Implementação
+  const impl = require('../janelas/implementacoes/implementacoes').corpoAba(aba, t, d, pastaAba(t.id)); // Esteira, Dossiê e Reprodução da Implementação
   if (impl !== undefined) return impl;
   if (aba === 'decisoes') return abaDecisoes.corpoAba(d);
   return '';
@@ -115,7 +115,7 @@ exports.provider = (ctx) => {
       baixando: abaDocs.baixando
     };
     if (aba === 'ticket' && jira.ehDocumento(t)) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(pasta(t.id))] };
-    else if ([...require('../incidentes/incidentes').ABAS_MIDIA, ...require('../implementacoes/implementacoes').ABAS_MIDIA].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
+    else if ([...require('../janelas/incidentes/incidentes').ABAS_MIDIA, ...require('../janelas/implementacoes/implementacoes').ABAS_MIDIA].includes(aba) && dirAba) view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.file(dirAba)] }; // grupo.js soma à raiz da extensão
     const corpoTicket = telaTicket(t, aba, d), paginaAtual = `${t.id}|${aba}`;
     if (soVivo && paginaAtual === ultimaPagina) view.webview.postMessage({ tipo: 'vivo', html: corpoTicket });
     else view.webview.html = pagina(nonce, corpoTicket, aba === 'docs' && dirAba
@@ -174,7 +174,7 @@ exports.provider = (ctx) => {
   };
   vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
   refinamento.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), qa, lista, abaDocs, refinamento, conversas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/implementacoes'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), qa, lista, abaDocs, refinamento, conversas, aoVivo, require('../janelas/incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../janelas/implementacoes/implementacoes'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,

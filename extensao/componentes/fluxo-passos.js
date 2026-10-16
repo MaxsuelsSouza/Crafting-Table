@@ -1,6 +1,6 @@
 // @ts-check
 // Componente "Fluxo de passos": os passos para reproduzir um problema no emulador, com o estado de cada um, em <aba>/fluxo.json.
-// Usado por: Incidentes (etapa 5 do Mergulho, bin incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução, bin implementacoes/bin/reproducao-fluxo).
+// Usado por: Incidentes (etapa 5 do Mergulho, bin janelas/incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução, bin janelas/implementacoes/bin/reproducao-fluxo).
 // Quando o usuário pausa, os passos já feitos ficam salvos (com a ação que o Claude usou); ao retomar, o Claude refaz esses passos
 // rápido, sem reanalisar, e segue do primeiro pendente. Sem vscode nos dados: o Claude grava pelo bin do módulo.
 // Cada passo tem o formato do cenário do QA ({ id, titulo, texto, status, execucoes }), então o card é o do QA (componentes/card-cenario.js).

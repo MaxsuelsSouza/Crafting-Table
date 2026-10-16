@@ -24,7 +24,7 @@ for (const s of fontes) {
 }
 
 // Módulos: handlers declarados como `const acoes = (s) => ({` (ou `(servicos) => ({`) com chaves a 2 espaços, fechando em `});` na coluna 0.
-// Também um grupo de cliques com outro nome na mesma forma (`const plano = (s) => ({`, qa/abas/acoes/), que o index do módulo junta em `acoes`.
+// Também um grupo de cliques com outro nome na mesma forma (`const plano = (s) => ({`, janelas/qa/abas/acoes/), que o index do módulo junta em `acoes`.
 // Contrato: o módulo exporta `acoes(servicos)` e o painel.js lista o módulo em `modulosAcoes`.
 for (const s of fontes) {
   for (const { index: ini } of s.matchAll(/^const \w+ = \(\w*\) => \(\{/gm)) {

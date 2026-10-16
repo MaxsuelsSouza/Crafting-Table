@@ -18,7 +18,7 @@ Regra: **uma etapa = um commit**, um módulo inteiro por vez (como QA, Implement
 | # | Etapa | O que sai do painel | Risco | Tempo | Como verificar |
 |---|---|---|---|---|---|
 | 0 | Rede de segurança | nada: criar `teste-acoes.js` (todo `data-acao`/`data-painel` do código tem handler) e anotar o resultado atual de testes e tsc | baixo | 15 min | testes + tsc verdes antes de começar |
-| 1 | Base compartilhada | `IC`, `markdown`, `quando`, `iniciais`, leitores de JSON (`tarefasDe`, `duvidasDe`, `impactosDe`, `decisoesDe`) e constantes de arquivo → `componentes/` e `refinamento/locais.js`; `notificar`/`notifsDe` → `notificacoes.js` | baixo | 25 min | testes + tsc |
+| 1 | Base compartilhada | `IC`, `markdown`, `quando`, `iniciais`, leitores de JSON (`tarefasDe`, `duvidasDe`, `impactosDe`, `decisoesDe`) e constantes de arquivo → `componentes/` e `janelas/refinamento/locais.js`; `notificar`/`notifsDe` → `notificacoes.js` | baixo | 25 min | testes + tsc |
 | 2 | Contrato `ctx` | criar `ctx` (`render`, `ticketAberto`, `pasta`, `pastaAba`, `gravar`, `notificar`, `abrirAba`, `pedirSecao`, `secrets`, `globalState`) e o registro: `acoes = { ...conf.acoes, ...modulo.acoes(ctx) }`. Migrar só as 4 ações do rodapé (`notifLidas`, `cmdsAlternar`, `cmdAlternar`, `emuAlternar`) | médio | 30 min | `teste-acoes.js` + abrir a extensão e clicar no rodapé |
 | 3 | QA inteiro (piloto) | `qa/acoes.js` (`qaPlay`…`qaParar`, `depsQa`), ▶ do cabeçalho, `caixaAmb` do rodapé, aba Massa, `ABAS.qa` | médio | 1 h | `teste-qa.js` + rodar um QA no emulador |
 | 4 | Lista de tickets | `carregarMeus`, `meu*`, `previa*`, `listaModo`, `labelQA`, `telaPrevia`, `VINCULADOS` → controlador da lista | médio | 45 min | abrir lista nos 3 módulos, filtrar, puxar, remover |

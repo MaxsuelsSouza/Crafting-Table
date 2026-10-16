@@ -1,6 +1,6 @@
 // @ts-check
 // Régua de confiança das fontes (aprovado > gerado > bruto > verbal > ausente), o maior nível de um eixo e as capacidades (banco e repositórios).
-// Usado por: o dossiê (montar.js) e os Incidentes (incidentes/entrada.js); o QA usa pelo dossiê (qa/entrada.js).
+// Usado por: o dossiê (montar.js) e os Incidentes (janelas/incidentes/entrada.js); o QA usa pelo dossiê (janelas/qa/entrada.js).
 const path = require('path');
 
 const NIVEIS = ['ausente', 'verbal', 'bruto', 'gerado', 'aprovado'];

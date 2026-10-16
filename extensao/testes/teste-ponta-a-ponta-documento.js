@@ -127,10 +127,10 @@ const ultimo = () => pedidos[pedidos.length - 1];
 
   // ════ 2. REFINAMENTO (md)
   {
-    const orq = require('../refinamento/orquestrador');
-    const { acoes: acoesTarefas } = require('../refinamento/abas/tarefas');
-    const duv = require('../refinamento/abas/duvidas');
-    const { tarefasDe, duvidasDe, impactosDe, TAREFAS, DUVIDAS } = require('../refinamento/locais');
+    const orq = require('../janelas/refinamento/orquestrador');
+    const { acoes: acoesTarefas } = require('../janelas/refinamento/abas/tarefas');
+    const duv = require('../janelas/refinamento/abas/duvidas');
+    const { tarefasDe, duvidasDe, impactosDe, TAREFAS, DUVIDAS } = require('../janelas/refinamento/locais');
     const t0 = ts.md, dir = tickets.pasta(t0.chave);
     tickets.gravar({ ...tickets.ler(t0.chave), spec: { repo: dir, dir: 'DOC-001-x' } });
     const t = tickets.ler(t0.chave);
@@ -171,7 +171,7 @@ const ultimo = () => pedidos[pedidos.length - 1];
 
   // ════ 3. QA (docx; sem docx cai no md)
   {
-    const qa = require('../qa/motor'), { acoes } = require('../qa/abas/acoes');
+    const qa = require('../janelas/qa/motor'), { acoes } = require('../janelas/qa/abas/acoes');
     const { areaIA } = require('../infra/agentes/area-ia');
     sessao.focoLista = () => 'qa';
     const t = ts.docx || ts.md, raiz = tickets.pasta(t.chave), dir = tickets.pasta(t.chave, 'qa');
@@ -218,7 +218,7 @@ const ultimo = () => pedidos[pedidos.length - 1];
   // ════ 4. INCIDENTES (pdf; sem pdf cai no md)
   {
     const controle = require('../infra/controle');
-    const { rodarEtapa, anexosFaltando } = require('../incidentes/orquestrador'), { estado, mudar } = require('../incidentes/estado');
+    const { rodarEtapa, anexosFaltando } = require('../janelas/incidentes/orquestrador'), { estado, mudar } = require('../janelas/incidentes/estado');
     const t = ts.pdf || ts.md, pasta = tickets.pasta(t.chave), dir = path.join(pasta, 'incidente'); fs.mkdirSync(dir, { recursive: true });
     const cache = {};
     const s = { pastaAba: () => dir, pasta: () => pasta, render() {}, ticketAberto: () => tickets.ler(t.chave), reposDe: () => [], cacheJira: cache, atualizarJira: async () => { throw new Error('REDE: atualizarJira'); } };
@@ -247,7 +247,7 @@ const ultimo = () => pedidos[pedidos.length - 1];
 
   // ════ 5. IMPLEMENTAÇÃO (png; sem png cai no md)
   {
-    const impl = require('../implementacoes/implementacoes');
+    const impl = require('../janelas/implementacoes/implementacoes');
     const { pedido } = require('../modulos/conversas')._teste2;
     const t = ts.png || ts.md, dir = tickets.pasta(t.chave);
     sessao.focar(t.chave, impl.ID);

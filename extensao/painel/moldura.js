@@ -14,9 +14,9 @@ const pill = require('../componentes/pill');
 const listaTickets = require('../componentes/lista-tickets');
 const vinculados = require('../componentes/vinculados');
 const configuracao = require('../configuracao/configuracao');
-const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, ▶/⏸, pill, faixa, contadores, CSS e script
-const qa = require('../qa/qa'); // registro do QA: abas e ▶/⏸
-const implementacoes = require('../implementacoes/implementacoes'); // registro da Implementação: abas, ▶/⏸ e script
+const refinamento = require('../janelas/refinamento/refinamento'); // registro do Refinamento: abas, ▶/⏸, pill, faixa, contadores, CSS e script
+const qa = require('../janelas/qa/qa'); // registro do QA: abas e ▶/⏸
+const implementacoes = require('../janelas/implementacoes/implementacoes'); // registro da Implementação: abas, ▶/⏸ e script
 const notas = require('./notas').editor;
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const { pastaDe, pastaAba, naRaiz } = require('../infra/ticket/pastas');
@@ -29,7 +29,7 @@ const DOCS = { id: 'docs', nome: 'Docs' }, TICKET = { id: 'ticket', nome: 'Ticke
 const ABAS = {
   [refinamento.ID]: refinamento.ABAS,
   [implementacoes.ID]: implementacoes.ABAS,
-  incidentes: require('../incidentes/incidentes').ABAS,
+  incidentes: require('../janelas/incidentes/incidentes').ABAS,
   [qa.ID]: qa.ABAS,
   semTicket: [DOCS, DECISOES]
 };
@@ -75,7 +75,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   const contador = (id) => refinamento.contadorAba(id, t); // badges das abas Dúvidas e Tarefas; [0, ''] nas outras
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
-  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === qa.ID ? qa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === implementacoes.ID ? implementacoes.botaoPlay(pastaAba(t.id), b) : '';
+  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === qa.ID ? qa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../janelas/incidentes/incidentes').ID ? require('../janelas/incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === implementacoes.ID ? implementacoes.botaoPlay(pastaAba(t.id), b) : '';
   const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
     tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">
@@ -193,7 +193,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
   ${aoVivo.script('vivo')}
   ${require('../componentes/fluxo-passos').script()}
   // Incidentes (aba Mergulho e Evidências): observação do PO e tela cheia dos cards de SQL.
-  ${require('../incidentes/incidentes').script()}
+  ${require('../janelas/incidentes/incidentes').script()}
   const corpo = document.querySelector('main.rolagem');
   if (corpo) {
     corpo.scrollTop = (vscode.getState() || {}).rolagem || 0;

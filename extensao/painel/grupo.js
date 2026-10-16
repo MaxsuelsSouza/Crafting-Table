@@ -182,7 +182,7 @@ async function abrirTelaCheia() {
   if (painelCheia) painelCheia.reveal(vscode.ViewColumn.Active);
   else {
     const p = vscode.window.createWebviewPanel('claudeAbas.cheia', 'Crafting Table', vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.file(require('path').join(__dirname, '..'))] });
-    p.iconPath = vscode.Uri.file(require('path').join(__dirname, '..', 'icons', 'crafting-table.png'));
+    p.iconPath = vscode.Uri.file(require('path').join(__dirname, '..', 'public', 'icones', 'crafting-table.png'));
     const alvo = { webview: p.webview, subtitulo(t) { p.title = 'Crafting Table / ' + t; }, get visible() { return p.visible; }, onDidChangeVisibility: (f) => p.onDidChangeViewState(f), onDidDispose: p.onDidDispose };
     painelCheia = p;
     p.onDidDispose(() => { montados[g]?.remover(alvo); painelCheia = null; vscode.commands.executeCommand('setContext', 'claudeAbas.cheia', false); });

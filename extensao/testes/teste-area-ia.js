@@ -7,7 +7,7 @@ const path = require('path');
 const Module = /** @type {any} */ (require('module')); const load = Module._load;
 Module._load = (r, ...a) => (r === 'vscode' ? { workspace: { getConfiguration: () => ({ get: () => undefined }) } } : load(r, ...a));
 const { areaIA, RAIZ } = require('../infra/agentes/area-ia');
-const qa = require('../qa/motor');
+const qa = require('../janelas/qa/motor');
 
 const claude = path.join(os.homedir(), '.claude');
 const dir = path.join(claude, 'tickets', 'WMS-123', 'qa');

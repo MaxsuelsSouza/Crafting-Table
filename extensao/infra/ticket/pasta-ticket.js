@@ -1,8 +1,8 @@
 // @ts-check
-// Leitores e nomes de arquivo da pasta do ticket comuns a todos os módulos (saíram de refinamento/locais.js, que reexporta).
+// Leitores e nomes de arquivo da pasta do ticket comuns a todos os módulos (saíram de janelas/refinamento/locais.js, que reexporta).
 // Onde é usado: painel.js, notas.js, notificacoes.js, rodape.js, aba-docs.js, conversas.js, infra/dossie/,
-// incidentes/orquestrador/portao-ticket.js e o próprio Refinamento.
-// Como usar: const { ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('./pasta-ticket');
+// janelas/incidentes/orquestrador/portao-ticket.js e o próprio Refinamento.
+// Como usar: const { ler, lerTexto, NOTAS, ORIGEM, decisoesDe, ticketDe } = require('../infra/ticket/pasta-ticket');
 //   ler(arq, padrao) JSON ou padrão · lerTexto(arq) texto ou null · decisoesDe(dir) aba Decisões, mais recentes primeiro
 //   ticketDe(chave) ticket local com id = chave · pasta(id) = tickets.pasta(id)
 const fs = require('fs');

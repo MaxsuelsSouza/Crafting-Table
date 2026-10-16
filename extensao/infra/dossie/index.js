@@ -1,11 +1,11 @@
 // @ts-check
 // Dossiê da Implementação: o que existe no disco do ticket (spec, cards, incidente, QA, descrição, briefing do dev) normalizado em três
-// eixos (alvo, pronto, onde) com a confiança de cada fonte. Daí saem a prontidão e o modo da esteira (implementacoes/). Só lê arquivos:
+// eixos (alvo, pronto, onde) com a confiança de cada fonte. Daí saem a prontidão e o modo da esteira (janelas/implementacoes/). Só lê arquivos:
 // sem vscode e sem IA, então roda em teste e em bin/. Gravado em impl/dossie.json (máquina) e impl/dossie.md (IA e aba Dossiê).
 //   confiança: aprovado (humano aprovou) > gerado (IA produziu) > bruto (texto do ticket) > verbal (o dev explicou) > ausente
 //   modo: executar (spec e tarefas aprovadas) · corrigir (diagnóstico do incidente) · entender (texto sem refino) · perguntar (nada)
-// Usado por: Implementações (esteira e abas Esteira e Dossiê), QA (qa/entrada.js: montar, gravar, nivelDe), Incidentes (incidentes/entrada.js:
-// a régua) e Refinamento (refinamento/abas/spec/acoes/iniciar.js: sobreTicket).
+// Usado por: Implementações (esteira e abas Esteira e Dossiê), QA (janelas/qa/entrada.js: montar, gravar, nivelDe), Incidentes (janelas/incidentes/entrada.js:
+// a régua) e Refinamento (janelas/refinamento/abas/spec/acoes/iniciar.js: sobreTicket).
 // Como usar: const dossie = require('<…>/infra/dossie'); dossie.gravar(dir, dossie.montar(t, { j, banco, repos })).
 //
 // Um arquivo por regra:
