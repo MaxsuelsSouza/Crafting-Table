@@ -6,7 +6,7 @@ const { lerTexto } = require('../infra/pasta-ticket');
 const { IC } = require('./icones');
 const { quando } = require('./formato');
 const { LIDAS, ICONE_NOTIF, notifsDe, cmdsAberto, blocosAbertos } = require('../painel/notificacoes');
-const acoesQa = require('../qa/acoes');
+const qa = require('../qa/qa'); // registro do QA: caixa do ambiente
 const { SEM_TICKET } = require('./card-ticket');
 const { pastaAba } = require('../infra/pastas');
 
@@ -91,7 +91,7 @@ const rodape = (t, dentro = false) => {
     ${emus.length ? `<div class="ct-cmd-grupo">Emuladores</div>${emus.map((c) => `<button class="ct-cmd ${c.rodando ? 'on' : ''}" ${acao}="emuAlternar" data-id="${esc(c.id)}" ${c.ocupado ? 'disabled' : ''}
       title="${esc(c.ocupado || (c.rodando ? 'Desligar' : 'Ligar'))}"><span class="ct-ci">${c.rodando ? IC.parar : IC.play}</span>${esc(c.nome)}${c.ocupado ? ` <small>${esc(c.ocupado)}</small>` : ''}</button>`).join('')}` : ''}</div></details>`;
   // QA: ambiente depois de Comandos. Preparando → abre o log ao vivo; erro → luz vermelha piscando e bolinha até abrir a análise (Evidências).
-  const caixaAmb = t && t.id !== SEM_TICKET && sessao.focoLista() === 'qa' ? acoesQa.caixaAmbiente(dir, acao) : '';
+  const caixaAmb = t && t.id !== SEM_TICKET && sessao.focoLista() === qa.ID ? qa.rodape(dir, acao) : '';
   return `<footer class="ct-rod"><details><summary ${acao}="notifLidas">${IC.sino} Notificações
     ${novas ? `<span class="ct-badge">${novas}</span>` : ''}</summary>
   <div class="ct-notifs">${l.length ? l.map((n) => `<div class="ct-notif ${nova(n) ? 'nova' : ''}"><span class="ct-ni">${ICONE_NOTIF[n.tipo] || '•'}</span>

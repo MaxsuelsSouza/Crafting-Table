@@ -11,21 +11,11 @@ const path = require('path');
 //               id, nome, caminho? (skill/local), skill? (plugin: qual skill dele) }
 
 const LOCAL = (n) => path.join(__dirname, '..', 'plugins', n);
-const SKILLS = path.join(os.homedir(), '.claude', 'skills');
 
 // contrato: o que a extensão espera de quem ocupa a vaga (base da verificação por IA de um substituto).
 const VAGAS = {
   ...require('../refinamento/etapas').VAGAS, // vagas do Refinamento: refinamento/etapas/index.js
-  'qa.ambiente': {
-    padrao: { tipo: 'skill', id: 'testes-funcionais', nome: 'testes-funcionais', caminho: path.join(SKILLS, 'testes-funcionais') }, como: 'script executado + referências lidas',
-    contrato: 'Script <raiz>/assets/backend/preparar-ambiente.py --chave KEY --json [--build-app], idempotente, que sobe API (5111), Metro (8081), emulador e app; imprime linhas "[ OK|FEITO|PEND.|AVISO] texto" '
-      + 'e uma última linha JSON {parou_em (null se ok), itens[{item, verdito, detalhe}], ref, backend, mobile, pendentes, app}. Referências references/diagnostico.md e references/ambiente-execucao.md para analisar quando o preparo para.'
-  },
-  'qa.execucao': {
-    padrao: { tipo: 'skill', id: 'testes-funcionais', nome: 'testes-funcionais', caminho: path.join(SKILLS, 'testes-funcionais') }, como: 'SKILL.md lido como método',
-    contrato: 'SKILL.md com o método de execução de um cenário (CTnn) no app/API e o método de massa de dados (consultas só leitura na cópia de produção). Funciona sem AskUserQuestion: onde mandaria parar, pausa pelo qa-state (pausa) e aguarda o humano; nunca pula cenário nem segue sem resposta. '
-      + 'O Claude registra pelo qa-state da extensão (massa add, evidencia CTnn, cenario CTnn concluir --status passou|falhou|sem-massa; precondicao --status ok|falhou antes da suíte: health check e login). Jornada mobile por Maestro/adb (references/jornada-mobile-maestro.md).'
-  },
+  ...require('../qa/etapas').VAGAS, // vagas do QA: qa/etapas/index.js
   'impl.mapa': {
     padrao: { tipo: 'local', id: 'mapa', nome: 'mapa', caminho: LOCAL('mapa') }, como: 'bins mapa-db, mapa-git e mapa-conferir (--plugin-dir)',
     contrato: 'Bins <raiz>/bin/mapa-git (git só leitura), mapa-db (SELECT só leitura, recusa produção) e mapa-conferir <mapa.md> --repo --db-log (confere as evidências) para a Varredura do código e o Plano de mudança da esteira de Implementação.'
@@ -47,14 +37,7 @@ const MODULOS = [
     { nome: 'Implementação', vaga: null },
     { nome: 'Verificação', vaga: null, obs: 'comandos de build e teste de Configurações > Comandos' },
     { nome: 'Resumo', vaga: null }] },
-  { id: 'qa', nome: 'QA', etapas: [
-    { nome: 'Planejamento', vaga: null, obs: 'método embutido na extensão' },
-    { nome: 'Cenários', vaga: null },
-    { nome: 'Ambiente', vaga: 'qa.ambiente' },
-    { nome: 'Pré-condição (health check e login)', vaga: 'qa.execucao', obs: 'roda antes da suíte, fora da lista de cenários' },
-    { nome: 'Massa de dados', vaga: 'qa.execucao' },
-    { nome: 'Execução de cada cenário', vaga: 'qa.execucao' },
-    { nome: 'Publicar', vaga: null }] },
+  { id: 'qa', nome: 'QA', etapas: require('../qa/etapas').ETAPAS.map(({ n, arquivo, ...e }) => e) }, // qa/etapas/index.js
   { id: 'incidentes', nome: 'Incidentes', etapas: require('../incidentes/etapas').ETAPAS.map(({ nome, vaga }) => ({ nome, vaga })) }
 ];
 // Marca de cada etapa na ordem do módulo: "Etapa N" (ou "Todas as etapas") + nome; subs = [{ marca: "N.1", nome, vaga }]. titulos = o texto corrido ("Etapa N. Nome").

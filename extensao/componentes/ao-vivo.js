@@ -4,7 +4,7 @@ const path = require('path');
 const { IC } = require('./icones');
 
 // Componente "Ao vivo": a caixa que mostra, em pilha (mais recente em cima), o que o Claude em segundo plano e os passos
-// da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js), nas Evidências do QA (qa.js) e no Mergulho dos Incidentes (painel.js).
+// da própria extensão estão fazendo. Usado na aba Spec (refinamento/spec.js), nas Evidências do QA (qa/abas/evidencias/) e no Mergulho dos Incidentes (painel.js).
 // O log fica em <pasta>/.ao-vivo.jsonl ({ em, tipo, texto, detalhe? }); a caixa expandida é marcada por .ao-vivo.expandido.
 // Decisões do Claude (padrão do componente): linha tipo 'decisao' { texto: título, detalhe: motivo } também entra na aba Decisões da mesma pasta
 // (.decisoes.json, origem 'claude'). O maestro converte as linhas "DECISÃO: título | motivo" do Claude nesse tipo (painel/maestro.js).

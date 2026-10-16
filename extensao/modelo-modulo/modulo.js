@@ -7,7 +7,7 @@
 //   Lista:   menu de módulos · pesquisa · ↑↓ · ＋ Ticket (com o contador de tickets acima) · cards · card "Sem ticket" · caixa Vinculados
 //            (a caixa só existe com a ferramenta de gestão cadastrada: lista.js já cuida)
 //   Ticket:  ← título … [✦ conversa fixa] [⚡ raio] [🎫 ticket] [🗑 excluir] · pill de status · ⟳ atualizar · menu Docs · Central · Ticket · Decisões | Conversas
-//   Rodapé:  🔔 Notificações e ▶ Comandos (componentes/rodape.js, igual em todos)
+//   Rodapé:  🔔 Notificações e ▶ Comandos (componentes/rodape.js, igual em todos; caixa extra do módulo: gancho rodape)
 // Botões do cabeçalho: componentes/botoes-ticket.js (flag por botão e botões extras).
 // Tudo isso vem de componentes/ e da moldura: o módulo só declara ID, abas e o que é dele.
 const aoVivo = require('../componentes/ao-vivo');
@@ -44,7 +44,7 @@ const acoes = (_s) => ({
   modeloRetomar() {}
 });
 
-// Ganchos opcionais (dadosAba, antesDaAba, aoDesenhar, observar, pill, faixa, contadorAba, situacao, pedidoConversa, iniciar, aoAtualizar, CSS):
-// ver LEIA-ME.md e o exemplo completo em extensao/refinamento/refinamento.js.
+// Ganchos opcionais (dadosAba, antesDaAba, aoDesenhar, observar, pill, faixa, contadorAba, situacao, pedidoConversa, iniciar, aoAtualizar, CSS,
+// rodape, evidencias, ETAPA_PEDIDO): ver LEIA-ME.md e os exemplos em extensao/refinamento/refinamento.js e extensao/qa/qa.js.
 
 module.exports = { ID, ROTULO, DICA, VINCULADOS, ETAPA, ABAS, corpoCentral, botaoPlay, acoes };

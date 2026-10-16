@@ -171,7 +171,7 @@ const ultimo = () => pedidos[pedidos.length - 1];
 
   // ════ 3. QA (docx; sem docx cai no md)
   {
-    const qa = require('../qa/qa'), { acoes } = require('../qa/acoes');
+    const qa = require('../qa/motor'), { acoes } = require('../qa/abas/acoes');
     const { areaIA } = require('../infra/area-ia');
     sessao.focoLista = () => 'qa';
     const t = ts.docx || ts.md, raiz = tickets.pasta(t.chave), dir = tickets.pasta(t.chave, 'qa');

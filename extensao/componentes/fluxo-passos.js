@@ -3,13 +3,13 @@
 // Usado por: Incidentes (etapa 5 do Mergulho, bin incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução, bin implementacoes/reproducao-fluxo).
 // Quando o usuário pausa, os passos já feitos ficam salvos (com a ação que o Claude usou); ao retomar, o Claude refaz esses passos
 // rápido, sem reanalisar, e segue do primeiro pendente. Sem vscode nos dados: o Claude grava pelo bin do módulo.
-// Cada passo tem o formato do cenário do QA ({ id, titulo, texto, status, execucoes }), então o card é o do QA (qa/card-cenario.js).
+// Cada passo tem o formato do cenário do QA ({ id, titulo, texto, status, execucoes }), então o card é o do QA (componentes/card-cenario.js).
 // Como usar: html(dir, uri) na tela, script() no <script> da moldura e acoes(s) no painel (fluxoAbrir, fluxoPasta, fluxoCopiar, fluxoRefazer).
 //   plano(dir, [{ titulo, texto }])  cria P01…  ·  iniciar(dir, id)  ·  concluir(dir, id, status, nota)  ·  evidencia(dir, id, arquivos)
 //   acao(dir, id, texto)  ação exata (comando maestro/adb) que repete o passo  ·  descartarEmAndamento(dir)  ·  html(dir, uri)
 const fs = require('fs');
 const path = require('path');
-const cardCenario = require('../qa/card-cenario');
+const cardCenario = require('./card-cenario');
 const { origemPermitida } = require('../infra/origem');
 
 const ARQ = 'fluxo.json', RESULTADOS = ['passou', 'falhou', 'bloqueado'];

@@ -15,7 +15,7 @@ const listaTickets = require('../componentes/lista-tickets');
 const vinculados = require('../componentes/vinculados');
 const configuracao = require('../configuracao/configuracao');
 const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, ▶/⏸, pill, faixa, contadores, CSS e script
-const acoesQa = require('../qa/acoes');
+const qa = require('../qa/qa'); // registro do QA: abas e ▶/⏸
 const notas = require('./notas').editor;
 const { SEM_TICKET } = require('../componentes/card-ticket');
 const { pastaDe, pastaAba, naRaiz } = require('../infra/pastas');
@@ -29,7 +29,7 @@ const ABAS = {
   [refinamento.ID]: refinamento.ABAS,
   impl: [DOCS, { id: 'esteira', nome: 'Esteira' }, { id: 'dossie', nome: 'Dossiê' }, { id: 'reproducao', nome: 'Reprodução' }, TICKET, DECISOES],
   incidentes: require('../incidentes/incidentes').ABAS,
-  qa: [DOCS, { secao: EVID, nome: 'Evidências' }, TICKET, DECISOES, { id: 'massa', nome: 'Massa' }],
+  [qa.ID]: qa.ABAS,
   semTicket: [DOCS, DECISOES]
 };
 /** @returns {{ id?: string, secao?: string, nome: string }[]} */
@@ -74,7 +74,7 @@ function cabecalho(t, { aba, secao, dentro = false }) {
   const contador = (id) => refinamento.contadorAba(id, t); // badges das abas Dúvidas e Tarefas; [0, ''] nas outras
   const itens = [...abasDe(t).map((a) => { const [badge, dica] = contador(a.id); return { ...a, badge, dica: `${badge} ${dica}` }; }),
     '|', ...FORA().map(([secao, nome]) => ({ secao, nome }))];
-  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === 'qa' ? acoesQa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
+  const play = refino ? refinamento.botaoPlay(pastaAba(t.id), b, t) : !semTicket && sessao.focoLista() === qa.ID ? qa.botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === require('../incidentes/incidentes').ID ? require('../incidentes/incidentes').botaoPlay(pastaAba(t.id), b) : !semTicket && sessao.focoLista() === 'impl' ? require('../implementacoes/esteira').botaoPlay(pastaAba(t.id), b) : '';
   const ctx = { b, dentro, principal: PRINCIPAL, semTicket, ehDocumento: jira.ehDocumento(t), nomeFerramenta: jira.nome, podeInstruir: !semTicket && podeInstruir(t), play,
     tituloAtualizar: jira.ehDocumento(t) ? 'Redesenhar o ticket' : `Atualizar status e anexos do ${jira.nome}` };
   return `<header class="ct-cab"><div class="ct-linha">

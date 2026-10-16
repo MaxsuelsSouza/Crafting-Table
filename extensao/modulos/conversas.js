@@ -263,8 +263,8 @@ const ultimaConversa = (t) => require('../infra/claude').ultimaConversa(t, sessa
 
 // Primeira mensagem da conversa nova aberta pelo ticket: vincula ao ticket e dá a ela o título dele.
 const tituloConversa = (t, lista) => {
-  const implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
-  const etapa = { [implementacoes.ID]: implementacoes.ETAPA, qa: 'QA', [incidentes.ID]: incidentes.ETAPA }[lista];
+  const implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes'), qa = require('../qa/qa');
+  const etapa = { [implementacoes.ID]: implementacoes.ETAPA, [qa.ID]: qa.ETAPA, [incidentes.ID]: incidentes.ETAPA }[lista];
   return [t.chave, etapa, t.titulo || t.documento?.nome].filter(Boolean).join(' · ');
 };
 const reconciliar = (s) => {
@@ -296,10 +296,10 @@ const esteiraArquivos = (s, t) => {
   return achados.length ? `${e.rotulo} (leia antes de começar): ${achados.map((n) => path.join(dir, n)).join(', ')}.\n` : '';
 };
 const pedido = (s, t) => {
-  const refinamento = require('../refinamento/refinamento'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes');
+  const refinamento = require('../refinamento/refinamento'), implementacoes = require('../implementacoes/implementacoes'), incidentes = require('../incidentes/incidentes'), qa = require('../qa/qa');
   return (sessao.focoLista() === refinamento.ID ? refinamento.pedidoConversa(s, t) // Refinamento: refinamento/conversa.js
     // Implementações / QA: escreve só na pasta da aba; do refinamento recebe só o resultado (spec), sem as conversas dele.
-    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ qa: 'QA (testes)', [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
+    : `Ticket ${t.chave}: ${t.titulo || ''} · ${{ [qa.ID]: qa.ETAPA_PEDIDO, [incidentes.ID]: incidentes.ETAPA }[sessao.focoLista()] || implementacoes.ETAPA}\n${require('../infra/contexto').blocoDocumento(t) || t.link}\n`
       + `Pasta desta etapa: ${s.pastaAba(t.chave)} (documentos, notas em ${NOTAS}). Grave só nela.\n`
       + (dirSpec(t) ? `Entrada, só leitura: a spec em ${dirSpec(t)}. ` : '')
       + esteiraArquivos(s, t)

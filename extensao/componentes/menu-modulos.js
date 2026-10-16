@@ -8,7 +8,8 @@
 const impl = require('../implementacoes/implementacoes');
 const inc = require('../incidentes/incidentes');
 const ref = require('../refinamento/refinamento');
-const MODULOS = [[ref.ID, ref.ROTULO, ref.DICA], [impl.ID, impl.ROTULO, impl.DICA], ['qa', 'QA', 'Tickets para testar (pela label de QA)'], [inc.ID, inc.ROTULO, inc.DICA]];
+const qa = require('../qa/qa');
+const MODULOS = [[ref.ID, ref.ROTULO, ref.DICA], [impl.ID, impl.ROTULO, impl.DICA], [qa.ID, qa.ROTULO, qa.DICA], [inc.ID, inc.ROTULO, inc.DICA]];
 const nome = (modo) => MODULOS.find(([id]) => id === modo)?.[1] || modo;
 
 const menu = (modo, extra = '') => `<div class="topo">${MODULOS.map(([id, nome, dica]) =>

@@ -310,7 +310,7 @@
   },
   "scripts": {
     "tipos": "tsc -p jsconfig.json",
-    "formatar": "prettier --write incidentes incidentes/bin/* refinamento refinamento/bin/*",
-    "formatar:conferir": "prettier --check incidentes incidentes/bin/* refinamento refinamento/bin/*"
+    "formatar": "prettier --write incidentes incidentes/bin/* refinamento refinamento/bin/* qa qa/bin/*",
+    "formatar:conferir": "prettier --check incidentes incidentes/bin/* refinamento refinamento/bin/* qa qa/bin/*"
   }
 }

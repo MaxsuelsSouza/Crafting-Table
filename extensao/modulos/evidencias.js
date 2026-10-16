@@ -10,7 +10,7 @@ const emulador = require('./emulador');
 // Evidências por conversa do Claude: <pasta da conversa>/evidencias. O ticket da branch só nomeia os arquivos.
 const sessao = require('../infra/sessao');
 const aoVivo = require('../componentes/ao-vivo');
-const cardCenario = require('../qa/card-cenario');
+const cardCenario = require('../componentes/card-cenario');
 const ADB = path.join(emulador.SDK, 'platform-tools', 'adb');
 const IMAGEM = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
 const VIDEO = new Set(['.mp4', '.webm', '.mov']);
@@ -159,8 +159,9 @@ exports.provider = (ctx) => {
       observador = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(dir), '*'));
       observador.onDidCreate(render); observador.onDidDelete(render); observador.onDidChange(render);
     }
-    // QA: planejamento e Ao vivo do ▶ (qa.js) no topo; redesenha quando o estado ou o Ao vivo mudam.
-    const dirQa = sessao.foco() && sessao.focoLista() === 'qa' ? require('../infra/tickets').pasta(sessao.foco(), 'qa') : null;
+    // QA: planejamento e Ao vivo do ▶ (registro qa/qa.js, evidencias) no topo; redesenha quando o estado ou o Ao vivo mudam.
+    const qa = require('../qa/qa');
+    const dirQa = sessao.foco() && sessao.focoLista() === qa.ID ? require('../infra/tickets').pasta(sessao.foco(), qa.ID) : null;
     if (dirQa !== vigiadoQa) {
       vigiaQa?.close(); vigiaQa = null; vigiadoQa = dirQa;
       if (dirQa) {
@@ -168,7 +169,7 @@ exports.provider = (ctx) => {
         let espera;
         let soAoVivo = true;
         vigiaQa = fs.watch(dirQa, (_, nome) => {
-          if (![...aoVivo.ARQUIVOS, '.qa.json', '.planejamento.json', '.cenarios.json', '.ambiente.json'].includes(nome)) return;
+          if (![...aoVivo.ARQUIVOS, ...qa.evidencias.VIGIAR].includes(nome)) return;
           if (nome !== '.ao-vivo.jsonl') soAoVivo = false;
           clearTimeout(espera);
           espera = setTimeout(() => { pedirVivo = soAoVivo; soAoVivo = true; render(); }, 200); // só linha nova do Ao vivo: troca a caixa, sem recarregar a página
@@ -183,7 +184,7 @@ exports.provider = (ctx) => {
       view.webview.options = { enableScripts: true, localResourceRoots: raizes.map((r) => vscode.Uri.file(r)) };
     }
     // Evidências por cenário do QA (qa/evidencias/CTnn/<execução>/): também abrem pelo clique.
-    const doQa = dirQa ? require('../qa/qa').cenarios(dirQa).cenarios.flatMap((c) => (c.execucoes || []).flatMap((x) => require('../qa/qa').arquivosDe(dirQa, x)))
+    const doQa = dirQa ? qa.evidencias.arquivos(dirQa)
       .map((full) => ({ nome: path.basename(full), full, tipo: IMAGEM.has(path.extname(full).toLowerCase()) ? 'imagem' : VIDEO.has(path.extname(full).toLowerCase()) ? 'video' : 'outro' })) : [];
     todos = [...arquivos, ...extras.flatMap((f) => f.arquivos), ...doQa];
     const grade = (lista, apagavel) => `<div class="grade">${lista.map((a) => `
@@ -204,7 +205,7 @@ exports.provider = (ctx) => {
         ${ticket && ticket !== 'sem-ticket' ? `<span class="ticket">${esc(ticket)}</span>` : ''}
       </div>
       ${erro ? `<p class="erro">${esc(erro)}</p>` : ''}
-      ${dirQa ? require('../qa/qa').html(dirQa, (f) => view.webview.asWebviewUri(vscode.Uri.file(f))) : ''}
+      ${dirQa ? qa.evidencias.corpo(dirQa, (f) => view.webview.asWebviewUri(vscode.Uri.file(f))) : ''}
       ${arquivos.length ? `<div class="folha"><p class="contagem">${arquivos.length} evidência${arquivos.length === 1 ? '' : 's'}</p>${grade(arquivos, true)}</div>` : ''}
       ${extras.map((f) => `<div class="folha"><p class="contagem" title="${esc(f.dir)}">${esc(f.titulo)} <span class="tag">somente leitura</span></p>${grade(f.arquivos, false)}</div>`).join('')}`;
     erro = null;

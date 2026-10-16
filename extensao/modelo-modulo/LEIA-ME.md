@@ -2,7 +2,7 @@
 
 Copie `modulo.js` para `extensao/<modulo>/<modulo>.js` e registre nos pontos abaixo. O padrão visual está em `CLAUDE.md` (seção "Padrão de módulo").
 
-Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/incidentes/` e `extensao/refinamento/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
+Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · `orquestrador/` (um arquivo por regra) · `estado.js` · `etapas/` (`index.js` + `01-….js` por etapa; etapa grande vira pasta `NN-nome/` com `subetapas/` e `regras/`) · `abas/` · `bin/` · `testes/`. Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/` e `extensao/qa/`. Arquivos pequenos, um por regra (`CLAUDE.md`, "Arquivos pequenos").
 
 ## Registro (nesta ordem)
 
@@ -17,7 +17,7 @@ Pasta do módulo (`CLAUDE.md`, "Pasta do módulo"): `<modulo>.js` (registro) · 
 
 ## Ganchos opcionais do registro
 
-Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if` com a regra do módulo. Exemplo de todos: `extensao/refinamento/refinamento.js` (lógica em `refinamento/ganchos-painel.js`).
+Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if` com a regra do módulo. Exemplo de quase todos: `extensao/refinamento/refinamento.js` (lógica em `refinamento/ganchos-painel.js`); `rodape`, `evidencias` e `ETAPA_PEDIDO`: `extensao/qa/qa.js`.
 
 | Gancho | Quem chama | Para quê |
 |---|---|---|
@@ -29,6 +29,10 @@ Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if`
 | `CSS()` · `script()` | `moldura.js` | CSS e script da webview (um bloco cada) |
 | `situacao(t)` | `infra/situacao.js` | pill do card na lista |
 | `pedidoConversa(s, t)` | `modulos/conversas.js` | texto do pedido da conversa aberta pelo ✦ |
+| `ETAPA_PEDIDO` | `modulos/conversas.js` | o nome do módulo no pedido, quando difere do `ETAPA` do título (QA: `QA (testes)`) |
+| `rodape(dir, acao)` | `componentes/rodape.js` | caixa do módulo depois de Comandos (QA: Ambiente) |
+| `evidencias: { VIGIAR, corpo(dir, uri), arquivos(dir) }` | `modulos/evidencias.js` | bloco do módulo no topo da seção Evidências: arquivos da pasta que redesenham, o corpo e as evidências que entram na grade (QA) |
+| `VINCULADOS.seletor: 'label'` | `painel/lista.js` · `componentes/vinculados.js` | a caixa de vinculados busca pela label escolhida no seletor, não pela etapa (QA) |
 | `iniciar(servicos, ctx)` · `aoAtualizar()` · `orq()` | `painel.js` | ligar relógios ao abrir o painel, o ⟳ e o `servicos.orq` |
 
 ## Conferência

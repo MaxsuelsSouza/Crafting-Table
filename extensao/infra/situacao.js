@@ -1,12 +1,13 @@
 // @ts-check
 // Situação de um ticket em cada módulo, lida do disco (sem vscode): o texto e a cor da pill do card na lista.
-//   Refinamento: .ticket.json (refinamento.estado) · Implementações: .esteira.json · Incidentes: .mergulho.json · QA: .qa.json
+//   Refinamento: .ticket.json (refinamento.estado) · Implementações: .esteira.json · Incidentes: .mergulho.json · QA: .qa.json (qa/situacao.js)
 // Devolve { texto, cor, dica } ou null (módulo ainda não iniciado para o ticket). cor: as do pill.js (ia | pausada | andando | ok | novo).
 const fs = require('fs');
 const path = require('path');
 const tickets = require('./tickets');
 const inc = require('../incidentes/incidentes');
 const ref = require('../refinamento/refinamento');
+const qa = require('../qa/qa');
 
 const lerJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -22,8 +23,6 @@ function etapas(e, nomeEtapa) {
   if (f === 'concluido') return { texto: 'Concluído', cor: 'ok', dica: '' };
   return n > 1 ? { texto: `Parado · etapa ${n}`, cor: 'novo', dica: 'Interrompido: ▶ continua de onde parou' } : null;
 }
-const QA = { procurando: ['Procurando plano', 'ia'], criando: ['Criando plano', 'ia'], alterando: ['Ajustando plano', 'ia'], erro: ['Erro', 'pausada'],
-  sem_plano: ['Sem plano', 'novo'], plano_encontrado: ['Plano aguardando aprovação', 'andando'], plano_aprovado: ['Plano aprovado', 'ok'] };
 
 /** @param {any} t ticket local @param {string} modulo refinamento | impl | incidentes | qa */
 function situacaoDe(t, modulo) {
@@ -31,13 +30,7 @@ function situacaoDe(t, modulo) {
   if (modulo === ref.ID) return ref.situacao(t);
   if (modulo === 'impl') { const e = lerJson(path.join(dir('impl'), '.esteira.json')); return e ? etapas(e, 'Implementando') : null; }
   if (modulo === inc.ID) { const e = lerJson(path.join(dir(inc.ID), inc.SITUACAO.arquivo)); return e ? etapas(e, inc.SITUACAO.rotulo) : null; }
-  if (modulo === 'qa') {
-    const q = lerJson(path.join(dir('qa'), '.qa.json'));
-    if (!q) return null;
-    if (q.execucao === 'rodando') return { texto: 'Executando cenários', cor: 'ia', dica: '' };
-    const [texto, cor] = QA[q.fase] || [];
-    return texto ? { texto, cor, dica: '' } : null;
-  }
+  if (modulo === qa.ID) return qa.situacao(t);
   return null;
 }
 

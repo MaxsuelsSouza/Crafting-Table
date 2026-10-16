@@ -19,7 +19,7 @@ const abaDocs = require('../componentes/aba-docs'); // aba Docs (documentos, ane
 const abaDecisoes = require('../componentes/aba-decisoes'); // aba Decisões
 const configuracao = require('../configuracao/configuracao'); // tela do ⚙ com os cliques e testes; também lê as settings e os plugins
 const refinamento = require('../refinamento/refinamento'); // registro do Refinamento: abas, dados, ações, orquestrador e vigia de comentários
-const acoesQa = require('../qa/acoes'); // ações e peças de UI do módulo QA
+const qa = require('../qa/qa'); // registro do QA: aba Massa e ações
 const conversas = require('../modulos/conversas'); // conversas do Claude: vínculo com o ticket, abrir e ações do botão Claude
 const lista = require('./lista'); // lista de tickets (Refinamento, Implementações, QA) e vinculados
 const notas = require('./notas').editor; // o mesmo editor da antiga aba Notas (fonte, tamanho, cores, alinhamento, busca)
@@ -42,7 +42,8 @@ function corpoAba(t, aba, d) {
   if (aba === 'ticket' && jira.ehDocumento(t)) return require('../componentes/folha-documento').folhaDocumento(t, undefined, d.uri);
   if (aba === 'ticket') return d.jira?.erro ? `<p class="erro">${esc(d.jira.erro)}</p><div class="barras"><button class="primario" data-acao="atualizar">Tentar de novo</button></div>`
     : d.jira ? jira.folhaTicket(d.jira) : `<div class="folha"><div class="vazio-aba">Carregando do ${jira.nome}…</div></div>`;
-  if (aba === 'massa') return require('../qa/qa').massaHtml(pastaAba(t.id), vscode.workspace.getConfiguration('craftingTable').get('qaHoraRefresh') || '06:00');
+  const doQa = qa.corpoAba(aba, t, d, pastaAba(t.id)); // aba Massa do QA
+  if (doQa !== undefined) return doQa;
   const inc = require('../incidentes/incidentes').corpoAba(aba, t, d, pastaAba(t.id)); // Mergulho e Evidências do Incidente
   if (inc !== undefined) return inc;
   if (aba === 'esteira') return require('../implementacoes/esteira').corpo(t, d, pastaAba(t.id));
@@ -174,7 +175,7 @@ exports.provider = (ctx) => {
   };
   vigia.configurar({ render: () => render() }); // observador global: depois de responder a caixa, redesenha
   refinamento.iniciar(servicos, ctx); // liga o vigia de comentários do Jira (relógio de 5 min, dispose no ctx)
-  const modulosAcoes = [require('./notificacoes'), acoesQa, lista, abaDocs, refinamento, conversas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
+  const modulosAcoes = [require('./notificacoes'), qa, lista, abaDocs, refinamento, conversas, aoVivo, require('../incidentes/incidentes'), require('../componentes/fluxo-passos'), require('../implementacoes/esteira'), require('./documento')].reduce((o, m) => ({ ...o, ...m.acoes(servicos) }), {});
   const acoes = {
     ...conf.acoes,
     ...modulosAcoes,

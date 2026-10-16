@@ -31,7 +31,7 @@ Linha 3: **menu** (`menu-abas.js`): `Docs · Central · Ticket · Decisões | Co
 
 ### Rodapé (`componentes/rodape.js`)
 
-Em todas as telas do ticket: 🔔 **Notificações** e ▶ **Comandos**. Não é por módulo.
+Em todas as telas do ticket: 🔔 **Notificações** e ▶ **Comandos**. Não é por módulo; o que um módulo acrescenta depois de Comandos vem do gancho `rodape(dir, acao)` do registro (hoje só o QA: caixa do Ambiente).
 
 ### Vigia (global, `extensao/painel/vigia.js`)
 
@@ -42,15 +42,16 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 
 ### Pasta do módulo
 
-Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/incidentes/` e `extensao/refinamento/`.
+Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/incidentes/`, `extensao/refinamento/` e `extensao/qa/`.
 
 - `<modulo>.js`: o registro (ID, abas, ▶, ações, script, filtro da busca, artefatos da conversa…). Os pontos comuns leem daqui, sem `if` com regra do módulo. Sem `require` no topo (é carregado cedo).
-  Ganchos opcionais (o painel chama se o módulo tiver; hoje só o Refinamento): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`. A lógica deles fica num arquivo do módulo (ex.: `refinamento/ganchos-painel.js`), o registro só repassa.
+  Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento e o QA): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `refinamento/ganchos-painel.js`, `qa/situacao.js`), o registro só repassa.
+  Se o nome `<modulo>.js` já era a lógica (caso do QA), a API antiga vira um arquivo que só reexporta (`qa/motor.js`) para o `bin/`, as ações e os testes.
 - `orquestrador/` (um arquivo por regra: rodar, pausar, aprovar, retomar, responder…; `index.js` exporta) e `estado.js`: o que é comum a todas as etapas.
 - `etapas/`: `index.js` com a lista das etapas (dados) e **um arquivo por etapa**, numerado: `01-triagem.js`, `02-…`. Cada etapa exporta só os ganchos dela (`tarefa`, `antes`, `depois`, `responder`…; ver o `orquestrador/index.js`).
   Etapa grande vira pasta com o mesmo nome (`05-reproducao/`): `index.js` (encadeia), `subetapas/` (`5.1-plano.js`…), `regras/` e `dependencias.js`.
 - `abas/` (telas), `bin/` (scripts que o Claude chama), `testes/` (`teste-*.js`).
-- Formatação: Prettier (`extensao/.prettierrc.json`), hoje só em `incidentes/` e `refinamento/` (`.prettierignore`). Mexeu lá? `npm run formatar` em `extensao/` (`formatar:conferir` só confere).
+- Formatação: Prettier (`extensao/.prettierrc.json`), hoje só em `incidentes/`, `refinamento/` e `qa/` (`.prettierignore`). Mexeu lá? `npm run formatar` em `extensao/` (`formatar:conferir` só confere).
 
 ### Arquivos pequenos (sempre, em código novo ou alterado)
 

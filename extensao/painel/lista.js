@@ -9,6 +9,7 @@ const vinculados = require('../componentes/vinculados'); // caixa de vinculados 
 const implementacoes = require('../implementacoes/implementacoes');
 const incidentes = require('../incidentes/incidentes');
 const refinamento = require('../refinamento/refinamento');
+const qa = require('../qa/qa');
 const menuModulos = require('../componentes/menu-modulos');
 const { siteJira, projetoJira, boardsJira, pendencias: pendenciasDe } = require('../configuracao/configuracao');
 const variaveis = require('../provedores/variaveis');
@@ -21,7 +22,7 @@ const VINCULADOS = {
   [refinamento.ID]: refinamento.VINCULADOS,
   [implementacoes.ID]: implementacoes.VINCULADOS,
   [incidentes.ID]: incidentes.VINCULADOS,
-  qa: { titulo: 'Com a label', seletor: 'label', variavel: 'etapasQA' }
+  [qa.ID]: qa.VINCULADOS
 };
 // Status de cada caixa vêm das variáveis do provedor (variavel: chave); sem variável, a caixa não filtra (e a pendência avisa).
 const vinculadosDe = (k) => { const v = VINCULADOS[k]; return v?.variavel ? { ...v, status: [].concat(variaveis.ler(v.variavel)) } : v; };
@@ -93,9 +94,10 @@ const carregarMeus = async (s, forcar) => {
     let avisoBoard = '';
     if (!etapasJira && !fixo) etapasJira = await jira.etapas(s.secrets, siteJira(), projeto, boardsJira(), [].concat(variaveis.ler('etapasExtras'))).catch((e) => { avisoBoard = e.message; return null; });
     const coluna = (etapasJira || []).find((c) => c.nome === filtro);
-    if (k === 'qa' && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
+    const porLabel = VINCULADOS[k]?.seletor === 'label'; // QA: a caixa é a dos tickets com a label escolhida
+    if (porLabel && (!labelsQA || forcar)) labelsQA = await jira.labels(s.secrets, siteJira(), 'qa');
     const inc = k === incidentes.ID ? await incidentes.filtroBusca({ jira, secrets: s.secrets, site: siteJira(), projeto, boards: boardsJira(), variaveis }) : null; // Incidentes: boards das configurações e tipos de incidente
-    let itens = k === 'qa' && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: k === 'qa' ? labelQA(s) : '', tipos: inc?.tipos || '', boardId: inc?.boardId, projeto });
+    let itens = porLabel && !labelQA(s) ? [] : await jira.meus(s.secrets, siteJira(), { statusIds: coluna?.ids, label: porLabel ? labelQA(s) : '', tipos: inc?.tipos || '', boardId: inc?.boardId, projeto });
     itens = vinculados.filtrar(itens, vinculadosDe(k).status);
     meusPor[k] = { itens, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro: coluna ? filtro : '', aviso: avisoBoard, ocultos: s.globalState.get('meusOcultos') || [], em: Date.now() };
   } catch (e) { meusPor[k] = { erro: e.message, label: labelQA(s), labels: labelsQA, etapas: (etapasJira || []).map((c) => c.nome), filtro, em: Date.now() }; }

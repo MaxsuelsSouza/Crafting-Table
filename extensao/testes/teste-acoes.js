@@ -24,11 +24,12 @@ for (const s of fontes) {
 }
 
 // Módulos: handlers declarados como `const acoes = (s) => ({` (ou `(servicos) => ({`) com chaves a 2 espaços, fechando em `});` na coluna 0.
+// Também um grupo de cliques com outro nome na mesma forma (`const plano = (s) => ({`, qa/abas/acoes/), que o index do módulo junta em `acoes`.
 // Contrato: o módulo exporta `acoes(servicos)` e o painel.js lista o módulo em `modulosAcoes`.
 for (const s of fontes) {
-  const ini = s.search(/^const acoes = \(\w*\) => \(\{/m);
-  if (ini < 0) continue;
-  for (const m of s.slice(ini).split(/^\}\);/m)[0].matchAll(/^ {2}(?:async\s+)?([A-Za-z_]\w*)\s*(?:\(|:)/gm)) handlers.add(m[1]);
+  for (const { index: ini } of s.matchAll(/^const \w+ = \(\w*\) => \(\{/gm)) {
+    for (const m of s.slice(ini).split(/^\}\);/m)[0].matchAll(/^ {2}(?:async\s+)?([A-Za-z_]\w*)\s*(?:\(|:)/gm)) handlers.add(m[1]);
+  }
 }
 
 // Exceções legítimas: tratadas fora do `acoes` do painel.js.
