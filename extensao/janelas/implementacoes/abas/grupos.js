@@ -1,13 +1,13 @@
 // @ts-check
 // Aba Esteira do ticket com subtarefas: a Etapa 0 (0.1 a 0.6) e uma linha por grupo com a etapa em que ele está (abre a 1 → 7 dele),
-// os cartões de aprovação e de pausa do pai e de cada grupo (data-key = grupo) e o Ao vivo do pai (os grupos espelham nele, "[G1] …").
-const aoVivo = require('../../../componentes/ao-vivo');
+// os cartões de aprovação e de pausa do pai e de cada grupo (data-key = grupo) e o Ao vivo: o de cada grupo em andamento lado a lado, com as
+// alterações do worktree embaixo (ao-vivo-grupos.js), ou o do pai (os grupos espelham nele, "[G1] …").
 const caixaEtapas = require('../../../componentes/caixa-etapas');
 const { esc } = require('../../../infra/texto');
 const { ETAPAS } = require('../etapas');
 const { SUBETAPAS } = require('../etapas/00-subtarefas');
 const { lerPlano, lerSubs, dirGrupo } = require('../etapas/00-subtarefas/arquivos');
-const { situacao, controlesDe, existe } = require('../estado');
+const { situacao, existe } = require('../estado');
 const { cartaoPausa, cartaoAprovacao } = require('./cartoes');
 const { CSS } = require('./css');
 const { rotulo } = require('../etapas/05-implementacao/regras/nome-branch');
@@ -98,7 +98,7 @@ const corpo = (t, d0, dir) => {
     .join('');
   return `${CSS}${caixaEtapas.caixa({ titulo: 'Esteira de implementação · subtarefas', etapas, atual: e.planoAprovado ? '' : 0 })}
   ${resumo}${cartaoAprovacao(e, sit.fase, dir)}${cartaoPausa(e, sit.fase)}${porGrupo}
-  ${aoVivo.caixa(dir, sit.rodando, 'esteira', controlesDe(sit))}`;
+  ${require('./ao-vivo-grupos').corpo(t, dir, sit, plano)}`;
 };
 
 module.exports = { corpo };

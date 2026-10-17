@@ -15,7 +15,7 @@ const { linhas } = require('./linhas');
 const GIT_LEITURA = ['status', 'log', 'diff', 'show', 'branch', 'fetch', 'rev-parse', 'rev-list', 'ls-remote', 'for-each-ref', 'merge-base', 'cherry', 'describe', 'blame', 'ls-files', 'cat-file', 'name-rev']
   .flatMap((c) => [`Bash(git ${c}:*)`, `Bash(git -C * ${c}:*)`]);
 
-// Roda uma etapa. ferramentas: lista do --allowedTools. continuar: retoma a última sessão do ticket; sessao: retoma esta sessão (id) em vez da última.
+// Roda uma etapa. ferramentas: lista do --allowedTools (mais o que o usuário liberou em Configurações → Permissões). continuar: retoma a última sessão do ticket; sessao: retoma esta sessão (id) em vez da última.
 // extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
 function rodar(dir, opcoes) {
   const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, sessao = null, aoMudar = () => {} } = opcoes;
@@ -28,8 +28,9 @@ function rodar(dir, opcoes) {
   if (continuar) sid = anterior;
   if (sessao) sid = sessao;
   let sessaoId = null; // desta execução
+  const liberadas = require('../permissoes').regras(); // Configurações → Permissões
   const args = ['-p', prompt + PEDIDO_DECISAO, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits',
-    ...(ferramentas.length ? ['--allowedTools', ...new Set([...ferramentas, ...GIT_LEITURA])] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
+    ...(ferramentas.length || liberadas.length ? ['--allowedTools', ...new Set([...ferramentas, ...(ferramentas.length ? GIT_LEITURA : []), ...liberadas])] : []), ...(proibidas.length ? ['--disallowedTools', ...proibidas] : []), ...extras, ...(sid ? ['--resume', sid] : [])];
   const p = spawn(claudeBin(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   rodando.set(dir, p);
   vigia.iniciar(dir);

@@ -421,8 +421,10 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     assert.strictEqual(T.estado(DIR).fase, 'pausado');
     assert.deepStrictEqual(Object.keys(esteira.acoes(s)).sort(), [
       'esteiraAbrir',
+      'esteiraAbrirArquivo',
       'esteiraAjuste',
       'esteiraAprovar',
+      'esteiraArquivo',
       'esteiraDossieDe',
       'esteiraIniciar',
       'esteiraObs',

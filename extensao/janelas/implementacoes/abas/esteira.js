@@ -1,5 +1,5 @@
 // @ts-check
-// Aba "Esteira": caixa de etapas, resumo do dossiê, explicação do dev (opcional), card de aprovação, card de pausa e o Ao vivo.
+// Aba "Esteira": caixa de etapas, resumo do dossiê, explicação do dev (opcional), card de aprovação, card de pausa, o Ao vivo e as Alterações (alteracoes.js).
 // Também o ▶/⏸ do cabeçalho do ticket (botaoPlay) e o script da webview (moldura.js): a explicação do dev grava ao sair do campo.
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +14,8 @@ const { CSS, btn } = require('./css');
 const { cartaoPausa, cartaoAprovacao } = require('./cartoes');
 const { rotulo } = require('../etapas/05-implementacao/regras/nome-branch');
 const { separar } = require('../etapas/00-subtarefas/regras/filtro');
+const { reposDe } = require('../../../infra/ticket/repos');
+const alteracoes = require('./alteracoes');
 
 const resumoDossie = (d) =>
   d
@@ -76,7 +78,8 @@ const corpo = (t, d0, dir) => {
   <div class="folha"><textarea class="es-obs" data-texto data-obs-impl placeholder="Explique com suas palavras (o que mudar, como saber que ficou certo). Vira a fonte verbal do dossiê.">${esc(briefing)}</textarea></div>`
       : ''
   }${aprovacao}${pausa}
-  ${aoVivo.caixa(dir, sit.rodando, 'esteira', controlesDe(sit))}`;
+  ${aoVivo.caixa(dir, sit.rodando, 'esteira', controlesDe(sit))}
+  ${nova ? '' : alteracoes.CSS + alteracoes.caixa(dir, reposDe(t))}`;
 };
 
 /** ⏸/▶ do cabeçalho do ticket em Implementações (b monta o data-acao/data-painel). */
@@ -86,6 +89,7 @@ const botaoPlay = (dir, b) => {
 };
 // Script da webview (moldura.js): a explicação do dev vai para a ação esteiraObs ao sair do campo.
 const script = () => `// Esteira (implementações): a explicação do dev grava ao sair do campo.
-  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs-impl]')) enviar({ acao: 'esteiraObs', texto: e.target.value }); });`;
+  document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea[data-obs-impl]')) enviar({ acao: 'esteiraObs', texto: e.target.value }); });
+  ${alteracoes.script()}`;
 
 module.exports = { corpo, botaoPlay, script, resumoDossie };

@@ -16,7 +16,7 @@ const conexao = require('./conexao');
 const etapas = require('../infra/agentes/etapas');
 const { agenteAtivo } = require('../infra/agentes');
 
-// Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre e um card por seção), com os cliques e os testes de cada seção.
+// Tela "Configurações": a tela do ⚙ (menu Geral · Comandos · Plugins · Cofre · Variáveis · Permissões e um card por seção), com os cliques e os testes de cada seção.
 // Usado pelo painel.js: criar(ctx, ganchos) devolve { corpo, acoes, aberta, aba, checar }; o painel põe corpo() na página, espalha `acoes`
 // nas suas e chama render quando algo mudar. CSS no <style>. Cliques por data-acao: config, configFechar, cfgAba, cfgEditar, cfgTestar, provedor*,
 // cfgRepo*, cfgBanco*, cfgTeams*, pluginAlternar, atualizarExtensao. Cofre e Comandos são telas de outros módulos, com os
@@ -66,7 +66,7 @@ let avisoInstalacao = null; // { motivos: string[] } | null: o instalar.sh preci
 const aviso = () => avisoInstalacao;
 
 // Plugins só aparece para agente com plugins/marketplace (infra/agentes/index.js).
-const ABAS = (comPlugins = true) => [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, ...(comPlugins ? [{ id: 'plugins', nome: 'Plugins' }] : []), { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }];
+const ABAS = (comPlugins = true) => [{ id: 'geral', nome: 'Geral' }, { id: 'comandos', nome: 'Comandos' }, ...(comPlugins ? [{ id: 'plugins', nome: 'Plugins' }] : []), { id: 'cofre', nome: 'Cofre' }, { id: 'variaveis', nome: 'Variáveis' }, { id: 'permissoes', nome: 'Permissões' }];
 const AMB_BANCO = { 'copia-producao': 'cópia de produção', qas: 'QAS', producao: 'produção (bloqueada)' };
 
 // Card "Ferramenta de gestão de trabalho". Sem conexão: lista dos provedores (os sem adaptador ficam "em breve", desabilitados).
@@ -219,10 +219,11 @@ const tela = (v) => `<header class="ct-cab"><div class="ct-linha">
     ${botao(v.voltar, { variante: 'icone', acao: 'configFechar', titulo: 'Voltar para a lista' })}
     <span class="ct-titulo">Configurações</span></div>
     ${menuAbas.menu(ABAS(v.comPlugins !== false), { aba: v.aba || 'geral', secao: 'cfg', principal: 'cfg', dentro: true, acao: 'cfgAba' })}</header>
-  <main class="rolagem cfg">${v.aba === 'plugins' && v.comPlugins !== false ? plugins(v) : v.aba === 'variaveis' ? variaveisTela(v) : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
+  <main class="rolagem cfg">${v.aba === 'plugins' && v.comPlugins !== false ? plugins(v) : v.aba === 'variaveis' ? variaveisTela(v) : v.aba === 'permissoes' ? require('./permissoes').tela() : v.aba === 'cofre' || v.aba === 'comandos' ? outras(v) : geral(v)}</main>`;
 
 const CSS = `
   ${cardConfig.CSS}
+  ${require('./permissoes').CSS}
   .ct-cab .ct-menu { margin: 8px 0; }
   .cfg { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
   .cfg-versao { text-align: center; margin: 14px 0 6px; }
@@ -405,11 +406,21 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   };
   const acoes = {
     cfgAba({ id }) {
-      cfgAba = ['cofre', 'comandos', 'plugins', 'variaveis'].includes(id) ? id : 'geral';
+      cfgAba = ['cofre', 'comandos', 'plugins', 'variaveis', 'permissoes'].includes(id) ? id : 'geral';
       require('../modulos/cofre').api?.aoMudar(() => cfgAberta && cfgAba === 'cofre' && render());
       if (cfgAba === 'plugins' && !agp()) cfgAba = 'geral';
       if (cfgAba === 'plugins') plugChecar(false);
       if (cfgAba === 'comandos') { require('../modulos/comandos').api?.atualizar(); require('../modulos/emulador').api?.atualizar(); }
+      if (cfgAba === 'permissoes') acoes.permAtualizar();
+      render();
+    },
+    // Aba Permissões (permissoes.js): marcar/desmarcar bloco, módulo ou comando; reler o histórico das conversas (contagem).
+    permAlternar({ id }) {
+      if (typeof id === 'string' && /^[bmc]:/.test(id)) require('../infra/agentes/permissoes').alternar(id);
+      render();
+    },
+    permAtualizar() {
+      require('../infra/agentes/permissoes').atualizar().catch(() => {}).then(() => cfgAberta && cfgAba === 'permissoes' && render());
       render();
     },
     atualizarExtensao() {

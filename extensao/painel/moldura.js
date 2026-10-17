@@ -172,6 +172,7 @@ ${nota ? `<script nonce="${nonce}">${notas.scriptNotas(nota.html, nota.sid, nota
     enviar({ acao: el.dataset.acao, id: el.dataset.id, op: el.dataset.op, key: el.dataset.key, texto: el.closest('.folha')?.querySelector('textarea[data-texto]')?.value });
   });
   ${implementacoes.script()}
+  ${require('../configuracao/permissoes').script()}
 
   // Decisões abertas continuam abertas depois do redesenho.
   const abertas = new Set((vscode.getState() || {}).decisoes || []);

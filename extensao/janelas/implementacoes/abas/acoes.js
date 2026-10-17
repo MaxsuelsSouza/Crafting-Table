@@ -117,6 +117,17 @@ const acoes = (s) => ({
     const p = estado(a.dir).pausa;
     await responder(a.s, a.t, op !== undefined && op !== '' ? p?.opcoes?.[Number(op)] : texto);
   },
+  // Alterações (alteracoes.js): o arquivo do editor ao lado da árvore (data-key = grupo) e abri-lo no VS Code.
+  esteiraArquivo({ id, key }) {
+    const a = alvo(s, key);
+    if (!a) return;
+    require('./alteracoes').escolher(a.dir, a.s.reposDe(a.t), id);
+    s.render();
+  },
+  esteiraAbrirArquivo({ key }) {
+    const a = alvo(s, key);
+    if (a) require('./alteracoes').abrir(a.dir);
+  },
   // Aba Dossiê do ticket com subtarefas: de quem é o dossiê mostrado (Pai, G1, G2).
   esteiraDossieDe({ key }) {
     const t = s.ticketAberto();

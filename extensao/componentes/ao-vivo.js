@@ -18,6 +18,8 @@ const { IC } = require('./icones');
 // prefixo no texto (Implementações: o Ao vivo de cada grupo de subtarefas aparece no do ticket pai, "[G1] …"). Em memória: vale nesta janela.
 // Para usar numa tela: CSS no <style>, caixa(dir, rodando, alvo) no corpo, script(chave) no <script> e redesenhar
 // quando um dos ARQUIVOS mudar na pasta. O botão Ver tudo/Recolher manda data-painel="vivoExpandir" (painel.js).
+// Várias caixas na mesma tela (Implementações: uma por grupo, lado a lado): caixa(..., id) com um id diferente em cada uma.
+// Outra parte da tela que deve acompanhar a linha nova sem recarregar a página: marque com data-vivo-troca="<id único>".
 const ARQ = '.ao-vivo.jsonl', EXPANDIDO = '.ao-vivo.expandido';
 const ARQUIVOS = [ARQ, EXPANDIDO];
 const RECENTES = 40; // linhas na caixa recolhida
@@ -106,7 +108,7 @@ const controle = (rodando, c, b = (acao) => `data-acao="${acao}"`) => (c?.retoma
 
 const conversa = (c) => (c?.conversa === true ? `<button class="vivo-exp vivo-conversa" data-acao="claude" title="${esc(c.dicaConversa || 'Abre o chat do Claude neste ticket, com o contexto e os artefatos já citados')}">Conduzir em conversa</button>` : '');
 
-const caixa = (dir, rodando, alvo, controles) => {
+const caixa = (dir, rodando, alvo, controles, id = 'aoVivo') => {
   const exp = expandido(dir), total = ler(dir).length, l = linhas(dir, exp ? Infinity : RECENTES);
   if (!l.length) return controles?.conversa === true // só com a flag: o botão existe antes de o Claude falar
     ? `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${conversa(controles)}${controle(rodando, controles)}</span></div>
@@ -114,7 +116,7 @@ const caixa = (dir, rodando, alvo, controles) => {
   const botao = alvo && (exp || total > l.length) ? `<button class="vivo-exp" data-painel="vivoExpandir" data-id="${esc(alvo)}"
     title="${exp ? `Voltar às últimas ${RECENTES} linhas` : 'Mostrar o log inteiro, do primeiro ao mais recente'}">${exp ? 'Recolher' : `Ver tudo (${total})`}</button>` : '';
   return `<div class="caixa-t">Ao vivo<span>${rodando ? '<span class="vivo-bola"></span>Claude trabalhando' : 'parado'}${botao}${conversa(controles)}${controle(rodando, controles)}</span></div>
-  <div class="folha ao-vivo ${exp ? 'expandido' : ''}" id="aoVivo">${recentesPrimeiro(l).map((x) => {
+  <div class="folha ao-vivo ${exp ? 'expandido' : ''}" id="${esc(id)}">${recentesPrimeiro(l).map((x) => {
     const tipo = TIPO[x.tipo] || x.tipo;
     // Sua mensagem foi a última coisa do log e o Claude está rodando: ele ainda está lendo/analisando, então 3 pontinhos (some com a 1ª linha dele).
     const digitando = tipo === 'voce' && rodando && l.slice(l.lastIndexOf(x) + 1).every((y) => ['aviso', 'etapa'].includes(TIPO[y.tipo] || y.tipo)) && x === l.findLast((y) => y.tipo === 'voce') ? '<div class="vivo v-digitando" title="O Claude está analisando a sua mensagem"><span class="vp"></span><span class="vp"></span><span class="vp"></span></div>' : '';
@@ -128,22 +130,30 @@ const caixa = (dir, rodando, alvo, controles) => {
 // Script da webview: a tela é redesenhada a cada linha nova; a caixa volta para a rolagem em que estava.
 // chave: nome no vscode.getState() (cada webview tem o seu). Espera `vscode` (acquireVsCodeApi) já definido.
 const script = (chave = 'vivo') => `{
-  const av = document.getElementById('aoVivo');
-  if (av) {
-    av.scrollTop = (vscode.getState() || {})[${JSON.stringify(chave)}] || 0;
-    av.addEventListener('scroll', () => vscode.setState({ ...(vscode.getState() || {}), [${JSON.stringify(chave)}]: av.scrollTop }), { passive: true });
-  }
-  // Linha nova: o host manda só a tela nova ({ tipo: 'vivo', html }) e a caixa é trocada no lugar, sem recarregar a página
-  // (a rolagem da página e a da caixa ficam onde a pessoa deixou). Sem caixa na página, pede o redesenho completo.
+  const st = () => vscode.getState() || {}, rolagens = () => st()[${JSON.stringify(chave)}] || {};
+  document.querySelectorAll('.ao-vivo[id]').forEach((av) => {
+    av.scrollTop = rolagens()[av.id] || 0;
+    av.addEventListener('scroll', () => vscode.setState({ ...st(), [${JSON.stringify(chave)}]: { ...rolagens(), [av.id]: av.scrollTop } }), { passive: true });
+  });
+  // Linha nova: o host manda só a tela nova ({ tipo: 'vivo', html }) e cada caixa (e cada [data-vivo-troca]) é trocada no lugar, sem recarregar
+  // a página (a rolagem da página e a de cada caixa ficam onde a pessoa deixou). Caixa que surgiu ou sumiu: pede o redesenho completo.
   addEventListener('message', (e) => {
     if (e.data?.tipo !== 'vivo') return;
-    const novo = new DOMParser().parseFromString(e.data.html, 'text/html').getElementById('aoVivo'), box = document.getElementById('aoVivo');
-    if (!novo || !box) return vscode.postMessage({ acao: 'vivoRecarregar' });
-    const topo = box.scrollTop, altura = box.scrollHeight;
-    box.className = novo.className; box.innerHTML = novo.innerHTML;
-    if (topo > 0) box.scrollTop = topo + box.scrollHeight - altura; // linha nova entra em cima: quem lê mais abaixo não é empurrado
-    const cab = box.previousElementSibling, ncab = novo.previousElementSibling;
-    if (cab?.classList.contains('caixa-t') && ncab) cab.innerHTML = ncab.innerHTML;
+    const doc = new DOMParser().parseFromString(e.data.html, 'text/html');
+    const ids = (d) => [...d.querySelectorAll('.ao-vivo[id]')].map((x) => x.id).join('|');
+    if (!document.querySelector('.ao-vivo[id]') || ids(doc) !== ids(document)) return vscode.postMessage({ acao: 'vivoRecarregar' });
+    doc.querySelectorAll('.ao-vivo[id]').forEach((novo) => {
+      const box = document.getElementById(novo.id), topo = box.scrollTop, altura = box.scrollHeight;
+      box.className = novo.className; box.innerHTML = novo.innerHTML;
+      if (topo > 0) box.scrollTop = topo + box.scrollHeight - altura; // linha nova entra em cima: quem lê mais abaixo não é empurrado
+      const cab = box.previousElementSibling, ncab = novo.previousElementSibling;
+      if (cab?.classList.contains('caixa-t') && ncab) cab.innerHTML = ncab.innerHTML;
+    });
+    doc.querySelectorAll('[data-vivo-troca]').forEach((novo) => {
+      const el = document.querySelector('[data-vivo-troca="' + novo.dataset.vivoTroca + '"]');
+      if (el && el.innerHTML !== novo.innerHTML) el.innerHTML = novo.innerHTML;
+    });
+    document.dispatchEvent(new Event('vivo-trocado'));
   });
 }`;
 
