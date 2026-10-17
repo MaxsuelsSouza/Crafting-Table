@@ -1,12 +1,12 @@
 // @ts-check
-// Estado da esteira de Implementação em <aba>/.esteira.json (etapa, fase, pausa, aprovacao, tentativas, correcao, branches, modo, reproducao,
-// syncOk, host), a situação única da tela, a pausa e os textos das opções que a extensão resolve sozinha. Comum a todas as etapas e às abas.
+// Estado da esteira de Implementação em <aba>/.esteira.json (etapa, fase, pausa, aprovacao, tentativas, correcao, branches, bases, modo, reproducao,
+// syncOk, host; no pai com subtarefas: subtarefas, planoAprovado, integrado, verificadoFinal; no grupo: iniciado, worktree), a situação única da tela, a pausa e os textos das opções que a extensão resolve sozinha. Comum a todas as etapas e às abas.
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../componentes/ao-vivo');
 const maestro = require('../../infra/agentes/maestro');
 const { filhos } = require('./dependencias');
-const { ETAPAS } = require('./etapas');
+const { etapa } = require('./etapas');
 
 const ESTADO = '.esteira.json';
 const PAUSA = '.pausa.json',
@@ -63,10 +63,29 @@ const vivoPid = (pid) => {
   }
 };
 // "rodando" no arquivo só vale com o Claude vivo ou a janela dona viva; senão a execução foi interrompida e conta como parada.
+// Pai com grupos de subtarefas (fase 'grupos'): rodando = algum grupo rodando; sem grupo rodando, aguardando ou pausado, conta como parado.
 const situacao = (dir) => {
-  const e = estado(dir),
-    rodando = maestro.rodando(dir) || filhos.has(dir) || (e.fase === 'rodando' && vivoPid(e.host));
-  return { e, rodando, fase: e.fase === 'rodando' && !rodando ? 'parado' : e.fase };
+  const e = estado(dir);
+  let rodando = maestro.rodando(dir) || filhos.has(dir) || (e.fase === 'rodando' && vivoPid(e.host));
+  if (e.fase !== 'grupos') return { e, rodando, fase: e.fase === 'rodando' && !rodando ? 'parado' : e.fase };
+  const gs = gruposDe(dir).map(situacao);
+  rodando = rodando || gs.some((g) => g.rodando);
+  return {
+    e,
+    rodando,
+    fase: rodando || gs.some((g) => ['aguardando', 'pausado'].includes(g.fase)) ? 'grupos' : 'parado'
+  };
+};
+// Pastas dos grupos de subtarefas (grupos/<id>/), em ordem.
+const gruposDe = (dir) => {
+  try {
+    return fs
+      .readdirSync(path.join(dir, 'grupos'))
+      .sort()
+      .map((g) => path.join(dir, 'grupos', g));
+  } catch {
+    return [];
+  }
 };
 const controlesDe = (sit) => ({
   conversa: true,
@@ -78,7 +97,7 @@ const controlesDe = (sit) => ({
       : null,
   dicaRetomar: 'Retomar a esteira da etapa em que parou'
 });
-const existe = (dir, n) => fs.existsSync(path.join(dir, ETAPAS[n - 1].arq));
+const existe = (dir, n) => fs.existsSync(path.join(dir, etapa(n).arq));
 const pausar = (dir, etapa, pausa, aviso) => {
   mudar(dir, { etapa, fase: 'pausado', pausa: { opcoes: [], ...pausa } });
   aoVivo.anotar(dir, { tipo: 'aviso', texto: aviso || `Esteira pausada na etapa ${etapa}: aguardando sua resposta` });
@@ -101,6 +120,7 @@ module.exports = {
   estado,
   mudar,
   situacao,
+  gruposDe,
   controlesDe,
   existe,
   pausar

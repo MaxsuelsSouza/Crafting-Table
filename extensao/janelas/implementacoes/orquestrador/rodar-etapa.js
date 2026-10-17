@@ -8,7 +8,7 @@ const controle = require('../../../infra/controle');
 const vagas = require('../../../infra/agentes/etapas');
 const dossie = require('../../../infra/dossie');
 const prompts = require('../prompts');
-const { ETAPAS, ARQ } = require('../etapas');
+const { etapa, ARQ } = require('../etapas');
 const { estado, mudar, lerJson } = require('../estado');
 const { limparPausa } = require('./pausa');
 const { ambiente, textoBanco } = require('./ambiente');
@@ -46,7 +46,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
     mapa = vagas.raiz('impl.mapa') || '',
     e0 = estado(dir),
     d = dossie.lerGravado(dir);
-  const arqEtapa = path.join(dir, ETAPAS[n - 1].arq),
+  const arqEtapa = path.join(dir, etapa(n).arq),
     antes = ajuste && fs.existsSync(arqEtapa) ? fs.statSync(arqEtapa).mtimeMs : 0;
   if (!ajuste && n !== 5) fs.rmSync(arqEtapa, { force: true });
   if (n === 5) fs.rmSync(arqEtapa, { force: true }); // o log de cada tentativa é novo
@@ -75,7 +75,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
         ajuste,
         gitResumo: n === 7 ? resumoGit(env.repos, e0.branches) : ''
       }) + vagas.aviso('impl.mapa'),
-    titulo: `Esteira · Etapa ${n}: ${ETAPAS[n - 1].nome}${ajuste ? ' (ajuste)' : e0.correcao && n === 5 ? ` (correção ${e0.tentativas})` : ''}`,
+    titulo: `Esteira · Etapa ${n}: ${etapa(n).nome}${ajuste ? ' (ajuste)' : e0.correcao && n === 5 ? ` (correção ${e0.tentativas})` : ''}`,
     ferramentas: FERRAMENTAS(n, mapa),
     env: {
       MAPA_DB_CONEXAO: env.banco.conexao,

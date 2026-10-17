@@ -44,7 +44,7 @@ const acoes = (_s) => ({
   modeloRetomar() {}
 });
 
-// Ganchos opcionais (dadosAba, antesDaAba, aoDesenhar, observar, pill, faixa, contadorAba, situacao, pedidoConversa, iniciar, aoAtualizar, CSS,
+// Ganchos opcionais (dadosAba, antesDaAba, aoDesenhar, observar, pill, faixa, contadorAba, situacao, selos, pedidoConversa, iniciar, aoAtualizar, CSS,
 // rodape, evidencias, ETAPA_PEDIDO): ver LEIA-ME.md e os exemplos em extensao/janelas/refinamento/refinamento.js e extensao/janelas/qa/qa.js.
 
 module.exports = { ID, ROTULO, DICA, VINCULADOS, ETAPA, ABAS, corpoCentral, botaoPlay, acoes };

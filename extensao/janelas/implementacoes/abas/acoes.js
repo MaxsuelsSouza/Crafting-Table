@@ -1,11 +1,12 @@
 // @ts-check
 // Cliques das abas da esteira (data-acao): abrir e aprovar o documento da etapa, pedir ajuste, ⏸/▶, explicação do dev, iniciar e responder à pausa.
+// Ticket com subtarefas: data-key = grupo (o cartão daquele grupo); sem data-key, o pai. alvo() devolve os serviços, o ticket e a pasta certos.
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../../componentes/ao-vivo');
 const controle = require('../../../infra/controle');
 const dossie = require('../../../infra/dossie');
-const { ETAPAS } = require('../etapas');
+const { etapa } = require('../etapas');
 const { RESPOSTAS, estado, mudar } = require('../estado');
 const { rodarEtapa, proxima, seguir, retomar, pausarManual, responder } = require('../orquestrador');
 
@@ -16,13 +17,21 @@ const dentro = (s, nome) => {
   return f && (f === dir || f.startsWith(dir + path.sep)) ? f : null;
 };
 
+// { s, t, dir } do pai ou do grupo `key` (orquestrador/grupos/contexto.js).
+const alvo = (s, key) => {
+  const t = s.ticketAberto();
+  if (!t) return null;
+  if (!key) return { s, t, dir: s.pastaAba(t.id) };
+  return require('../orquestrador/grupos').contexto(s, t, key);
+};
+
 const acoes = (s) => ({
-  esteiraAbrir({ id }) {
-    const t = s.ticketAberto(),
+  esteiraAbrir({ id, key }) {
+    const a = alvo(s, key),
       n = Number(id),
-      et = ETAPAS[n - 1];
-    if (!t || !et) return;
-    const dir = s.pastaAba(t.id),
+      et = etapa(n);
+    if (!a || !et) return;
+    const dir = a.dir,
       arq = path.join(dir, et.arq),
       vscode = require('vscode');
     if (!fs.existsSync(arq)) return vscode.window.showWarningMessage(`O arquivo ainda não existe: ${arq}`);
@@ -30,13 +39,13 @@ const acoes = (s) => ({
     vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(arq));
     s.render();
   },
-  async esteiraAprovar() {
-    const t = s.ticketAberto(),
+  async esteiraAprovar({ key } = {}) {
+    const a = alvo(s, key),
       vscode = require('vscode');
-    if (!t) return;
-    const dir = s.pastaAba(t.id),
+    if (!a) return;
+    const dir = a.dir,
       e = estado(dir),
-      et = ETAPAS[e.etapa - 1];
+      et = etapa(e.etapa);
     if (e.fase !== 'aguardando' || !et) return;
     if (!e.aprovacao?.lido) return vscode.window.showWarningMessage('Abra e leia o documento antes de aprovar.');
     const ok = await vscode.window.showInformationMessage(
@@ -46,21 +55,23 @@ const acoes = (s) => ({
         detail:
           et.n === 4
             ? 'Depois de aprovado, a esteira cria a branch de trabalho e altera o código dos repositórios (sem commit nem push).'
-            : 'Depois de aprovada, a esteira segue sozinha para a próxima etapa.'
+            : et.n === 0
+              ? 'Depois de aprovado, a esteira cria a branch do ticket (feature/, bugfix/ ou hotfix/<CHAVE>) e começa os grupos de subtarefas (no máximo 2 agentes ao mesmo tempo).'
+              : 'Depois de aprovada, a esteira segue sozinha para a próxima etapa.'
       },
       'Aprovar'
     );
     if (!ok) return;
     aoVivo.anotar(dir, { tipo: 'fim', texto: `Etapa ${et.n} aprovada por você` });
-    await proxima(s, t, et.n, controle.nova(dir));
+    await proxima(a.s, a.t, et.n, controle.nova(dir));
   },
-  async esteiraAjuste() {
-    const t = s.ticketAberto(),
+  async esteiraAjuste({ key } = {}) {
+    const a = alvo(s, key),
       vscode = require('vscode');
-    if (!t) return;
-    const dir = s.pastaAba(t.id),
+    if (!a) return;
+    const dir = a.dir,
       e = estado(dir),
-      et = ETAPAS[e.etapa - 1];
+      et = etapa(e.etapa);
     if (e.fase !== 'aguardando' || !et) return;
     const texto = await vscode.window.showInputBox({
       title: `Ajuste na etapa ${et.n} (${et.nome})`,
@@ -70,7 +81,7 @@ const acoes = (s) => ({
     if (!texto?.trim()) return;
     fs.appendFileSync(path.join(dir, RESPOSTAS), `## Ajuste pedido na etapa ${et.n} (${et.arq})\n${texto.trim()}\n\n`);
     aoVivo.anotar(dir, { tipo: 'aviso', texto: `Ajuste pedido na etapa ${et.n}: ${texto.trim().slice(0, 120)}` });
-    await rodarEtapa(s, t, et.n, controle.nova(dir), true);
+    await rodarEtapa(a.s, a.t, et.n, controle.nova(dir), true);
   },
   esteiraPausar() {
     const t = s.ticketAberto();
@@ -100,12 +111,19 @@ const acoes = (s) => ({
     }
     await seguir(s, t);
   },
-  async esteiraResponder({ op, texto }) {
+  async esteiraResponder({ op, texto, key }) {
+    const a = alvo(s, key);
+    if (!a) return;
+    const p = estado(a.dir).pausa;
+    await responder(a.s, a.t, op !== undefined && op !== '' ? p?.opcoes?.[Number(op)] : texto);
+  },
+  // Aba Dossiê do ticket com subtarefas: de quem é o dossiê mostrado (Pai, G1, G2).
+  esteiraDossieDe({ key }) {
     const t = s.ticketAberto();
     if (!t) return;
-    const p = estado(s.pastaAba(t.id)).pausa;
-    await responder(s, t, op !== undefined && op !== '' ? p?.opcoes?.[Number(op)] : texto);
+    require('./dossie-subtarefas').escolher(s.pastaAba(t.id), key);
+    s.render();
   }
 });
 
-module.exports = { acoes, dentro };
+module.exports = { acoes, dentro, alvo };

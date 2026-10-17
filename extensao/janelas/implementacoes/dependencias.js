@@ -1,5 +1,6 @@
 // @ts-check
 // Dependências da esteira com o mundo de fora (VS Code, git, terminal, provedor). Os testes trocam os campos de _teste.deps (o mesmo objeto).
+// subtarefas: descrição das subtarefas (provedor). gitBruto: git sem trim (patch do worktree).
 // filhos: pasta -> processo da verificação em andamento (estado.js conta como rodando; o ⏸ mata).
 const { execFileSync, spawn } = require('child_process');
 const reproducao = require('./etapas/01-dossie/reproducao');
@@ -10,11 +11,26 @@ const git = (cwd, args) =>
     timeout: 60000,
     stdio: ['ignore', 'pipe', 'pipe']
   }).trim();
+// git sem trim e com entrada (diff e apply do worktree: o patch precisa da quebra de linha final).
+const gitBruto = (cwd, args, input) =>
+  execFileSync('git', ['-C', cwd, ...args], {
+    encoding: 'utf8',
+    timeout: 120000,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    ...(input !== undefined ? { input } : {})
+  });
 const filhos = new Map(); // pasta -> processo da verificação em andamento
 const deps = {
   cfg: () => require('../../configuracao/configuracao').cfg(),
   comandos: () => require('../../modulos/comandos').api?.lista() || [],
   git,
+  gitBruto,
+  // Subtarefas do ticket com a descrição em Markdown (Etapa 0): [{ key, resumo, status, md }].
+  subtarefas: (s, t) => {
+    const { jira } = require('../../infra/provedores/fachada');
+    return jira.filhos(s.secrets, jira.alvo(t));
+  },
   executar: (cmd, cwd, dir) =>
     new Promise((ok) => {
       // roda um comando das Configurações > Comandos e devolve o código e o fim da saída

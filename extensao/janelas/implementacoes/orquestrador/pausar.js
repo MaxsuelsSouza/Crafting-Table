@@ -7,6 +7,7 @@ const { estado, pausar } = require('../estado');
 
 const pausarManual = (s, t) => {
   const dir = s.pastaAba(t.id);
+  if (!t.grupo && estado(dir).subtarefas === 'sim') require('./grupos').pausarGrupos(s, t); // ticket com subtarefas: para os grupos também
   controle.cancelar(dir);
   maestro.parar(dir);
   try {

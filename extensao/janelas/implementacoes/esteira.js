@@ -32,7 +32,7 @@ const {
 const { prepararDossie } = require('./etapas/01-dossie/subetapas/1.1-dossie');
 const { rodarReproducao, aposReproducao } = require('./etapas/01-dossie/subetapas/1.2-reproducao');
 const { FERRAMENTAS_REPRO } = require('./etapas/01-dossie/regras/ferramentas');
-const { prepararBranches, afetados, ramo, slug } = require('./etapas/05-implementacao');
+const { prepararBranches, afetados, ramo } = require('./etapas/05-implementacao');
 const { verificar, verificacaoComandos, MAX_CORRECOES } = require('./etapas/06-verificacao');
 const { corpo, botaoPlay } = require('./abas/esteira');
 const { corpoDossie } = require('./abas/dossie');
@@ -59,7 +59,6 @@ module.exports = {
     verificar,
     afetados,
     ramo,
-    slug,
     verificacaoComandos,
     FERRAMENTAS,
     FERRAMENTAS_REPRO,

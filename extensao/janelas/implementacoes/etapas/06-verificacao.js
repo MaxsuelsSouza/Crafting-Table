@@ -1,6 +1,7 @@
 // @ts-check
 // Etapa 6 · Verificação (extensão, sem IA): roda os comandos de build e teste de Configurações > Comandos e grava verificacao.json.
 // Falhou: volta para a 5 em modo correção (até MAX_CORRECOES) e depois pausa. Passou: segue para o Resumo.
+// Grupo de subtarefas em worktree (estado.worktree): pula; a verificação final do pai roda com tudo junto (orquestrador/grupos/).
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../../componentes/ao-vivo');
@@ -24,6 +25,25 @@ const verificacaoComandos = () => [
     .map((b) => ({ ...b, papel: 'teste' }))
 ];
 
+// Grupo em worktree: os comandos rodam na pasta do repositório (não no worktree); a verificação dele é a final, depois de integrar.
+function verificarNaIntegracao(s, t, dir, rodada, proxima) {
+  fs.writeFileSync(
+    path.join(dir, ARQ[6]),
+    JSON.stringify(
+      {
+        ok: true,
+        em: new Date().toISOString(),
+        rodadas: [],
+        pendencias: ['Grupo em worktree: verificado na verificação final, com os grupos juntos.']
+      },
+      null,
+      2
+    )
+  );
+  aoVivo.anotar(dir, { tipo: 'fim', texto: 'Verificação fica para o fim: este grupo roda num worktree' });
+  return proxima(s, t, 6, rodada);
+}
+
 async function verificar(s, t, rodada) {
   const { proxima } = require('../orquestrador/avancar'),
     { rodarEtapa } = require('../orquestrador/rodar-etapa'); // ciclo: avancar → verificar
@@ -32,6 +52,7 @@ async function verificar(s, t, rodada) {
     e = estado(dir);
   mudar(dir, { etapa: 6, fase: 'rodando', pausa: null });
   aoVivo.anotar(dir, { tipo: 'etapa', texto: 'Esteira · Etapa 6: Verificação' });
+  if (e.worktree) return verificarNaIntegracao(s, t, dir, rodada, proxima);
   s.render();
   const rodadas = [];
   for (const c of cmds) {

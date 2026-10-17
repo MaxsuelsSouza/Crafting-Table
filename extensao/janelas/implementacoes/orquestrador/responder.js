@@ -5,7 +5,9 @@ const path = require('path');
 const controle = require('../../../infra/controle');
 const dossie = require('../../../infra/dossie');
 const reproducao = require('../etapas/01-dossie/reproducao');
+const tickets = require('../../../infra/ticket/tickets');
 const { deps } = require('../dependencias');
+const { OPCOES_TIPO } = require('../etapas/05-implementacao/regras/nome-branch');
 const {
   RESPOSTAS,
   SEM_CONFIRMAR,
@@ -27,6 +29,8 @@ const responder = async (s, t, resposta) => {
     r = String(resposta || '').trim();
   if (!e.pausa || !r) return;
   const m = e.pausa.motivo;
+  const grupos = require('./grupos'); // ciclo: grupos → seguir → responder
+  if (!t.grupo && grupos.MOTIVOS_PAI.includes(m)) return grupos.responderPai(s, t, r);
   if (m === 'briefing') {
     fs.appendFileSync(path.join(dir, dossie.BRIEFING), `${r}\n\n`);
     mudar(dir, { pausa: null, etapa: 1 });
@@ -35,6 +39,20 @@ const responder = async (s, t, resposta) => {
   if (m === 'branchPrincipal') {
     await deps.salvarBranchPrincipal(e.pausa.repo, r);
     mudar(dir, { pausa: null });
+    return seguir(s, t);
+  }
+  if (m === 'tipo') {
+    const categoria = OPCOES_TIPO[r];
+    if (!categoria) return;
+    // a escolha vira a categoria do ticket (a mesma da pergunta do painel) e vale para o ticket pai e para o grupo em memória
+    tickets.gravar({ ...tickets.ler(t.chave), categoria, categoriaOrigem: 'usuario' });
+    for (const x of [t, t.pai].filter(Boolean)) Object.assign(x, { categoria, categoriaOrigem: 'usuario' });
+    mudar(dir, { pausa: null });
+    return seguir(s, t);
+  }
+  if (m === 'base') {
+    if (!e.pausa.opcoes.includes(r)) return;
+    mudar(dir, { pausa: null, bases: { ...(e.bases || {}), [e.pausa.repo]: r } });
     return seguir(s, t);
   }
   if (['sujo', 'git', 'repos'].includes(m)) {

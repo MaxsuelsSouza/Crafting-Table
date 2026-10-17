@@ -1,10 +1,11 @@
 // @ts-check
-// Prompts das etapas com IA da esteira de Implementação (orquestrador/rodar-etapa.js): 2 Entendimento, 3 Varredura, 4 Plano de mudança, 5 Implementação,
+// Prompts das etapas com IA da esteira de Implementação (orquestrador/rodar-etapa.js): 0 Subtarefas (plano dos grupos), 2 Entendimento, 3 Varredura, 4 Plano de mudança, 5 Implementação,
 // 7 Resumo. As etapas 1 (Dossiê) e 6 (Verificação) são da extensão, sem IA. Cada prompt cita o arquivo que o Claude deve gravar.
 // A tarefa de cada etapa mora no arquivo dela (etapas/02-entendimento.js … 07-resumo.js); aqui ficam o cabeçalho, as regras comuns e o ajuste.
 const path = require('path');
 const { ARQ } = require('./etapas');
 const { PAUSA, PAUSA_MD, RESPOSTAS, CONTEXTO } = require('./estado');
+const { rotulo } = require('./etapas/05-implementacao/regras/nome-branch');
 
 const GRAVAR = path.join(__dirname, 'bin', 'implementacao-gravar');
 
@@ -27,12 +28,19 @@ const REGRAS = (d, escreveCodigo) =>
  */
 
 const TAREFA = {
+  0: require('./etapas/00-subtarefas/prompt').tarefa,
   2: require('./etapas/02-entendimento').tarefa,
   3: require('./etapas/03-varredura').tarefa,
   4: require('./etapas/04-plano-mudanca').tarefa,
   5: require('./etapas/05-implementacao').tarefa,
   7: require('./etapas/07-resumo').tarefa
 };
+
+// Ticket com subtarefas: cada grupo roda a esteira com o ticket pai como contexto e só as subtarefas dele como escopo.
+const grupo = (t) =>
+  t.grupo
+    ? `GRUPO ${t.grupo.id} DAS SUBTAREFAS (${t.grupo.subtarefas.join(', ')}): o escopo desta esteira são SÓ estas subtarefas; o ticket pai e as outras subtarefas são contexto. Leia ${t.grupo.contexto} (o que cada uma pede e o que o outro grupo faz). Branch única do ticket: ${rotulo(t)}.\n`
+    : '';
 
 /** @param {number} n @param {Ctx} c */
 function prompt(n, c) {
@@ -44,7 +52,9 @@ function prompt(n, c) {
   const cab =
     `[segundo plano] [Crafting Table · Implementação ${t.chave}] Esteira de implementação do ticket ${t.link || t.chave}${t.titulo ? ` · ${t.titulo}` : ''}.\n` +
     `Pasta de trabalho: ${c.dir}\nDossiê: ${path.join(c.dir, 'dossie.md')} (modo ${c.d?.modo || '?'}, prontidão ${c.d?.prontidao || '?'})\n` +
-    `Repositórios de código: ${c.repos.map((r) => `${r.camada}: ${r.caminho}${r.branchPrincipal ? ` (principal: ${r.branchPrincipal})` : ''}`).join(' · ') || 'nenhum configurado'}\nBanco: ${c.banco}${resp}\n\n`;
+    `Repositórios de código: ${c.repos.map((r) => `${r.camada}: ${r.caminho}${r.branchPrincipal ? ` (principal: ${r.branchPrincipal})` : ''}`).join(' · ') || 'nenhum configurado'}\nBanco: ${c.banco}${resp}\n` +
+    grupo(t) +
+    '\n';
   const ajuste = c.ajuste
     ? `\n\nAJUSTE: ${path.join(c.dir, ARQ[n])} já existe e o usuário pediu mudança: leia a ÚLTIMA entrada de ${path.join(c.dir, RESPOSTAS)}, aplique o pedido e regrave o arquivo completo, sem refazer o que já está certo.`
     : '';

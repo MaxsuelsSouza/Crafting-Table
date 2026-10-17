@@ -40,6 +40,22 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 - Mais de 3 cliques no ▶ em 1 min sem o Ao vivo andar: caixa de "parece travado" (esperar, seguir de onde parou, parar).
 - O ▶ do módulo precisa passar por `aoVivo.controle` (é onde o vigia aprende o nome da ação).
 
+### Branch de trabalho (Implementações)
+
+Todo ticket tem **uma branch só**: `<tipo>/<CHAVE>`, **sem slug**. O tipo vem do tipo do ticket (`infra/ticket/tipo-ticket.js`), porque a Implementação faz feature, bug e incidente; a conversão mora em `janelas/implementacoes/etapas/05-implementacao/regras/nome-branch.js`:
+
+| Tipo do ticket | Branch |
+|---|---|
+| História, tarefa, melhoria… (categoria `outro`) | `feature/<CHAVE>` |
+| Bug e bug experimental | `bugfix/<CHAVE>` |
+| Incidente | `hotfix/<CHAVE>` |
+| Não reconhecido | a esteira pausa e pergunta; a resposta vira a categoria do ticket (nunca adivinhe) |
+
+Ticket com subtarefas usa a chave e o tipo do pai; subtarefa não ganha branch própria e todos os grupos de subtarefas são implementados dentro dela.
+- Antes de criar, procure (`regras/base-branch.js`): `<tipo>/<CHAVE>` (local ou `origin`) existe → use-a. Senão, trabalho já feito (subtarefa concluída, branch antiga): ache a branch com a chave do ticket ou da subtarefa (`infra/dossie/trabalho-existente.js`) e crie `<tipo>/<CHAVE>` a partir dela (mais de uma: pergunte). Só sem nenhuma branch encontrada crie a partir de `origin/<principal>`.
+- Paralelo (no máximo 2 grupos): o segundo grupo roda num `git worktree` **destacado** (`--detach`) do HEAD de `<tipo>/<CHAVE>`, sem branch nova; ao terminar, a extensão aplica a diferença dele na `<tipo>/<CHAVE>`. Grupos que dependem um do outro rodam em sequência na própria branch.
+- A esteira não faz commit, push nem merge (vale também para o worktree).
+
 ### Pasta do módulo
 
 Cada módulo de ticket mora em `extensao/janelas/<modulo>/`. Tudo que é só do módulo mora na pasta dele; o que serve a 2+ módulos vai para `componentes/` (tela) ou `infra/` (lógica). Exemplos prontos: `extensao/janelas/incidentes/`, `extensao/janelas/refinamento/`, `extensao/janelas/qa/` e `extensao/janelas/implementacoes/`.
@@ -54,7 +70,7 @@ Cada módulo de ticket mora em `extensao/janelas/<modulo>/`. Tudo que é só do 
 - na raiz, só o que é geral e pequeno (`texto.js`, `controle.js`). Tela (CSS, folhas, host de views) não mora em `infra/`: vai para `componentes/` ou `painel/`.
 
 - `<modulo>.js`: o registro (ID, abas, ▶, ações, script, filtro da busca, artefatos da conversa…). Os pontos comuns leem daqui, sem `if` com regra do módulo. Sem `require` no topo (é carregado cedo).
-  Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento e o QA): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `janelas/refinamento/ganchos-painel.js`, `janelas/qa/situacao.js`), o registro só repassa.
+  Ganchos opcionais (o painel chama se o módulo tiver; hoje o Refinamento, o QA e a Implementação): `dadosAba`, `antesDaAba`, `aoDesenhar`, `observar`, `pill`, `faixa`, `contadorAba`, `situacao`, `selos` (pills extras no card da lista; Implementação: "5 subtarefas"), `pedidoConversa`, `iniciar`, `aoAtualizar`, `CSS()`, `rodape` (caixa depois de Comandos) e `evidencias` (bloco na seção Evidências). A lógica deles fica num arquivo do módulo (ex.: `janelas/refinamento/ganchos-painel.js`, `janelas/qa/situacao.js`), o registro só repassa.
   Se o nome `<modulo>.js` já era a lógica (caso do QA), a API antiga vira um arquivo que só reexporta (`janelas/qa/motor.js`) para o `bin/`, as ações e os testes. O mesmo vale para o arquivo único que foi dividido (`janelas/implementacoes/esteira.js`, usado só pelos testes).
 - `orquestrador/` (um arquivo por regra: rodar, pausar, aprovar, retomar, responder…; `index.js` exporta) e `estado.js`: o que é comum a todas as etapas.
 - `etapas/`: `index.js` com a lista das etapas (dados) e **um arquivo por etapa**, numerado: `01-triagem.js`, `02-…`. Cada etapa exporta só os ganchos dela (`tarefa`, `antes`, `depois`, `responder`…; ver o `orquestrador/index.js`).

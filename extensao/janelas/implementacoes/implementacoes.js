@@ -11,9 +11,12 @@
 //   dependencias.js    VS Code, git, comandos e provedor (os testes trocam por _teste.deps)
 //   prompts.js         cabeçalho, regras comuns e ajuste dos prompts das etapas com IA; o bin implementacao-gravar
 //   orquestrador/      roda as etapas, pausa, aprova e retoma (comum a todas; um arquivo por regra)
-//   etapas/            index.js (lista das etapas, artefatos e vaga) + 01-dossie/ (com a Reprodução do bug) … 07-resumo.js
-//                      (a 5 é a pasta 05-implementacao/: prompt.js e regras/)
-//   abas/              esteira.js (aba Esteira, ▶/⏸, script), dossie.js, reproducao.js, acoes.js, css.js
+//   etapas/            index.js (lista das etapas, artefatos e vaga) + 00-subtarefas/ (ticket com subtarefas: plano dos grupos)
+//                      + 01-dossie/ (com a Reprodução do bug) … 07-resumo.js (a 5 é a pasta 05-implementacao/: prompt.js e regras/)
+//   orquestrador/grupos/  grupos de subtarefas: fila (até 2 ao mesmo tempo), worktree, verificação final e resumo do pai
+//   selos.js           selo "N subtarefas" do card na lista
+//   abas/              esteira.js (aba Esteira, ▶/⏸, script), grupos.js (Esteira com subtarefas), cartoes.js, dossie.js,
+//                      dossie-subtarefas.js, reproducao.js, acoes.js, css.js
 //   bin/               implementacao-gravar e reproducao-fluxo (o Claude grava por eles)
 //   testes/            teste-*.js (node extensao/janelas/implementacoes/testes/teste-x.js)
 // O dossiê do ticket (comum à Implementação e ao QA) mora em infra/dossie/.
@@ -45,6 +48,7 @@ const EXIGE = ['etapasImplementacao'];
 const ARQUIVOS_CONVERSA = {
   rotulo: 'Esteira de implementação',
   nomes: [
+    'plano-subtarefas.md',
     'dossie.md',
     '.contexto-ticket.md',
     '.briefing.md',
@@ -65,6 +69,8 @@ const corpoAba = (aba, t, d, dir) => {
   if (aba === 'reproducao') return require('./abas/reproducao').corpo(t, d, dir);
   return undefined;
 };
+// Selo do card na lista (painel/lista.js → card-ticket.js): número de subtarefas e, com os grupos rodando, quantas estão prontas.
+const selos = (t) => require('./selos').selos(t);
 // ▶/⏸ no cabeçalho do ticket (moldura.js).
 const botaoPlay = (dir, b) => require('./abas/esteira').botaoPlay(dir, b);
 // Cliques do módulo (data-acao), juntados pelo painel.js.
@@ -84,6 +90,7 @@ module.exports = {
   ARQUIVOS_CONVERSA,
   SITUACAO,
   corpoAba,
+  selos,
   botaoPlay,
   acoes,
   script

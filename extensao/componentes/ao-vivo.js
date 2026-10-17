@@ -14,6 +14,8 @@ const { IC } = require('./icones');
 // não passar o comando). A caixa mostra o botão ao lado do estado; o cabeçalho do ticket usa o mesmo controle, então os dois nunca discordam.
 // Conduzir em conversa (padrão do componente, DESLIGADO por padrão): c.conversa = true mostra, ao lado do estado, o botão que abre o chat do Claude
 // neste ticket (data-acao="claude", a mesma ação do ícone do cabeçalho). Sem a flag o botão não existe; com ela aparece mesmo com o log vazio.
+// Espelho (padrão do componente): espelhar(origem, destino, prefixo) repete no Ao vivo de `destino` cada linha anotada em `origem`, com o
+// prefixo no texto (Implementações: o Ao vivo de cada grupo de subtarefas aparece no do ticket pai, "[G1] …"). Em memória: vale nesta janela.
 // Para usar numa tela: CSS no <style>, caixa(dir, rodando, alvo) no corpo, script(chave) no <script> e redesenhar
 // quando um dos ARQUIVOS mudar na pasta. O botão Ver tudo/Recolher manda data-painel="vivoExpandir" (painel.js).
 const ARQ = '.ao-vivo.jsonl', EXPANDIDO = '.ao-vivo.expandido';
@@ -55,11 +57,15 @@ function anexarConversa(dir, sid, titulo) {
   } catch { return false; }
 }
 const filas = new Map(); // pasta -> { linhas, ultimo, timer }
+const espelhos = new Map(); // pasta de origem -> { destino, prefixo }
+const espelhar = (origem, destino, prefixo = '') => { espelhos.set(origem, { destino, prefixo }); };
 function anotar(dir, l) {
   const f = filas.get(dir) || { linhas: [], ultimo: 0, timer: null };
   filas.set(dir, f);
   f.linhas.push(l);
   escoar(dir, f);
+  const e = espelhos.get(dir);
+  if (e && e.destino !== dir) anotar(e.destino, { ...l, texto: `${e.prefixo}${l.texto ?? ''}` });
 }
 function escoar(dir, f) {
   if (f.timer || !f.linhas.length) return;
@@ -208,4 +214,4 @@ const acoes = (s) => ({
   }
 });
 
-module.exports = { acoes, alvoRaio, anotar, controle, anexarConversa, registrarDecisao, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };
+module.exports = { acoes, alvoRaio, anotar, espelhar, controle, anexarConversa, registrarDecisao, linhas, caixa, expandido, alternarExpandido, script, CSS, ARQUIVOS, _teste: { recentesPrimeiro } };

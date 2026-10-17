@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../../componentes/ao-vivo');
 const controle = require('../../../infra/controle');
-const { ETAPAS } = require('../etapas');
+const { etapa } = require('../etapas');
 const { REPETIR, VERIFICAR, estado, mudar, existe, pausar } = require('../estado');
 const { lerPausa, limparPausa } = require('./pausa');
 const { ambiente } = require('./ambiente');
@@ -22,11 +22,11 @@ const aposEtapa = async (s, t, n, rodada, mtimeAntes = 0) => {
       pergunta: String(p.pergunta),
       opcoes: Array.isArray(p.opcoes) ? p.opcoes.map(String) : []
     });
-  } else if (!existe(dir, n) || (mtimeAntes && fs.statSync(path.join(dir, ETAPAS[n - 1].arq)).mtimeMs <= mtimeAntes)) {
+  } else if (!existe(dir, n) || (mtimeAntes && fs.statSync(path.join(dir, etapa(n).arq)).mtimeMs <= mtimeAntes)) {
     mudar(dir, { fase: 'erro' });
     aoVivo.anotar(dir, {
       tipo: 'erro',
-      texto: `A etapa ${n} terminou sem ${mtimeAntes ? 'atualizar' : 'gravar'} ${ETAPAS[n - 1].arq}`
+      texto: `A etapa ${n} terminou sem ${mtimeAntes ? 'atualizar' : 'gravar'} ${etapa(n).arq}`
     });
   } else if (n === 5 && !houveMudanca(ambiente(s, t).repos, estado(dir).branches)) {
     pausar(dir, 5, {
@@ -35,7 +35,9 @@ const aposEtapa = async (s, t, n, rodada, mtimeAntes = 0) => {
         'A implementação terminou, mas nenhum repositório tem alteração na branch de trabalho. O Claude pode ter decidido que nada precisava mudar (veja o log) ou não ter editado nada.',
       opcoes: [REPETIR, VERIFICAR]
     });
-  } else await avancar(s, t, n, rodada);
+  } else if (n === 0)
+    await require('../etapas/00-subtarefas').aposPlano(s, t, rodada); // valida o plano antes do portão
+  else await avancar(s, t, n, rodada);
   s.render();
 };
 

@@ -136,7 +136,7 @@ exports.provider = (ctx) => {
     observador = { close: () => { clearTimeout(espera); obs.forEach((o) => o.close()); } };
   };
 
-  // Título e status do Jira: guardados no .ticket.json (a lista mostra sem buscar de novo).
+  // Título, status, tipo e subtarefas do Jira: guardados no .ticket.json (a lista mostra sem buscar de novo; o selo de subtarefas do card vem daí).
   const atualizarJira = async (chave) => {
     const t = tickets.ler(chave);
     if (!t) return;
@@ -144,7 +144,8 @@ exports.provider = (ctx) => {
     try {
       const j = await jira.buscar(ctx.secrets, jira.alvo(t));
       cacheJira[chave] = j;
-      tickets.gravar({ ...tickets.ler(chave), titulo: j.resumo, status: j.status, tipo: j.tipo });
+      tickets.gravar({ ...tickets.ler(chave), titulo: j.resumo, status: j.status, tipo: j.tipo,
+        subtarefas: (j.subtarefas || []).map((x) => ({ key: x.key, resumo: x.resumo, status: x.status, tipo: x.tipo })) });
     } catch (e) { cacheJira[chave] = { erro: e.message }; }
     render();
     confirmarTipo(chave);

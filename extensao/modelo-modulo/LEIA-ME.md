@@ -28,6 +28,7 @@ Só quando o módulo precisa; o ponto comum chama o gancho do registro, sem `if`
 | `botaoPlay(dir, b, t)` · `pill(t)` · `faixa(t)` · `contadorAba(id, t)` | `moldura.js` (`cabecalho`) | ▶/⏸, pill, faixa sob o cabeçalho e o número nas abas |
 | `CSS()` · `script()` | `moldura.js` | CSS e script da webview (um bloco cada) |
 | `situacao(t)` | `infra/ticket/situacao.js` | pill do card na lista |
+| `selos(t)` | `painel/lista.js` → `componentes/card-ticket.js` | pills extras no card da lista, depois da situação (Implementações: "5 subtarefas" / "2/5 subtarefas") |
 | `pedidoConversa(s, t)` | `modulos/conversas.js` | texto do pedido da conversa aberta pelo ✦ |
 | `ETAPA_PEDIDO` | `modulos/conversas.js` | o nome do módulo no pedido, quando difere do `ETAPA` do título (QA: `QA (testes)`) |
 | `rodape(dir, acao)` | `componentes/rodape.js` | caixa do módulo depois de Comandos (QA: Ambiente) |

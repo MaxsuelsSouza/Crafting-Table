@@ -16,13 +16,14 @@ const vivo = (pid) => { try { process.kill(pid, 0); return true; } catch { retur
 const fase = (e) => (e.fase === 'rodando' && !(e.host && vivo(e.host)) ? 'parado' : e.fase);
 
 function etapas(e, nomeEtapa) {
-  const f = fase(e), n = e.etapa || 1;
+  const f = fase(e), n = e.etapa ?? 1;
+  if (f === 'grupos') return { texto: `${nomeEtapa} · subtarefas`, cor: 'ia', dica: 'Grupos de subtarefas em andamento: veja a aba Esteira' };
   if (f === 'rodando') return { texto: `${nomeEtapa} · etapa ${n}`, cor: 'ia', dica: 'O Claude está trabalhando' };
   if (f === 'pausado') return { texto: 'Pausado', cor: 'pausada', dica: e.pausa?.pergunta || 'Aguardando resposta' };
   if (f === 'aguardando') return { texto: 'Aguardando aprovação', cor: 'andando', dica: `Etapa ${n} pronta para revisão` };
   if (f === 'erro') return { texto: 'Erro', cor: 'pausada', dica: 'A última etapa falhou' };
   if (f === 'concluido') return { texto: 'Concluído', cor: 'ok', dica: '' };
-  return n > 1 ? { texto: `Parado · etapa ${n}`, cor: 'novo', dica: 'Interrompido: ▶ continua de onde parou' } : null;
+  return n > 1 || n === 0 ? { texto: `Parado · etapa ${n}`, cor: 'novo', dica: 'Interrompido: ▶ continua de onde parou' } : null;
 }
 
 /** @param {any} t ticket local @param {string} modulo refinamento | impl | incidentes | qa */

@@ -39,7 +39,9 @@ async function passoDossie(s, t, rodada) {
     return s.render();
   }
   // Ticket do tipo Bug: confirma que o erro acontece antes de planejar qualquer mudança (a aba Reprodução).
-  if (d.exigeReproducao && !['ok', 'aceita'].includes(estado(dir).reproducao)) return rodarReproducao(s, t, d, rodada);
+  // Grupo de subtarefas não reproduz: as subtarefas são desenvolvimento, e o bug (se houver) é do pai.
+  if (d.exigeReproducao && !t.grupo && !['ok', 'aceita'].includes(estado(dir).reproducao))
+    return rodarReproducao(s, t, d, rodada);
   mudar(dir, { etapa: 2, fase: 'parado', modo: d.modo, tentativas: 0, correcao: false });
   return rodarEtapa(s, t, 2, rodada);
 }

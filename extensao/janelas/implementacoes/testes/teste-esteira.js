@@ -85,6 +85,7 @@ const novoTicket = (extras = {}) => {
     site: 'https://x',
     link: `https://x/${chave}`,
     titulo: 'Corrigir cancelamento da nota',
+    tipo: 'Story',
     status: '',
     conversas: [],
     ...extras
@@ -205,7 +206,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     await esperar(fase('concluido'));
     e = T.estado(DIR);
     assert.deepStrictEqual([e.etapa, e.tentativas, e.correcao], [7, 0, false]);
-    const nomeRamo = 'impl/' + t.chave + '-corrigir-cancelamento-da-nota';
+    const nomeRamo = 'feature/' + t.chave; // Story → feature
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), nomeRamo);
     assert.ok(fs.existsSync(path.join(repo.caminho, 'novo.txt')));
     assert.strictEqual(gitX(repo.caminho, 'log', '--oneline').split('\n').length, 1); // nenhum commit da esteira
@@ -422,6 +423,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
       'esteiraAbrir',
       'esteiraAjuste',
       'esteiraAprovar',
+      'esteiraDossieDe',
       'esteiraIniciar',
       'esteiraObs',
       'esteiraPausar',
@@ -449,15 +451,20 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
   }
 
   // ═══ 10. Nome da branch e vagas ═══
+  // uma branch por ticket, <tipo>/<CHAVE>, sem slug (CLAUDE.md, "Branch de trabalho")
   assert.strictEqual(
-    T.ramo({ chave: 'WMS-12', titulo: 'Cálculo de Média/Saída — Ação!' }),
-    'impl/WMS-12-calculo-de-media-saida-acao'
+    T.ramo({ chave: 'WMS-12', titulo: 'Cálculo de Média/Saída — Ação!', tipo: 'História' }),
+    'feature/WMS-12'
   );
-  assert.strictEqual(T.ramo({ chave: 'WMS-1', titulo: '' }), 'impl/WMS-1');
+  assert.strictEqual(T.ramo({ chave: 'WMS-13', tipo: 'Task' }), 'feature/WMS-13');
+  assert.strictEqual(T.ramo({ chave: 'WMS-14', tipo: 'Bug' }), 'bugfix/WMS-14');
+  assert.strictEqual(T.ramo({ chave: 'WMS-15', tipo: 'Bug Experimental' }), 'bugfix/WMS-15');
+  assert.strictEqual(T.ramo({ chave: 'WMS-16', tipo: 'Incidente' }), 'hotfix/WMS-16');
   assert.strictEqual(
-    T.ramo({ chave: 'DOC-001', titulo: '', documento: { nome: 'Requisitos_v2.md' } }),
-    'impl/DOC-001-requisitos-v2-md'
-  );
+    T.ramo({ chave: 'WMS-17', tipo: 'Coisa', categoria: 'bug', categoriaOrigem: 'usuario' }),
+    'bugfix/WMS-17'
+  ); // escolha do usuário
+  assert.strictEqual(T.ramo({ chave: 'DOC-001', documento: { nome: 'Requisitos_v2.md' } }), null); // tipo desconhecido: a esteira pergunta
   const etapas = require('../../../infra/agentes/etapas');
   assert.ok(etapas.VAGAS['impl.mapa'] && etapas.MODULOS.find((m) => m.id === 'impl').etapas.length === 7);
   assert.strictEqual(etapas.usos('impl.mapa').length, 2);

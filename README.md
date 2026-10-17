@@ -36,6 +36,10 @@ O código fica com quem pegar a atividade: a spec termina no plano de testes.
 
 - **⚙ Configurações → Agente de IA**: modelo e esforço do Claude nas etapas em segundo plano (vazio: o do `~/.claude/settings.json`).
 
+### Implementações com subtarefas
+
+Ticket com subtarefas mostra **"N subtarefas"** no card. A esteira começa pela **Etapa 0**: lê o pai e cada subtarefa, monta um plano com **até 2 grupos** (o que vai junto, quem depende de quem, o que roda em paralelo), você aprova e cada grupo roda a esteira inteira. Dois grupos independentes rodam **ao mesmo tempo** (o segundo num `git worktree`). Tudo numa **branch só, `<tipo>/<CHAVE>`** (`feature/`, `bugfix/` ou `hotfix/` pelo tipo do ticket), que parte da branch já existente do ticket ou da subtarefa concluída quando houver. Detalhes: [`extensao/README.md`](extensao/README.md#esteira-de-implementação-ticket-com-subtarefas).
+
 Detalhes de cada aba: [`extensao/README.md`](extensao/README.md).
 
 ## Requisitos

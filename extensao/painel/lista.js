@@ -25,6 +25,8 @@ const VINCULADOS = {
   [qa.ID]: qa.VINCULADOS
 };
 // Status de cada caixa vêm das variáveis do provedor (variavel: chave); sem variável, a caixa não filtra (e a pendência avisa).
+// Registro de cada módulo, para os ganchos opcionais da lista (selos(t): HTML extra no card).
+const REGISTROS = { [refinamento.ID]: refinamento, [implementacoes.ID]: implementacoes, [incidentes.ID]: incidentes, [qa.ID]: qa };
 const vinculadosDe = (k) => { const v = VINCULADOS[k]; return v?.variavel ? { ...v, status: [].concat(variaveis.ler(v.variavel)) } : v; };
 
 // Lista mostrada: Refinamento, Implementações, QA ou Incidentes (ticket.lista: 'impl' | 'qa' | 'incidentes'). Cada uma tem a sua caixa de vinculados.
@@ -70,7 +72,7 @@ const corpo = (s, estilo, emRefino) => {
   // Mais recente (aberto por último neste módulo) no topo; ticket nunca aberto vale pela data de criação.
   const uso = (x) => x.usos?.[modoLista] || x.criado || 0;
   return estilo + listaTickets.corpo(tickets.listar().filter((x) => naLista(x)).sort((a, b) => uso(b) - uso(a))
-    .map((x) => ({ ...x, refinando: modoLista === refinamento.ID && emRefino(x), situacao: require('../infra/ticket/situacao').situacaoDe(x, modoLista) })),
+    .map((x) => ({ ...x, refinando: modoLista === refinamento.ID && emRefino(x), situacao: require('../infra/ticket/situacao').situacaoDe(x, modoLista), selos: REGISTROS[modoLista]?.selos?.(x) || '' })),
     ferramenta !== true ? null : meus ? { ...meus, itens: meus.itens?.filter((i) => !ehChaveDoc(i.key)), ocultos: s.globalState.get('meusOcultos') || [] } : {}, { modo: modoLista, vinculados: vinculadosDe(modoLista) });
 };
 
