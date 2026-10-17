@@ -1,5 +1,5 @@
 // @ts-check
-// Grupos de subtarefas (depois do portão da etapa 0): cada grupo é a esteira de hoje (1 → 7) na pasta grupos/<id>/, na mesma branch
+// Grupos de subtarefas (depois do portão da etapa 0): cada grupo é a esteira de hoje (1 → 8, sem a 7) na pasta grupos/<id>/, na mesma branch
 // <tipo>/<CHAVE>; o segundo grupo em paralelo roda num worktree destacado. Um arquivo por regra:
 //   contexto.js           s/t do grupo (pasta, repositórios ou worktree, espelho do Ao vivo)
 //   fila.js               quem começa (dependência cumprida, no máximo 2 ao mesmo tempo); todos concluídos → concluir
@@ -14,7 +14,7 @@ const { seguirPai, retomarGrupos, pausarGrupos } = require('./seguir-pai');
 const { concluir } = require('./concluir');
 const { MOTIVOS, responderPai } = require('./responder-pai');
 
-// Fim da esteira de um grupo (avancar.js, etapa 7): a fila decide o próximo ou conclui o pai.
+// Fim da esteira de um grupo (avancar.js, o Resumo): a fila decide o próximo ou conclui o pai.
 const grupoConcluido = (s, t) => avancarFila(s, t);
 
 module.exports = {

@@ -12,11 +12,11 @@
 //   prompts.js         cabeçalho, regras comuns e ajuste dos prompts das etapas com IA; o bin implementacao-gravar
 //   orquestrador/      roda as etapas, pausa, aprova e retoma (comum a todas; um arquivo por regra)
 //   etapas/            index.js (lista das etapas, artefatos e vaga) + 00-subtarefas/ (ticket com subtarefas: plano dos grupos)
-//                      + 01-dossie/ (com a Reprodução do bug) … 07-resumo.js (a 5 é a pasta 05-implementacao/: prompt.js e regras/)
+//                      + 01-dossie/ (com a Reprodução do bug) … 08-resumo.js (a 5 é a pasta 05-implementacao/: prompt.js e regras/; a 7 é 07-teste/)
 //   orquestrador/grupos/  grupos de subtarefas: fila (até 2 ao mesmo tempo), worktree, verificação final e resumo do pai
 //   selos.js           selo "N subtarefas" do card na lista
 //   abas/              esteira.js (aba Esteira, ▶/⏸, script), grupos.js (Esteira com subtarefas), cartoes.js, dossie.js,
-//                      dossie-subtarefas.js, reproducao.js, acoes.js, css.js
+//                      dossie-subtarefas.js, reproducao.js, teste.js, acoes.js, css.js
 //   bin/               implementacao-gravar e reproducao-fluxo (o Claude grava por eles)
 //   testes/            teste-*.js (node extensao/janelas/implementacoes/testes/teste-x.js)
 // O dossiê do ticket (comum à Implementação e ao QA) mora em infra/dossie/.
@@ -36,11 +36,12 @@ const ABAS = [
   { id: 'esteira', nome: 'Esteira' },
   { id: 'dossie', nome: 'Dossiê' },
   { id: 'reproducao', nome: 'Reprodução' },
+  { id: 'teste', nome: 'Teste' },
   { id: 'ticket', nome: 'Ticket' },
   { id: 'decisoes', nome: 'Decisões' }
 ];
 // Abas que mostram arquivos da pasta da aba (evidências da Reprodução): a webview precisa liberar a pasta (painel.js, localResourceRoots).
-const ABAS_MIDIA = ['reproducao'];
+const ABAS_MIDIA = ['reproducao', 'teste'];
 
 // Variável do provedor que o módulo exige além das comuns (configuracao.js, pendências da caixa de vinculados).
 const EXIGE = ['etapasImplementacao'];
@@ -56,7 +57,9 @@ const ARQUIVOS_CONVERSA = {
     'varredura.md',
     'plano-mudanca.md',
     'implementacao.log.md',
-    'verificacao.json'
+    'verificacao.json',
+    'teste.json',
+    'teste/plano-cts.md'
   ]
 };
 // Pill do card na lista (infra/ticket/situacao.js): estado lido de .esteira.json.
@@ -67,6 +70,7 @@ const corpoAba = (aba, t, d, dir) => {
   if (aba === 'esteira') return require('./abas/esteira').corpo(t, d, dir);
   if (aba === 'dossie') return require('./abas/dossie').corpoDossie(t, d, dir);
   if (aba === 'reproducao') return require('./abas/reproducao').corpo(t, d, dir);
+  if (aba === 'teste') return require('./abas/teste').corpo(t, d, dir);
   return undefined;
 };
 // Selo do card na lista (painel/lista.js → card-ticket.js): número de subtarefas e, com os grupos rodando, quantas estão prontas.
@@ -77,6 +81,8 @@ const botaoPlay = (dir, b) => require('./abas/esteira').botaoPlay(dir, b);
 const acoes = (s) => require('./abas/acoes').acoes(s);
 // Script da webview (moldura.js).
 const script = () => require('./abas/esteira').script();
+// ⟳ atualizar (painel.js): o pedido de mais dados no Jira teve resposta → a reprodução recomeça da 1.2.
+const aoAtualizar = (s, t) => require('./etapas/01-dossie/regras/pedir-dados').aoAtualizar(s, t);
 
 module.exports = {
   ID,
@@ -93,5 +99,6 @@ module.exports = {
   selos,
   botaoPlay,
   acoes,
-  script
+  script,
+  aoAtualizar
 };

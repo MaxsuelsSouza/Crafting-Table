@@ -22,16 +22,20 @@ function blocoDocumento(dir) {
     : '';
 }
 
-// Método do planejamento (o do jira-qa-planner, sem a parte que publica): casos de teste no formato que cenariosDo() entende.
-const METODO =
-  'MÉTODO: ANTES de criar do zero, procure nas fontes (subtarefas de QA, descrição, comentários, anexos) um planejamento já existente, em qualquer formato: se houver, transcreva-o fielmente em vez de inventar outro. Leia a descrição, os critérios de aceite e os comentários e monte os casos de teste que os cobrem. ' +
-  'Estrutura do arquivo: "## Cenários de Teste" com um título "#### CT01 – <o que valida>" por caso (numeração contínua CT01, CT02…); ' +
-  'em cada caso, o passo a passo em Gherkin, uma linha por item em negrito no início: **Dado que** …, **Quando** …, **Então** … (**E** … para continuar); ' +
-  'depois "Validações:" com os pontos a conferir. Cubra o caminho feliz, as regras de negócio e os critérios de aceite, os limites e erros, e as regressões prováveis. ' +
-  'Casos que dependem de exploração livre vão ao final como "#### Exploratório 1 – …". Termine com "## Critérios de aceite cobertos" (tabela CA × CT) e "## Riscos e pré-requisitos" ' +
-  '(massa de dados, perfis/permissões, ambiente). Um cenário por comportamento verificável; sem inventar regra que não esteja nas fontes (o que faltar vai em Riscos). ' +
-  'Na tabela de critérios use as colunas Critério | Cenários | Fonte (arquivo ou campo do ticket) | Confiança (aprovado, gerado, bruto, verbal ou inferido): critério que você deduziu é "inferido". ' +
-  'Se a implementação (impl/implementacao.md, impl/plano-mudanca.md) grava em uma tabela (log, auditoria, histórico), crie um cenário que consulte essa tabela e cite o nome dela no título ou no corpo.';
+// Método do planejamento: mora em infra/testes/metodo-cts.js (o QA e a Implementação usam).
+const { METODO, escolherTemplate, TEMPLATE_API } = require('../../../../infra/testes');
+// História de API (endpoint, JSON, contrato…, pelo contexto do ticket): o plano segue também o Template B do plugin.
+function blocoApi(dir) {
+  let ctx = '';
+  try {
+    ctx = fs.readFileSync(path.join(dir, CONTEXTO), 'utf8');
+  } catch {
+    return '';
+  }
+  return escolherTemplate(ctx) === 'api'
+    ? `\n\nEsta história é de API: além do formato acima, inclua as seções do Template B abaixo que couberem (visão geral do endpoint, pré-requisitos, estrutura de dados, exemplos JSON, troubleshooting), mantendo os casos como "#### CT01 – …".\n\n${TEMPLATE_API}`
+    : '';
+}
 const REGRAS_PLANO = (dir, rasc = dir) =>
   `Regras: português; você roda em segundo plano, sem ninguém para aprovar; use SÓ o contexto local (nada de ferramentas do ${onde(dir)}). ` +
   `Leia ${path.join(dir, CONTEXTO)} (ticket, subtarefas e comentários) e, se houver, os arquivos baixados do ticket (pasta ${path.join(dir, '..')}) e as specs na pasta do ticket (Glob/Read). ` +
@@ -44,7 +48,7 @@ const promptInterpretar = (dir, rasc = dir) =>
   'NÃO crie casos novos: procure nas fontes (subtarefas de QA, descrição, comentários e arquivos anexos) tudo o que for caso de teste/cenário, leia e reescreva cada um, fielmente, no formato abaixo, preservando o sentido e a ordem. ' +
   `Só o que as fontes não trazem (critérios cobertos, riscos) pode ser completado a partir delas.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)} Se NÃO houver nenhum caso de teste nas fontes, grave a pausa perguntando como proceder. Termine dizendo em uma frase quantos casos encontrou.`;
 const promptCriar = (dir, rasc = dir) =>
-  `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano pediu o plano ao clicar em "Criar planejamento" e vai ler e aprovar o arquivo antes de qualquer publicação.\n\n${METODO}\n\n${REGRAS_PLANO(dir, rasc)}` +
+  `[segundo plano · Crafting Table] Planejamento de testes de QA do ticket. O humano pediu o plano ao clicar em "Criar planejamento" e vai ler e aprovar o arquivo antes de qualquer publicação.\n\n${METODO}${blocoApi(dir)}\n\n${REGRAS_PLANO(dir, rasc)}` +
   ' Termine dizendo em uma frase quantos casos montou.';
 // Pedir mudança: a IA edita o arquivo local; a extensão republica.
 const promptMudanca = (dir, pedido, rasc = dir) =>
@@ -56,6 +60,7 @@ const FERRAMENTAS_PLANO = ['Read', 'Glob', 'Grep', 'Write', 'Edit'];
 
 module.exports = {
   METODO,
+  blocoApi,
   REGRAS_PLANO,
   blocoDocumento,
   promptInterpretar,

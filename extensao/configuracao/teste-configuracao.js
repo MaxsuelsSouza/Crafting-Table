@@ -10,6 +10,7 @@ const base = { valores: val, estado: { jira: { ok: false, conectado: true, curto
 const geral = cfg.tela({ ...base, aba: 'geral' });
 assert.ok(geral.includes('data-acao="cfgAba" data-id="plugins"') && geral.includes('data-id="cfgTestar"') === false && geral.includes('data-acao="cfgTestar" data-id="jira"'));
 assert.ok(geral.includes('⚠ sem token') && geral.includes('testando…') && geral.includes('Atualizar agora') && geral.includes('✅ em dia'));
+assert.ok(['ambientePadrao', 'aparelhoSerial', 'webUrl'].every((id) => geral.includes(`data-acao="cfgEditar" data-id="${id}"`))); // card Ambiente de teste
 assert.ok(!geral.includes('data-acao="cfgRepoEditar"') && geral.includes('Detectados automaticamente')); // lista automática não edita
 // Plugins: marketplaces de qualquer origem, um card por módulo com as etapas e o Editar de cada vaga; verificação pronta mostra o que falta e o Usar.
 const plug = { marketplaces: [{ nome: 'meu-mkt', origem: 'dono/repo' }], instalados: { 'sdd@crafting-local': { versao: '1', ligado: false } }, nova: {}, auto: true,

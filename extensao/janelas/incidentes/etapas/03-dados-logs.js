@@ -1,9 +1,10 @@
 // @ts-check
 // Etapa 3 · Dados e logs (base de BKP): a massa real (ticket ou BKP, só SELECT) em massa-real.sql e as tabelas de log com a movimentação.
-// Grava 3-dados-logs.md. Antes: repositórios na branch de produção (pausa "branch") e atualizados com a origem (pausa "sync").
+// Grava 3-dados-logs.md. Antes: repositórios na branch principal (pausa "branch") e atualizados com a origem (pausa "sync").
 // Depois: sem massa-real.sql e sem a pendência registrada, pausa "massa".
+const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const infraGit = require('../../../infra/git');
 const aoVivo = require('../../../componentes/ao-vivo');
 const { ETAPAS } = require('./index');
 const { estado, mudar, lerTxt, OPCOES } = require('../estado');
@@ -14,17 +15,12 @@ const tarefa = (d) =>
   `ETAPA 3 · DADOS E LOGS (base de BKP). Leia ${d}/${ETAPAS[0].arq} e ${d}/${ETAPAS[1].arq}. (a) MASSA: prioridade 1 é a massa já citada no ticket/comentários/anexos (seção "Massa de dados"). Só se ela não estiver no ticket, procure a massa na base de BKP com mapa-db (somente SELECT; nunca altere nem grave nada no banco). Grave as consultas/estrutura da massa real em ${d}/massa-real.sql. Se não achar a massa (ticket e BKP) ou não houver banco, NÃO deixe o arquivo vazio: registre a seção "Pendência: massa real" em ${d}/${ETAPAS[2].arq}, dizendo o que faltou. (b) LOGS: no código dos repositórios, identifique as tabelas de log ligadas a essa massa/módulo e o caminho do código que grava nelas. No banco, consulte a tabela de log e confira se há registros recentes. Se a tabela achada NÃO tiver uso recente (ou houver mais de uma candidata e você não souber qual), PAUSE e pergunte ao usuário qual tabela consultar. Se estiver ativa, busque a movimentação específica da massa do incidente. Grave em ${d}/${ETAPAS[2].arq}: onde a massa foi achada (ticket ou BKP), tabelas de log (com o caminho do código) e os registros de movimentação encontrados.`;
 
 // ── Branch dos repositórios ──
-// O código lido na etapa 3 tem de ser o de produção: backend em master-md, frontend (mobile/web) em main. Outra branch mostra outro cenário.
-const BRANCH_DA_CAMADA = { backend: 'master-md', mobile: 'main', web: 'main' };
-const git = (cwd, args) =>
-  execFileSync('git', ['-C', cwd, ...args], {
-    encoding: 'utf8',
-    timeout: 20000,
-    stdio: ['ignore', 'pipe', 'pipe']
-  }).trim();
+// O código lido na etapa 3 tem de ser o de produção: a branch principal de cada repositório (Configurações > Repositórios de código; sem ela,
+// o repositório não é conferido). Outra branch mostra outro cenário. A troca passa por infra/git (garantirPrincipal: não mexe em repositório sujo).
+const git = (cwd, args) => infraGit.git(cwd, args, { timeout: 20000 });
 const branchesErradas = (repos) =>
   repos.flatMap((r) => {
-    const esperada = BRANCH_DA_CAMADA[r.camada];
+    const esperada = r.branchPrincipal;
     if (!esperada) return [];
     let atual;
     try {
@@ -37,7 +33,7 @@ const branchesErradas = (repos) =>
 // Repositórios já na branch de produção ficam iguais a origin/<branch> (fetch + pull --ff-only). Devolve os problemas ("repo: motivo"); vazio = tudo certo.
 const sincronizarRepos = (repos, anotar = () => {}) =>
   repos.flatMap((r) => {
-    const esperada = BRANCH_DA_CAMADA[r.camada],
+    const esperada = r.branchPrincipal,
       nome = path.basename(r.caminho);
     if (!esperada) return [];
     try {
@@ -58,7 +54,7 @@ const sincronizarRepos = (repos, anotar = () => {}) =>
     }
   });
 
-// A etapa lê código: confere master-md / main e atualiza com a origem antes.
+// A etapa lê código: confere a branch principal e atualiza com a origem antes.
 const antes = ({ s, t, dir }) => {
   if (!estado(dir).branchOk) {
     const erradas = branchesErradas(s.reposDe(t));
@@ -83,8 +79,21 @@ const antes = ({ s, t, dir }) => {
   return null;
 };
 
+const CORRECAO = '## Correção em andamento';
+const anotarCorrecao = (repos, chave, arq) => {
+  const txt = lerTxt(arq),
+    linhas = txt && !txt.includes(CORRECAO) ? infraGit.emAndamento(repos, [chave]) : [];
+  if (linhas.length)
+    fs.appendFileSync(
+      arq,
+      `\n\n${CORRECAO}\n\nSó informativo (o código lido continua o da principal):\n${linhas.join('\n')}\n`
+    );
+};
+
 // Sem a Massa Real a reprodução não consegue proteger a prova: exige massa-real.sql ou a pendência registrada.
-const depois = ({ dir }) => {
+// Antes, só informativo: onde já há correção do ticket em andamento (infra/git localizar, fora da principal) entra no fim do 3-dados-logs.md.
+const depois = ({ s, t, dir }) => {
+  if (s && t) anotarCorrecao(s.reposDe(t), t.chave, path.join(dir, ETAPAS[2].arq));
   const massaReal = !!lerTxt(path.join(dir, 'massa-real.sql')).trim();
   if (massaReal || estado(dir).massaOk || /pend[êe]ncia/i.test(lerTxt(path.join(dir, ETAPAS[2].arq)))) return null;
   return {
@@ -102,20 +111,16 @@ const responder = ({ s, t, dir, e, resposta }) => {
   if (m === 'branch') {
     if (resposta === TROCAR) {
       for (const r of branchesErradas(s.reposDe(t))) {
-        try {
-          git(r.caminho, ['checkout', r.esperada]);
-          aoVivo.anotar(dir, { tipo: 'acao', texto: `${path.basename(r.caminho)}: branch ${r.esperada}` });
-        } catch (x) {
+        // chaves: []: nem a branch do próprio ticket fica (o incidente é lido em produção)
+        const res = infraGit.garantirPrincipal(r, { chave: t.chave, chaves: [] });
+        if (!res.ok) {
           aoVivo.anotar(dir, {
             tipo: 'erro',
-            texto: `Não consegui trocar ${path.basename(r.caminho)} para ${r.esperada}: ${
-              String(x.stderr || x.message)
-                .trim()
-                .split('\n')[0]
-            }`
+            texto: `Não troquei ${path.basename(r.caminho)} para ${r.esperada}: ${res.texto}`
           });
-          return 'render';
-        } // segue pausado: troque à mão e continue
+          return 'render'; // segue pausado: resolva e continue
+        }
+        aoVivo.anotar(dir, { tipo: 'acao', texto: `${path.basename(r.caminho)}: branch ${r.esperada}` });
       }
       mudar(dir, { pausa: null });
     } else if (resposta === SEGUIR) mudar(dir, { pausa: null, branchOk: true });
@@ -142,4 +147,4 @@ const responder = ({ s, t, dir, e, resposta }) => {
   return undefined;
 };
 
-module.exports = { n: 3, tarefa, antes, depois, responder, branchesErradas, sincronizarRepos, BRANCH_DA_CAMADA };
+module.exports = { n: 3, tarefa, antes, depois, responder, branchesErradas, sincronizarRepos };

@@ -66,8 +66,7 @@ assert.ok(!comparar(r1, { nome: 'd', colunas: ['status'], itens: [{ status: 'A' 
 const chamadas = [];
 const deps = (o = {}) => ({
   maestro: async (arq, env, { junit }) => (
-    chamadas.push(['maestro', path.basename(arq), env, path.basename(junit)]),
-    o.maestro || { rc: 0, saida: 'ok' }
+    chamadas.push(['maestro', path.basename(arq), env, path.basename(junit)]), o.maestro || { rc: 0, saida: 'ok' }
   ),
   bipe: async (c) => (chamadas.push(['bipe', c]), o.bipe || { ok: true, saida: 'Broadcast completed' }),
   esperar: async () => {},
@@ -140,8 +139,7 @@ const rodarCom = async (o, extra = {}) => {
   const depsInicio = {
     ...deps({ linhas: [[{ st: 'A' }], [{ st: 'B' }]] }),
     maestro: async (arq, env, o) => (
-      chamadas.push(['maestro', path.basename(arq), o.saidaTeste]),
-      { rc: rcsInicio.shift() ?? 0, saida: 'x' }
+      chamadas.push(['maestro', path.basename(arq), o.saidaTeste]), { rc: rcsInicio.shift() ?? 0, saida: 'x' }
     )
   };
   r = await rodarCom({}, { deps: depsInicio, inicio: flowsInicio });

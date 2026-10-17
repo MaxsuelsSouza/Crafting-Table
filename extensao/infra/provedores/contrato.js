@@ -29,7 +29,7 @@
  * @property {(secrets: any) => Promise<string | null>} credenciais  cabeçalho de autenticação (pede ao usuário se faltar)
  * @property {(secrets: any) => Promise<boolean>} conectado  há credenciais guardadas (sem pedir nada)
  * @property {(secrets: any) => Promise<void>} sairConta  esquece as credenciais
- * @property {(secrets: any, alvo: Alvo) => Promise<any>} buscar  ticket normalizado { key, site, resumo, status, tipo, prioridade, responsavel, horas, descricao, subtarefas, anexos, comentarios }
+ * @property {(secrets: any, alvo: Alvo) => Promise<any>} buscar  ticket normalizado { key, site, resumo, status, tipo, pai, avo, prioridade, responsavel, horas, descricao, subtarefas, anexos, comentarios }; `pai` e `avo` (pai do pai): chaves ou null
  * @property {(secrets: any, alvo: Alvo) => Promise<Filho[]>} filhos  subtarefas com a descrição em Markdown
  * @property {(secrets: any, alvo: Alvo, md: string, mencoes?: Pessoa[]) => Promise<any>} comentar
  * @property {(secrets: any, alvo: Alvo) => Promise<{ id: string, autor: string, autorId: string | null, data: string, texto: string, link: string }[]>} comentarios

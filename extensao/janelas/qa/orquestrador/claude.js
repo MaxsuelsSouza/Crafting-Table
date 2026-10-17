@@ -1,5 +1,7 @@
 // @ts-check
+const path = require('path');
 const maestro = require('../../../infra/agentes/maestro');
+const ambientes = require('../../../infra/ambientes');
 const aoVivo = require('../../../componentes/ao-vivo');
 const { argsEnxutos } = require('../../../infra/agentes/enxuto');
 const { FERRAMENTAS_EXEC, PROIBIDAS } = require('./ferramentas');
@@ -17,11 +19,19 @@ const claude = (dir, opts, d) =>
     };
     const { modelo = d.modelo, esforco = d.esforco, banco, ...resto } = opts,
       bk = banco ? bancoDaSessao(dir, d) : null, // opts.banco: a sessão consulta o banco (MCP do SQLcl ou, autorizado, o mapa-db)
-      ferramentas = [...(opts.ferramentas || FERRAMENTAS_EXEC), ...(bk?.ferramentas || [])];
+      // ambiente com servidor MCP (web: Playwright MCP gravando vídeo e prints em evidencias/ia): vai junto com o do SQLcl
+      amb = ambientes.obter(d.ambiente),
+      mcpAmb = amb.mcp?.(path.join(dir, 'evidencias', 'ia')) || null,
+      ferramentas = [
+        ...(opts.ferramentas || FERRAMENTAS_EXEC),
+        ...(bk?.ferramentas || []),
+        ...(mcpAmb ? amb.ferramentas : [])
+      ];
     const foi = maestro.rodar(dir, {
       ...resto,
       proibidas: [...PROIBIDAS, ...(bk?.proibidas || [])],
       ferramentas,
+      mcp: mcpAmb,
       env: { QA_DIR: dir, ...(bk?.env || {}), ...(opts.env || {}) },
       extras: [
         ...argsEnxutos(ferramentas, { modelo, esforco, hooks: bk?.hooks || undefined }),

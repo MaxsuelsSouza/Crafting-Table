@@ -6,6 +6,7 @@ const {
   REGRAS,
   citarRespostas,
   citarDossie,
+  citarCodigo,
   citarConhecimentos
 } = require('../../orquestrador/prompt-comum');
 
@@ -27,7 +28,7 @@ const promptMassa = (
   direto = false
 ) =>
   `[segundo plano · Crafting Table · QA de ${chave}] Levante a massa de dados para estes cenários, seguindo o método ` +
-  `de massa da skill testes-funcionais (do ${SKILL()}/SKILL.md leia SÓ o trecho de massa: Grep -n "massa" e leia as linhas em volta, não o arquivo inteiro; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarConhecimentos()}\n` +
+  `de massa da skill testes-funcionais (do ${SKILL()}/SKILL.md leia SÓ o trecho de massa: Grep -n "massa" e leia as linhas em volta, não o arquivo inteiro; consultas só de leitura na cópia de produção):${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarCodigo(dir)}${citarConhecimentos()}\n` +
   `Banco: ${banco || 'NÃO configurado: não consulte banco; registre como pendência'}${mapa ? `. Consulte SOMENTE por ${mapa}/bin/mapa-db (SELECT, máx. 50 linhas, colunas sensíveis mascaradas)` : ''}. Junte as perguntas ao banco: uma consulta que traz candidatos e o estado deles vale mais que várias pequenas.\n` +
   (fase === 'buscar'
     ? `FASE 1 · BUSCA (só leitura, no máximo ${MASSA_BUSCA_MIN} minutos): ache registros que sirvam; NÃO proponha alteração de banco agora. Cenário que não precisa de massa: ${QA_STATE} massa dispensa --cenarios CT01. Não achou: termine sem registrar (a fase 2 tenta produzir a massa).\n`

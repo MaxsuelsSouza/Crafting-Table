@@ -1,6 +1,6 @@
 // @ts-check
-// Estado da esteira de Implementação em <aba>/.esteira.json (etapa, fase, pausa, aprovacao, tentativas, correcao, branches, bases, modo, reproducao,
-// syncOk, host; no pai com subtarefas: subtarefas, planoAprovado, integrado, verificadoFinal; no grupo: iniciado, worktree), a situação única da tela, a pausa e os textos das opções que a extensão resolve sozinha. Comum a todas as etapas e às abas.
+// Estado da esteira de Implementação em <aba>/.esteira.json (etapa, fase, pausa, aprovacao, tentativas, correcao, branches, criar (nome e base escolhidos por repositório), principalOk, modo, reproducao,
+// syncOk, host; no pai com subtarefas: subtarefas, planoAprovado, integrado, verificadoFinal; no grupo: iniciado, worktree; etapa 7: testeSub (subetapa 1-5), testeAjuste (pedido para refazer o plano), tentativasTeste, testado; correcao: true (verificação) ou 'teste'), a situação única da tela, a pausa e os textos das opções que a extensão resolve sozinha. Comum a todas as etapas e às abas.
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../componentes/ao-vivo');
@@ -17,7 +17,7 @@ const SEM_CONFIRMAR = 'Seguir sem confirmar o erro';
 const TENTAR = 'Tentar de novo',
   SEGUIR = 'Continuar assim mesmo',
   CORRIGIR = 'Tentar corrigir mais uma vez',
-  RESUMIR = 'Seguir para o resumo assim mesmo',
+  RESUMIR = 'Seguir assim mesmo',
   REPETIR = 'Rodar a implementação de novo',
   VERIFICAR = 'Seguir para a verificação';
 const lerJson = (arq, vazio) => {

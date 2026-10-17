@@ -1,6 +1,6 @@
 // @ts-check
 // Busca por termos (todos precisam aparecer em tipo, chave, título ou conteúdo; sem acento e sem caixa). A chave pesa mais na ordem.
-const { ler } = require('./arquivo');
+const { ler, chaveAtual } = require('./arquivo');
 
 const sem = (s) =>
   String(s || '')
@@ -24,6 +24,6 @@ function buscar(termos, { tipo } = {}) {
     .map((x) => x.i);
 }
 
-const flow = (chave) => ler().itens.find((i) => i.tipo === 'flow' && i.chave === chave) || null;
+const flow = (chave) => ler().itens.find((i) => i.tipo === 'flow' && i.chave === chaveAtual('flow', chave)) || null;
 
 module.exports = { buscar, flow, sem };

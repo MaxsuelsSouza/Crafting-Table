@@ -3,19 +3,21 @@
 const path = require('path');
 const vagas = require('../../../../infra/agentes/etapas');
 const { areaIA } = require('../../../../infra/agentes/area-ia');
+const ambientes = require('../../../../infra/ambientes');
 const {
   SKILL,
   QA_STATE,
   REGRAS,
   citarRespostas,
   citarDossie,
+  citarCodigo,
   citarConhecimentos
 } = require('../../orquestrador/prompt-comum');
 
 // Com os flows de início validados (aba Conhecimentos), o roteiro começa na tela de início: sem launchApp nem login.
-const inicioTexto = () => {
+const inicioTexto = (nome = 'emulador') => {
   const k = require('../../conhecimentos');
-  return k.flow('inicio')
+  return k.flow(`${nome}:inicio`)
     ? `TELA DE INÍCIO: antes do seu roteiro a extensão já deixa o app logado na tela de início (${k.ler().telaInicio || 'menu principal'}). ` +
         'Seus flows começam DALI: NÃO escreva launchApp, clearState, login nem escolha de filial.\n'
     : '';
@@ -39,12 +41,12 @@ const ROTEIRO = (c, amb, dir) =>
 const promptCenario = (chave, c, amb, itens, dir = '', exige = []) =>
   `[segundo plano · Crafting Table · QA de ${chave}] Prepare o ROTEIRO do cenário ${c.id} do planejamento de QA, ` +
   `seguindo o método de jornada da skill testes-funcionais (leia SÓ ${SKILL()}/references/jornada-mobile-maestro.md; o SKILL.md inteiro não é preciso). NÃO execute a jornada: ` +
-  `a extensão roda o roteiro (Maestro, bipe, consultas), grava o vídeo e anexa as evidências.${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarConhecimentos()}\n\n` +
+  `a extensão roda o roteiro (Maestro, bipe, consultas), grava o vídeo e anexa as evidências.${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarCodigo(dir)}${citarConhecimentos()}\n\n` +
   `Cenário ${c.id} · ${c.titulo}\n${c.texto}\n\n` +
   (c.instrucao ? `INSTRUÇÃO DO HUMANO para esta nova tentativa (siga): ${c.instrucao}\n\n` : '') +
-  `Ambiente já preparado (não rode preparar-ambiente): backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · API http://localhost:5111 · Metro 8081 · emulador ligado. ` +
-  `Pode abrir o app (maestro hierarchy, adb) para achar seletores, sem executar o cenário.\n` +
-  inicioTexto() +
+  `Ambiente já preparado (não rode preparar-ambiente): backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · ${ambientes.obter(amb.nome).texto(amb)}. ` +
+  `${ambientes.obter(amb.nome).guia()}, sem executar o cenário.\n` +
+  inicioTexto(amb.nome) +
   `Massa válida para este cenário: ${massaTexto(itens)}. ` +
   `Use SÓ essa massa (a da Etapa 4): nunca procure nem registre massa nova (massa add é recusado aqui). A extensão já validou no banco que o registro existe (Validar massa); confira só o que a consulta não cobre (o estado que o cenário exige); ` +
   `se não estiver, ${QA_STATE} massa <ID> invalida e use outro item válido da lista; se não houver outro, NÃO falhe o cenário: conclua com --status sem-massa --nota "<o que mudou no registro>" ` +
@@ -64,7 +66,7 @@ const promptDiagnostico = (chave, c, amb, itens, dir, pasta, detalhes) =>
   `Cenário ${c.id} · ${c.titulo}\n${c.texto}\n\n` +
   `O que a jornada registrou:\n${detalhes.join('\n')}\n\n` +
   `Evidências da execução (roteiro.json, jornada.txt, saída e junit de cada flow, consulta-*.txt, prints, vídeo): ${pasta}. Mobile ${amb.mobile || '?'} · backend ${amb.backend || '?'}. ` +
-  `Massa usada: ${massaTexto(itens)}. Pode ler o código e consultar o banco (só SELECT) para decidir.${citarRespostas(dir)}${citarConhecimentos()}\n\n` +
+  `Massa usada: ${massaTexto(itens)}. Pode ler o código e consultar o banco (só SELECT) para decidir.${citarRespostas(dir)}${citarCodigo(dir)}${citarConhecimentos()}\n\n` +
   `Decida UMA e TERMINE:\n` +
   `- o app/a API não fez o que o cenário espera (defeito do código): ${QA_STATE} cenario ${c.id} concluir --status falhou --nota "<o que era esperado × o que aconteceu, com a evidência>"\n` +
   `- a massa não serve mais (registro mudou): ${QA_STATE} massa <ID> invalida e ${QA_STATE} cenario ${c.id} concluir --status sem-massa --nota "<o que mudou>"\n` +

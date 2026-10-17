@@ -1,10 +1,11 @@
 // @ts-check
-// Roteiro de um cenário (roteiros/CTnn.json): substituição de ${VAR} e validação antes de rodar (6.2).
+// Roteiro de um cenário (roteiros/CTnn.json): substituição de ${VAR} e validação antes de rodar (6.2). O flow é validado pelo ambiente.
 // Recusa aqui o que o executar-jornada.py da skill deixava passar: tipo desconhecido, comparar_com sem referência,
 // variável sem valor, name: que quebra no Windows, env: do cabeçalho do flow que vence o -e, e consulta que não é SELECT.
-const fs = require('fs');
 const path = require('path');
 const { validar: validarSelect } = require('../../../../../infra/plugins/mapa/lib/banco');
+// validação do flow do Maestro (padrão): infra/ambientes/android/flow.js; cada ambiente tem a sua (validarFlow do contrato)
+const { cabecalho, errosDoFlow } = require('../../../../../infra/ambientes/android/flow');
 
 const { errosHttp } = require('./http');
 
@@ -30,57 +31,12 @@ const varsDaMassa = (itens) =>
 
 const pendentes = (v) => [...JSON.stringify(v).matchAll(VAR)].map((m) => m[1]);
 
-// Cabeçalho do flow (antes do 1º ---): chaves de env: e o name:.
-function cabecalho(texto) {
-  const topo = texto.split(/^---\s*$/m)[0];
-  const env = topo.match(/^env:\s*\n((?:[ \t]+.*\n?)+)/m)?.[1] || '';
-  return {
-    env: [...env.matchAll(/^[ \t]+(\w+)\s*:/gm)].map((m) => m[1]),
-    nome:
-      topo
-        .match(/^name:\s*(.+)$/m)?.[1]
-        .trim()
-        .replace(/^["']|["']$/g, '') || ''
-  };
-}
-const SUBFLOW = /^\s*(?:-\s*)?(?:runFlow:\s*|file:\s*)([\w./-]+\.ya?ml)\s*$/gm;
-
-// Flow e seus subflows (BFS): existe, name: sem " < > : | ? * e env: do cabeçalho sem chave que o runner passa por -e.
-function errosDoFlow(arquivo, envPassado) {
-  const erros = [],
-    vistos = new Set(),
-    fila = [arquivo];
-  while (fila.length) {
-    const f = fila.shift();
-    if (vistos.has(f)) continue;
-    vistos.add(f);
-    let tx;
-    try {
-      tx = fs.readFileSync(f, 'utf8');
-    } catch {
-      erros.push(`flow não encontrado: ${f}`);
-      continue;
-    }
-    const cab = cabecalho(tx);
-    if (/["<>:|?*]/.test(cab.nome))
-      erros.push(`${path.basename(f)}: name "${cab.nome}" tem " < > : | ? * (quebra no Windows)`);
-    if (f === arquivo) {
-      const choque = cab.env.filter((k) => k in envPassado);
-      if (choque.length)
-        erros.push(
-          `${path.basename(f)}: env: do cabeçalho repete ${choque.join(', ')} (vence o -e no Maestro): tire do cabeçalho`
-        );
-    }
-    for (const m of tx.matchAll(SUBFLOW)) fila.push(path.resolve(path.dirname(f), m[1]));
-  }
-  return erros;
-}
-
 /**
  * Roteiro já substituído → lista de erros (vazia = pode rodar). base: pasta dos flows; envBase: o que vai por -e em todo flow.
+ * validarFlow e bipe vêm do ambiente do ticket (infra/ambientes; padrão: Maestro e com bipe, o emulador).
  * @returns {string[]}
  */
-function validarRoteiro(roteiro, { base, envBase = {} }) {
+function validarRoteiro(roteiro, { base, envBase = {}, validarFlow = errosDoFlow, bipe = true }) {
   const etapas = roteiro?.etapas;
   if (!Array.isArray(etapas) || !etapas.length) return ['roteiro sem etapas'];
   const erros = [],
@@ -94,7 +50,7 @@ function validarRoteiro(roteiro, { base, envBase = {} }) {
     if (!TIPOS.includes(e.tipo)) return erros.push(`${onde}: tipo desconhecido (use ${TIPOS.join(', ')})`);
     if (e.tipo === 'flow') {
       if (!e.arquivo) return erros.push(`${onde}: sem arquivo`);
-      erros.push(...errosDoFlow(path.resolve(base, e.arquivo), { ...envBase, ...(e.env || {}) }));
+      erros.push(...validarFlow(path.resolve(base, e.arquivo), { ...envBase, ...(e.env || {}) }));
     }
     if (e.tipo === 'http') {
       erros.push(...errosHttp(e, onde));
@@ -102,6 +58,7 @@ function validarRoteiro(roteiro, { base, envBase = {} }) {
       nomes.add(e.nome);
     }
     if (e.tipo === 'bipe' && !String(e.codigo ?? '').trim()) erros.push(`${onde}: sem código`);
+    if (e.tipo === 'bipe' && !bipe) erros.push(`${onde}: este ambiente não tem bipe (só o coletor Android)`);
     if (['bipe', 'espera'].includes(e.tipo) && e.segundos !== undefined && !(Number(e.segundos) >= 0))
       erros.push(`${onde}: segundos inválido`);
     if (e.tipo === 'consulta') {

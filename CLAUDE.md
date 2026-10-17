@@ -40,21 +40,38 @@ Observador de toda execução em segundo plano (`maestro.rodar`); módulo novo n
 - Mais de 3 cliques no ▶ em 1 min sem o Ao vivo andar: caixa de "parece travado" (esperar, seguir de onde parou, parar).
 - O ▶ do módulo precisa passar por `aoVivo.controle` (é onde o vigia aprende o nome da ação).
 
-### Branch de trabalho (Implementações)
+### Branches (QA, Incidentes, Implementações)
 
-Todo ticket tem **uma branch só**: `<tipo>/<CHAVE>`, **sem slug**. O tipo vem do tipo do ticket (`infra/ticket/tipo-ticket.js`), porque a Implementação faz feature, bug e incidente; a conversão mora em `janelas/implementacoes/etapas/05-implementacao/regras/nome-branch.js`:
+Todo git dos repositórios de código passa por `extensao/infra/git/` (`localizar`, `padrao-branch`, `trocar`, `destacar`). Nenhum módulo faz checkout à mão.
 
-| Tipo do ticket | Branch |
+- **Quem troca de branch:** só a Implementação. QA e Incidentes leem pela ref (`mapa-git show/log -p`); o Incidente confere a principal antes de ler (pausa "branch") e, se você mandar trocar, passa por `garantirPrincipal`.
+- **Principal:** vem da configuração (`branchPrincipal` de cada repositório; o `origin/HEAD` não serve: no backend aponta para `master`). A volta para a principal é na **entrada** de cada execução (`garantirPrincipal`), não no fim: a esteira termina com alterações não commitadas.
+- **Proteções** (`trocar.js`; qualquer uma vira pausa e nada é mexido): repositório sujo, branch presa em outro worktree, worktree da esteira de outro ticket (`~/.cache/crafting-table/worktrees/<CHAVE>/`) e execução viva de outro ticket no mesmo repositório (dono em memória).
+- **Onde está o código do ticket** (`localizar`): fetch → branches candidatas (`craftingTable.branchesCandidatas`, padrão `pre-releases/*`, `releases/*`; `log --grep` da chave, pega cherry-pick e squash) → principal → branch com a chave no nome → qualquer ref remota com um commit da chave. `escolher`: nada → pergunta; mesma família → a mais recente; empate → pergunta. Bug e incidente reproduzem na principal; achado em homologação, na candidata (`refParaReproduzir`).
+
+**Nome:** uma branch por ticket, `<prefixo>/<CHAVE>`, **sem slug**. O prefixo é o mais usado no repositório (últimas 300 branches remotas) entre os candidatos do tipo do ticket (`padrao-branch.js`); sem histórico, o primeiro:
+
+| Tipo do ticket | Candidatos |
 |---|---|
-| História, tarefa, melhoria… (categoria `outro`) | `feature/<CHAVE>` |
-| Bug e bug experimental | `bugfix/<CHAVE>` |
-| Incidente | `hotfix/<CHAVE>` |
+| História | `story`, `feature` |
+| Tarefa | `task`, `feature` |
+| Melhoria | `reform`, `feature` |
+| Épico, feature | `feature` |
+| Bug e bug experimental | `bugfix`, `fix` |
+| Incidente | `hotfix` |
 | Não reconhecido | a esteira pausa e pergunta; a resposta vira a categoria do ticket (nunca adivinhe) |
 
-Ticket com subtarefas usa a chave e o tipo do pai; subtarefa não ganha branch própria e todos os grupos de subtarefas são implementados dentro dela.
-- Antes de criar, procure (`regras/base-branch.js`): `<tipo>/<CHAVE>` (local ou `origin`) existe → use-a. Senão, trabalho já feito (subtarefa concluída, branch antiga): ache a branch com a chave do ticket ou da subtarefa (`infra/dossie/trabalho-existente.js`) e crie `<tipo>/<CHAVE>` a partir dela (mais de uma: pergunte). Só sem nenhuma branch encontrada crie a partir de `origin/<principal>`.
-- Paralelo (no máximo 2 grupos): o segundo grupo roda num `git worktree` **destacado** (`--detach`) do HEAD de `<tipo>/<CHAVE>`, sem branch nova; ao terminar, a extensão aplica a diferença dele na `<tipo>/<CHAVE>`. Grupos que dependem um do outro rodam em sequência na própria branch.
+**Implementações** (`janelas/implementacoes/etapas/05-implementacao/regras/`):
+- A branch do ticket já existe (`<qualquer prefixo>/<CHAVE>`, local ou `origin`) → usa, sem perguntar.
+- Senão **sempre pergunta antes de criar** (pausa `criar`): "Criar `<nome>` a partir de `<base sugerida>`", "Partir da principal" e as outras bases achadas; texto livre = outro nome. Base sugerida (`base-branch.js`): branch com trabalho do ticket ou de subtarefa (`infra/dossie/trabalho-existente.js`), senão a do pai, senão a do avô, senão `origin/<principal>`. Criar = fetch + `checkout -b <nome> --no-track <base>`.
+- Ticket com subtarefas usa a chave e o tipo do pai; subtarefa não ganha branch própria e todos os grupos de subtarefas são implementados dentro dela.
+- Paralelo (no máximo 2 grupos): o segundo grupo roda num `git worktree` **destacado** (`--detach`) do HEAD da branch do ticket, sem branch nova; ao terminar, a extensão aplica a diferença dele nela. Grupos que dependem um do outro rodam em sequência na própria branch.
 - A esteira não faz commit, push nem merge (vale também para o worktree).
+- **Reprodução (bug e incidente, etapa 1, `01-dossie/subetapas/1.2` a `1.6`):** antes de corrigir, confirma o cenário: evidências (anexos + quadros dos vídeos pelo ffmpeg + `evidencias-ticket.md`), roteiro com a fonte de cada passo, `checkout --detach` no commit de `refParaReproduzir` (`infra/git/destacar.js`; o HEAD de antes volta no fim da 1.6 ou ao retomar), ambiente de pé com o sha conferido, execução com print e vídeo por cenário e veredito (`infra/reproducao/veredito.js`): REPRODUZIDO segue; NÃO REPRODUZIDO e INCONCLUSIVO pausam (tentar de novo, pedir dados no Jira, seguir sem confirmar; encerrar). O pedido de dados é o único ponto que escreve no Jira, e só publica com a sua aprovação; tipo não reconhecido pausa antes; o Mergulho que já reproduziu dispensa.
+
+### Teste na aplicação (Implementações, etapa 07)
+
+05 Implementação → 06 Verificação → **07 Teste na aplicação** (`etapas/07-teste/`) → 08 Resumo. A 07 sobe a aplicação (`infra/ambientes`), cria os CTs (plano do QA se servir, senão `METODO_ENTREGA`; **não publica no Jira**), executa cada um com **print e vídeo** e dá um **score 0–5** (`regras/score.js`, menor teto vence) contra o **mínimo** da atividade (`regras/minimo.js`: incidente/bug 4, bug experimental/outro 3; prioridade ±1; área sensível +1; entre 2 e 5). Score ≥ mínimo segue sem portão; abaixo: causa de código volta uma vez para a 05 (`correcao: 'teste'`), senão pausa. Grupos de subtarefas pulam; roda uma vez no pai.
 
 ### Pasta do módulo
 
@@ -65,7 +82,11 @@ Cada módulo de ticket mora em `extensao/janelas/<modulo>/`. Tudo que é só do 
 - `dossie/`: o dossiê do ticket (Implementação e QA) e a régua de confiança
 - `provedores/`: a ferramenta de gestão de trabalho (contrato, `jira/`, documento, credenciais, variáveis) e a `fachada.js` que o resto da extensão usa
 - `agentes/`: o agente de IA (agente ativo, plugins e skills, vagas das etapas, `maestro/` = `claude -p`, `vigia.js`, área de escrita da IA, banco para a IA)
+- `git/`: branches e busca do commit nos repositórios de código (`localizar`, `padrao-branch`, `trocar` com as proteções); ver "Branches"
+- `ambientes/`: onde a aplicação roda para testar (`emulador`, `aparelho`, `web`; registro e contrato no `index.js`, `escolher.js`, `aplicacao/` com os papéis API/Metro/Start/web, `android/` com adb, Maestro e bipe); ambiente novo = 1 pasta
+- `reproducao/`: confirmar o cenário de bug/incidente (prompt de extração dos artefatos, quadros dos vídeos pelo ffmpeg, veredito REPRODUZIDO · NÃO REPRODUZIDO · INCONCLUSIVO)
 - `integracoes/`: Teams (`teams/`) e a ponte com a skill testes-funcionais
+- `testes/`: o plano de casos de teste (CT01…) vindo do plugin jira-qa-planner: método, parser (criticidade e tipo), nível, Template B (API), estimativa e nome da subtarefa [QA]
 - `plugins/`: os plugins do Claude Code que a extensão passa por `--plugin-dir` (`mapa`, `foco`)
 - na raiz, só o que é geral e pequeno (`texto.js`, `controle.js`). Tela (CSS, folhas, host de views) não mora em `infra/`: vai para `componentes/` ou `painel/`.
 

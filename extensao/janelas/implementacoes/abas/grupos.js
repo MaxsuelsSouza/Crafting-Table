@@ -1,5 +1,5 @@
 // @ts-check
-// Aba Esteira do ticket com subtarefas: a Etapa 0 (0.1 a 0.6) e uma linha por grupo com a etapa em que ele está (abre a 1 → 7 dele),
+// Aba Esteira do ticket com subtarefas: a Etapa 0 (0.1 a 0.6) e uma linha por grupo com a etapa em que ele está (abre a 1 → 8 dele),
 // os cartões de aprovação e de pausa do pai e de cada grupo (data-key = grupo) e o Ao vivo: o de cada grupo em andamento lado a lado, com as
 // alterações do worktree embaixo (ao-vivo-grupos.js), ou o do pai (os grupos espelham nele, "[G1] …").
 const caixaEtapas = require('../../../componentes/caixa-etapas');
@@ -85,8 +85,8 @@ const corpo = (t, d0, dir) => {
     .map((g) => g.id);
   const etapas = [linhaZero(dir, sit), ...(plano?.grupos || []).map((g) => linhaGrupo(dir, g, plano, feitos))];
   const resumo = plano
-    ? `<div class="folha"><div class="es-resumo">${plano.grupos.length} grupo(s) · execução <b>${esc(plano.execucao)}</b> · branch <b>${esc(rotulo(t))}</b> · ${feitos.length}/${plano.grupos.length} concluído(s)${e.fase === 'concluido' ? ' · <b>implementacao.md</b> pronto para o QA' : ''}</div></div>`
-    : `<div class="folha"><div class="es-resumo">Branch do ticket: <b>${esc(rotulo(t))}</b> (feature, bugfix ou hotfix pelo tipo do ticket; criada depois da sua aprovação)</div></div>`;
+    ? `<div class="folha"><div class="es-resumo">${plano.grupos.length} grupo(s) · execução <b>${esc(plano.execucao)}</b> · branch <b>${esc(rotulo(t, e.branches))}</b> · ${feitos.length}/${plano.grupos.length} concluído(s)${e.fase === 'concluido' ? ' · <b>implementacao.md</b> pronto para o QA' : ''}</div></div>`
+    : `<div class="folha"><div class="es-resumo">Branch do ticket: <b>${esc(rotulo(t, e.branches))}</b> (prefixo no padrão do repositório; sem branch, a esteira pergunta antes de criar)</div></div>`;
   const porGrupo = (plano?.grupos || [])
     .map((g) => {
       const sg = situacao(dirGrupo(dir, g.id));

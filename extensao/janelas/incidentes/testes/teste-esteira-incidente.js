@@ -462,13 +462,29 @@ const reset = () => {
     gitX(outro, 'push', '-q', 'origin', 'master-md');
     const notas = [];
     assert.deepStrictEqual(
-      sincronizarRepos([{ caminho, camada: 'backend' }], (x) => notas.push(x)),
+      sincronizarRepos([{ caminho, camada: 'backend', branchPrincipal: 'master-md' }], (x) => notas.push(x)),
       []
     );
     assert.ok(fs.existsSync(path.join(caminho, 'b.txt')) && notas.length === 1);
     gitX(caminho, 'remote', 'set-url', 'origin', path.join(os.tmpdir(), 'nao-existe-origem'));
-    const falhas = sincronizarRepos([{ caminho, camada: 'backend' }]);
+    const falhas = sincronizarRepos([{ caminho, camada: 'backend', branchPrincipal: 'master-md' }]);
     assert.strictEqual(falhas.length, 1);
+    // depois da etapa 3: correção do ticket em andamento em outra branch vira nota informativa no 3-dados-logs.md (uma vez só)
+    gitX(caminho, 'checkout', '-q', '-b', 'hotfix/INC-77');
+    fs.writeFileSync(path.join(caminho, 'c.txt'), 'fix\n');
+    gitX(caminho, 'add', '.');
+    gitX(caminho, 'commit', '-q', '-m', '[INC-77] corrige');
+    gitX(caminho, 'checkout', '-q', 'master-md');
+    const dir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'inc-3-'));
+    fs.writeFileSync(path.join(dir3, '3-dados-logs.md'), '# Dados\nPendência: massa real\n');
+    const et3 = require('../etapas/03-dados-logs');
+    const s3 = { reposDe: () => [{ caminho, camada: 'backend', branchPrincipal: 'master-md' }] };
+    for (let i = 0; i < 2; i++) assert.strictEqual(et3.depois({ s: s3, t: { chave: 'INC-77' }, dir: dir3 }), null);
+    const md3 = fs.readFileSync(path.join(dir3, '3-dados-logs.md'), 'utf8');
+    assert.ok(
+      md3.includes('correção em andamento em `hotfix/INC-77`') && md3.split('## Correção em andamento').length === 2,
+      md3
+    );
   }
 
   assert.deepStrictEqual(rede, [], 'nada saiu para a rede');

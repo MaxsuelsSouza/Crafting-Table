@@ -12,7 +12,7 @@ function cartaoPausa(dir, e) {
     : '';
   const proc = e.processando ? ' proc' : '';
   const pausaCard = e.pausa
-    ? `<div class="qa-card bloq${proc}" title="${esc(e.processando || '')}"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
+    ? `<div class="qa-card bloq${proc}" title="${esc(e.processando || '')}"><b>${e.pausa.motivo === 'briefing' ? 'Antes de planejar, preciso entender o que testar' : e.pausa.motivo === 'subtarefa-qa' ? 'Onde publicar o planejamento' : e.pausa.motivo === 'codigo' ? 'Onde está o código do ticket' : e.pausa.motivo === 'principal' ? 'Repositório fora da principal' : prop ? 'Alteração no banco para montar a massa' : 'O Claude precisa da sua resposta'}</b><p>${esc(e.pausa.pergunta)}</p>${sqlHtml}
     <div class="acoes-passo">${(e.pausa.opcoes || []).map((o, i) => `<button data-painel="qaResponder" data-op="${i}">${esc(o)}</button>`).join('')}
     <button data-painel="qaResponder" class="aprovar">Responder…</button></div></div>`
     : '';

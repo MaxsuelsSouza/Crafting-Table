@@ -1,5 +1,5 @@
 // @ts-check
-// Subetapa 5.4 · Reproduzir: o Claude repete no emulador a ação do diagnóstico com a Massa de Teste, passo a passo pelo fluxo,
+// Subetapa 5.4 · Reproduzir: o Claude repete no ambiente do ticket (emulador, aparelho ou navegador) a ação do diagnóstico com a Massa de Teste, passo a passo pelo fluxo,
 // com a tela gravada. Resultado em reproducao.json (gravarReproducao). Sem resultado do Claude: tentar de novo ou aceitar como não reproduzido.
 const fs = require('fs');
 const path = require('path');
@@ -8,6 +8,8 @@ const fluxo = require('../../../../../componentes/fluxo-passos');
 const { lerJson } = require('../../../estado');
 const { GRAVAR, FLUXO, REGRAS, SKILL } = require('../regras/ferramentas');
 const vagas = require('../../../../../infra/agentes/etapas');
+const ambientes = require('../../../../../infra/ambientes');
+const { AMBIENTE } = require('./5.3-ambiente');
 const { SUBETAPAS, marcarSub, pausar } = require('./estado');
 
 const EVID = 'evidencias',
@@ -15,14 +17,30 @@ const EVID = 'evidencias',
 const TENTAR = 'Tentar de novo',
   ACEITAR = 'Aceitar como não reproduzido';
 
-const promptReproduzir = (chave, dir) =>
-  `[segundo plano · Crafting Table · Incidente ${chave}] Ambiente pronto (API 5111, Metro 8081, emulador e app). Leia ${path.join(dir, '4-diagnostico.md')} e ${path.join(dir, 'massa-teste.sql')}. ` +
-  `Reproduza NO EMULADOR a ação exata do diagnóstico usando SÓ a Massa de Teste (jornada pelo Maestro/adb, skill testes-funcionais: ${SKILL()}/references/jornada-mobile-maestro.md). A tela já está sendo gravada em vídeo pela extensão. ` +
-  `O FLUXO já está planejado e o andamento é registrado por ${FLUXO} (estado atual abaixo). Para cada passo, na ordem: ${FLUXO} iniciar Pnn; execute; registre a ação EXATA que repete o passo (comando maestro/adb) com ${FLUXO} acao Pnn "<comando>"; ` +
-  `tire um print (adb exec-out screencap -p > /tmp/mergulho-Pnn.png) e guarde com ${FLUXO} evidencia Pnn /tmp/mergulho-Pnn.png; feche com ${FLUXO} concluir Pnn passou|falhou|bloqueado --nota "o que viu". ` +
-  'RETOMADA: passos já "passou" são REFEITOS RÁPIDO só para levar o app ao ponto onde parou: rode a "ação" registrada de cada um em sequência, sem reanalisar, sem novo print e sem novo iniciar/concluir; confira apenas que a tela esperada apareceu e siga do primeiro passo pendente. ' +
-  `Estado do fluxo:\n${fluxo.estadoParaPrompt(dir)}\n` +
-  `Ao final salve também um print do resultado: ${GRAVAR} evidencias/NN-resultado.png --de /tmp/resultado.png. Grave ${path.join(dir, CLAUDE_JSON)} (com ${GRAVAR} ${CLAUDE_JSON}): {"ok": true se o erro do diagnóstico se repetiu (ou false), "acao": "o que foi feito e o que apareceu", "prints": [{"arquivo": "NN-resultado.png", "legenda": "..."}]}. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`;
+// Como a IA dirige o ambiente, por plataforma (infra/ambientes): o que muda no prompt entre app Android e navegador.
+const JORNADA = {
+  android: () => ({
+    como: `jornada pelo Maestro/adb, skill testes-funcionais: ${SKILL()}/references/jornada-mobile-maestro.md`,
+    acao: 'comando maestro/adb'
+  }),
+  web: (a) => ({ como: a.guia(), acao: 'a ferramenta do Playwright MCP e os parâmetros' })
+};
+
+// amb: o ambiente que a 5.3 subiu (.ambiente.ok); sem ele, o do ticket (d.ambiente) ou o emulador.
+const promptReproduzir = (chave, dir, amb = {}) => {
+  const a = ambientes.obter(amb.nome),
+    j = JORNADA[a.plataforma](a),
+    print = (n) => a.comoPrint(`/tmp/mergulho-${n}.png`, amb);
+  return (
+    `[segundo plano · Crafting Table · Incidente ${chave}] Ambiente pronto (${a.texto(amb)}). Leia ${path.join(dir, '4-diagnostico.md')} e ${path.join(dir, 'massa-teste.sql')}. ` +
+    `Reproduza NO ${a.rotulo.toUpperCase()} a ação exata do diagnóstico usando SÓ a Massa de Teste (${j.como}). A tela já está sendo gravada em vídeo pela extensão. ` +
+    `O FLUXO já está planejado e o andamento é registrado por ${FLUXO} (estado atual abaixo). Para cada passo, na ordem: ${FLUXO} iniciar Pnn; execute; registre a ação EXATA que repete o passo (${j.acao}) com ${FLUXO} acao Pnn "<comando>"; ` +
+    `tire um print (${print('Pnn')}) e guarde com ${FLUXO} evidencia Pnn /tmp/mergulho-Pnn.png; feche com ${FLUXO} concluir Pnn passou|falhou|bloqueado --nota "o que viu". ` +
+    'RETOMADA: passos já "passou" são REFEITOS RÁPIDO só para levar o app ao ponto onde parou: rode a "ação" registrada de cada um em sequência, sem reanalisar, sem novo print e sem novo iniciar/concluir; confira apenas que a tela esperada apareceu e siga do primeiro passo pendente. ' +
+    `Estado do fluxo:\n${fluxo.estadoParaPrompt(dir)}\n` +
+    `Ao final salve também um print do resultado: ${GRAVAR} evidencias/NN-resultado.png --de /tmp/resultado.png. Grave ${path.join(dir, CLAUDE_JSON)} (com ${GRAVAR} ${CLAUDE_JSON}): {"ok": true se o erro do diagnóstico se repetiu (ou false), "acao": "o que foi feito e o que apareceu", "prints": [{"arquivo": "NN-resultado.png", "legenda": "..."}]}. ${REGRAS}${vagas.aviso('incidentes.reproducao')}`
+  );
+};
 
 // reproducao.json: midias montadas de evidencias/ (png = print, mp4/webm/gif = vídeo) + o que o Claude registrou.
 function gravarReproducao(dir, ok, acao) {
@@ -62,18 +80,20 @@ async function rodar({ t, dir, d, vivo, ponto, comecar, concluirSub }) {
   fluxo.descartarEmAndamento(dir); // passo cortado por pausa/queda volta para a fila
   fs.mkdirSync(path.join(dir, EVID), { recursive: true });
   fs.rmSync(path.join(dir, CLAUDE_JSON), { force: true });
-  d.gravarTela(path.join(dir, EVID));
+  const amb = { nome: d.ambiente, ...lerJson(path.join(dir, AMBIENTE), {}) },
+    rotulo = ambientes.obter(amb.nome).rotulo;
+  d.gravarTela(path.join(dir, EVID), amb);
   const registrou = () => lerJson(path.join(dir, CLAUDE_JSON), null) !== null;
   let rodou = await d.claude({
-    prompt: promptReproduzir(t.chave, dir),
-    titulo: 'Incidente · Reproduzindo no emulador'
+    prompt: promptReproduzir(t.chave, dir, amb),
+    titulo: `Incidente · Reproduzindo no ${rotulo}`
   });
   if (rodou && !registrou() && controle.valida(dir, d.rodada)) {
     // uma segunda tentativa: os passos feitos são refeitos rápido pela ação registrada
     vivo('aviso', 'O Claude terminou a reprodução sem registrar o resultado: tentando mais uma vez');
     rodou = await d.claude({
-      prompt: promptReproduzir(t.chave, dir),
-      titulo: 'Incidente · Reproduzindo no emulador (nova tentativa)'
+      prompt: promptReproduzir(t.chave, dir, amb),
+      titulo: `Incidente · Reproduzindo no ${rotulo} (nova tentativa)`
     });
   }
   d.pararTela();
@@ -91,7 +111,7 @@ async function rodar({ t, dir, d, vivo, ponto, comecar, concluirSub }) {
   const rep = gravarReproducao(dir, false, '');
   vivo(
     rep.ok ? 'fim' : 'aviso',
-    rep.ok ? 'Problema reproduzido no emulador' : 'O problema não foi reproduzido (resultado registrado pelo Claude)'
+    rep.ok ? `Problema reproduzido no ${rotulo}` : 'O problema não foi reproduzido (resultado registrado pelo Claude)'
   );
   concluirSub(S4);
   return false;

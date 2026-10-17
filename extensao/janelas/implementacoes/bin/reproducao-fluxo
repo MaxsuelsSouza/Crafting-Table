@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // reproducao-fluxo: o Claude da etapa Reprodução da esteira de Implementação registra os cenários e o andamento por aqui.
 // A pasta da aba vem em IMPLEMENTACAO_DIR (a extensão passa). Mesmo registro do fluxo dos Incidentes (componentes/fluxo-passos.js). Uso:
-//   reproducao-fluxo plano <<'FIM' [{"titulo":"Abrir o módulo Separação","texto":"o que fazer e o que esperar"}, …] FIM
+//   reproducao-fluxo plano <<'FIM' [{"titulo":"Abrir o módulo Separação","texto":"o que fazer e o que esperar","fonte":"de onde veio"}, …] FIM
 //   reproducao-fluxo iniciar P01
 //   reproducao-fluxo acao P01 "<comando exato que repete o passo>"
 //   reproducao-fluxo evidencia P01 /tmp/print.png   (origem: /tmp ou a pasta da aba, ex.: evidencias-ticket/KAN-1-print.png)
 //   reproducao-fluxo concluir P01 passou|falhou|bloqueado --nota "o que foi visto"   (falhou = o erro aconteceu)
 //   reproducao-fluxo status
+//   reproducao-fluxo sinais CT01 --console 2 --rede 0 "o que apareceu"   (erros NOVOS de console e de rede durante o passo)
+// Teste na aplicação (etapa 7): a pasta do fluxo vem em FLUXO_DIR (<aba>/teste), com os CTs (CT01…) no lugar dos passos.
 const fluxo = require('../../../componentes/fluxo-passos');
-const dir = process.env.IMPLEMENTACAO_DIR;
+const dir = process.env.FLUXO_DIR || process.env.IMPLEMENTACAO_DIR;
 const [cmd, id, ...resto] = process.argv.slice(2);
 const sair = (msg, code = 1) => {
   console[code ? 'error' : 'log'](msg);
@@ -46,6 +48,17 @@ try {
     const i = resto.indexOf('--nota');
     fluxo.concluir(dir, id, resto[0], i >= 0 ? resto.slice(i + 1).join(' ') : '');
     sair(`${id}: ${resto[0]}`, 0);
+  }
+  if (cmd === 'sinais') {
+    const val = (k) => {
+      const i = resto.indexOf(k);
+      return i >= 0 ? Number(resto[i + 1]) || 0 : 0;
+    };
+    const texto = resto
+      .filter((x, i) => !x.startsWith('--') && !['--console', '--rede'].includes(resto[i - 1]))
+      .join(' ');
+    fluxo.sinais(dir, id, { console: val('--console'), rede: val('--rede'), resumo: texto });
+    sair(`${id}: sinais registrados`, 0);
   }
   if (cmd === 'status') sair(fluxo.estadoParaPrompt(dir) || '(sem fluxo)', 0);
   sair('reproducao-fluxo: comando desconhecido. Veja o topo de implementacoes/bin/reproducao-fluxo.');

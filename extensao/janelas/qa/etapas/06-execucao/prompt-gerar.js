@@ -2,12 +2,14 @@
 // Prompts do 6.0 Gerar: UMA sessão por card escreve tudo de uma vez (camadas, receita de massa, roteiros); a extensão executa sem IA.
 // As correções (receita vazia, roteiro recusado, diagnóstico) voltam nesta mesma conversa (--resume): o contexto já está em cache.
 const vagas = require('../../../../infra/agentes/etapas');
+const ambientes = require('../../../../infra/ambientes');
 const {
   SKILL,
   QA_STATE,
   REGRAS,
   citarRespostas,
   citarDossie,
+  citarCodigo,
   citarConhecimentos
 } = require('../../orquestrador/prompt-comum');
 const { ROTEIRO, inicioTexto } = require('./prompt');
@@ -21,8 +23,8 @@ const HTTP =
 const promptGerar = (chave, cens, amb, dir, banco) =>
   `[segundo plano · Crafting Table · QA de ${chave}] Prepare a execução de TODOS os cenários abaixo NESTA sessão (você escreve; a extensão executa sem você). ` +
   `Método: skill testes-funcionais; leia só o que precisar: ${SKILL()}/references/plano-para-suite.md (camadas) e ${SKILL()}/references/jornada-mobile-maestro.md (flows). ` +
-  `NÃO execute os cenários.${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarConhecimentos()}\n\n` +
-  `Ambiente já preparado: backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · API http://localhost:5111 · emulador ligado (maestro hierarchy e adb para achar seletores). Banco: ${banco}.\n\n` +
+  `NÃO execute os cenários.${vagas.aviso('qa.execucao')}${citarRespostas(dir)}${citarDossie(dir)}${citarCodigo(dir)}${citarConhecimentos()}\n\n` +
+  `Ambiente já preparado: backend ${amb.backend || '?'} · mobile ${amb.mobile || '?'} · ref ${amb.ref || '?'} · ${ambientes.obter(amb.nome).texto(amb)}. ${ambientes.obter(amb.nome).guia()}. Banco: ${banco}.\n\n` +
   `Faça NESTA ORDEM e registre cada peça (o qa-state valida na hora; recusou, corrija e registre de novo):\n` +
   `1. CAMADAS: arquivo JSON { "cenarios": { "CT01": { "camada": "app|api|banco|nao-verificavel", "porque": "<1 frase>" } } } → ${QA_STATE} card <arquivo>. ` +
   'Escolha a camada mais barata que PROVA o cenário: banco (só consultas) < api (http) < app (emulador). app só quando o que se prova é a tela ou o fluxo do operador. ' +
@@ -36,7 +38,7 @@ const promptGerar = (chave, cens, amb, dir, banco) =>
   `3. ROTEIROS: um por cenário (menos nao-verificavel) → ${QA_STATE} roteiro <CT> <arquivo.json>.\n` +
   ROTEIRO({ id: '<CT>' }, amb, dir) +
   HTTP +
-  inicioTexto() +
+  inicioTexto(amb.nome) +
   '- Reaproveite: flows comuns em roteiros/comum/ (runFlow); o que descobrir (seletor, tela, endpoint, coluna) vai para os Conhecimentos.\n' +
   `4. TERMINE com um resumo de 1 linha por cenário (camada e o que o roteiro prova).\n\n` +
   cens

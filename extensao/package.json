@@ -159,6 +159,22 @@
           "default": "Small_Phone",
           "description": "Emulador que a Crafting Table liga quando a skill testes-funcionais precisa de um e nenhum aparelho está conectado."
         },
+        "craftingTable.ambientePadrao": {
+          "type": "string",
+          "default": "emulador",
+          "enum": ["emulador", "aparelho", "web"],
+          "description": "Ambiente de teste (QA, reprodução de Incidentes) quando o ticket não decide: emulador (AVD), aparelho (coletor Android físico) ou web (API + front no navegador, Playwright). Com só repositório web ou só mobile nas Configurações, a camada decide."
+        },
+        "craftingTable.aparelhoSerial": {
+          "type": "string",
+          "default": "",
+          "description": "Serial do coletor Android físico do ambiente aparelho (adb devices; no Wi-Fi, <ip>:5555). Obrigatório para o ambiente aparelho; substitui a variável WMS_ADB_SERIAL."
+        },
+        "craftingTable.webUrl": {
+          "type": "string",
+          "default": "http://localhost:9009",
+          "description": "URL do front local do ambiente web (o Comando de nome web/front, ou rspack/npm run dev, sobe nessa porta)."
+        },
         "craftingTable.specsDir": {
           "type": "string",
           "default": "",
@@ -239,6 +255,17 @@
           "default": "",
           "description": "URL do repositório (GitLab) das specs, para clonar/atualizar a pasta de specs."
         },
+        "craftingTable.branchesCandidatas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "pre-releases/*",
+            "releases/*"
+          ],
+          "description": "Branches candidatas (pre-release, release…) onde procurar o código do ticket antes da principal: padrões relativos a origin/ (glob do git for-each-ref), as mais recentes primeiro."
+        },
         "craftingTable.repositorios": {
           "type": "array",
           "default": [],
@@ -263,7 +290,7 @@
               },
               "branchPrincipal": {
                 "type": "string",
-                "description": "Branch principal do repositório: a esteira de Implementação cria a branch de trabalho (impl/<CHAVE>-<slug>) a partir dela."
+                "description": "Branch principal do repositório (produção): QA e Incidentes leem por ela e a esteira de Implementação sugere criar a branch do ticket (<prefixo>/<CHAVE>, sem slug) a partir dela quando não há branch do pai ou do avô."
               }
             }
           }

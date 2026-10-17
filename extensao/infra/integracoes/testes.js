@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { RAIZ } = require('../ticket/sessao');
 const emulador = require('../../modulos/emulador');
+const ambientes = require('../ambientes');
 
 // Ponte com a skill testes-funcionais, sem modificá-la. O hook ~/.claude/hooks/crafting-testes.py
 // deixa pedidos em PEDIDOS; aqui cada um é confirmado (renomeado para .ok, o hook espera por isso)
@@ -11,9 +12,11 @@ const emulador = require('../../modulos/emulador');
 const PEDIDOS = path.join(RAIZ, '.pedidos');
 const VIVO = path.join(RAIZ, '.crafting-ativo'); // o hook só pede se a extensão estiver aberta
 
+// p.ambiente: emulador (padrão, o que a skill sempre usou), aparelho ou web (infra/ambientes). p.emulador: a skill pede o aparelho ligado.
 async function ambiente(p) {
   vscode.window.showInformationMessage(`Crafting Table: preparando o ambiente do ${p.chave}...`);
-  if (p.emulador) {
+  const amb = ambientes.obter(p.ambiente || 'emulador');
+  if (p.emulador && amb.nome === 'emulador') {
     const aparelhos = await emulador.dispositivos();
     if (!aparelhos.length) {
       const avd = vscode.workspace.getConfiguration('craftingTable').get('avdPadrao');
@@ -25,10 +28,12 @@ async function ambiente(p) {
   for (const b of p.botoes || []) await require('../../modulos/comandos').garantir(b);
 }
 
+// Vídeo da tela pelo ambiente (emulador: o ligado; aparelho: craftingTable.aparelhoSerial; web: o Playwright grava sozinho).
 function gravar(p) {
-  const ev = require('../../modulos/evidencias');
-  if (p.acao === 'iniciar') ev.gravar({ sid: p.sid, chave: p.chave, continuo: true });
-  else ev.pararGravacao();
+  const amb = ambientes.obter(p.ambiente || 'emulador'),
+    serial = vscode.workspace.getConfiguration('craftingTable').get('aparelhoSerial') || '';
+  if (p.acao === 'iniciar') amb.evidencia.gravar(null, { sid: p.sid, chave: p.chave, serial: amb.nome === 'aparelho' ? serial : undefined });
+  else amb.evidencia.parar();
 }
 
 function processar() {

@@ -186,8 +186,9 @@ assert.strictEqual(
   );
   const dp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-pub-'));
   const chamadas = [];
-  const falso = (filhos, subtarefas = true) => ({
+  const falso = (filhos, subtarefas = true, tipo = 'História') => ({
     chave: 'WMS-1',
+    tipo,
     subtarefas,
     filhos: async () => filhos,
     criarSubtarefa: async (o) => {
@@ -200,28 +201,82 @@ assert.strictEqual(
     },
     comentar: async (md) => {
       chamadas.push(['comentar', md]);
+    },
+    comentarEm: async (k, md) => {
+      chamadas.push(['comentarEm', k, md]);
     }
   });
   await assert.rejects(qa.publicarPlano(dp, falso([])), /qa-plano\.md/); // IA não gravou
   fs.writeFileSync(path.join(dp, 'qa-plano.md'), PLANO_MD);
-  assert.deepStrictEqual(await qa.publicarPlano(dp, falso([{ key: 'WMS-5', resumo: 'Backend', md: '' }])), {
-    modo: 'criada',
-    key: 'WMS-9'
-  });
+  // Nenhuma subtarefa de planejamento ("[QA] Execução" não casa): cria, com o nome pelo tipo do pai.
+  assert.deepStrictEqual(
+    await qa.publicarPlano(
+      dp,
+      falso([
+        { key: 'WMS-5', resumo: 'Backend', md: '' },
+        { key: 'WMS-6', resumo: '[QA] Execução', md: 'x' }
+      ])
+    ),
+    { modo: 'criada', key: 'WMS-9' }
+  );
   assert.deepStrictEqual(
     [chamadas[0][0], chamadas[0][1].resumo, chamadas[0][1].descricao],
     ['criar', '[QA] Planejamento dos Casos de Testes', PLANO_MD]
   );
   chamadas.length = 0;
+  await qa.publicarPlano(dp, falso([], true, 'Bug'));
+  assert.strictEqual(chamadas[0][1].resumo, '[QA] Teste de Qualidade'); // bug, melhoria, incidente…
+  chamadas.length = 0;
+  // Subtarefa existente com descrição: não sobrescreve, comenta nela.
   assert.deepStrictEqual(
     await qa.publicarPlano(
       dp,
-      falso([{ key: 'WMS-3', resumo: '[QA] Teste de Qualidade', md: 'Sub-tarefa criada automaticamente' }])
+      falso([{ key: 'WMS-3', resumo: '[QA] Teste de Qualidade', md: 'Sub-tarefa criada automaticamente' }], true, 'Bug')
     ),
+    { modo: 'comentada', key: 'WMS-3' }
+  );
+  assert.deepStrictEqual(
+    [chamadas.length, chamadas[0][0], chamadas[0][1], chamadas[0][2].includes(PLANO_MD)],
+    [1, 'comentarEm', 'WMS-3', true]
+  );
+  chamadas.length = 0;
+  // Existente com descrição vazia: preenche a descrição.
+  assert.deepStrictEqual(
+    await qa.publicarPlano(dp, falso([{ key: 'WMS-3', resumo: '[QA] Plano e Execução', md: ' ' }])),
     { modo: 'atualizada', key: 'WMS-3' }
   );
   assert.deepStrictEqual(chamadas, [['atualizar', 'WMS-3', PLANO_MD]]);
   chamadas.length = 0;
+  // Várias candidatas: não pega a primeira; pausa e pergunta. A resposta escolhe (chave ou "criar nova").
+  const duas = [
+    { key: 'WMS-3', resumo: '[QA] Planejamento dos Casos de Testes', md: '' },
+    { key: 'WMS-4', resumo: '[QA] Plano v2', md: '' }
+  ];
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso(duas)), {
+    modo: 'pergunta',
+    key: null,
+    candidatas: ['WMS-3', 'WMS-4']
+  });
+  assert.deepStrictEqual(
+    [chamadas.length, qa.estado(dp).pausa.motivo, qa.estado(dp).pausa.opcoes.length],
+    [0, 'subtarefa-qa', 3]
+  );
+  assert.strictEqual(qa.escolherSubtarefa(dp, 'sei lá'), null); // não entendeu: a pausa fica
+  assert.strictEqual(qa.escolherSubtarefa(dp, qa.estado(dp).pausa.opcoes[1]), 'WMS-4');
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso(duas)), { modo: 'atualizada', key: 'WMS-4' });
+  assert.strictEqual(qa.estado(dp).subtarefaQa, null);
+  await qa.publicarPlano(dp, falso(duas));
+  qa.escolherSubtarefa(dp, 'Criar uma subtarefa nova');
+  chamadas.length = 0;
+  assert.deepStrictEqual(await qa.publicarPlano(dp, falso(duas)), { modo: 'criada', key: 'WMS-9' });
+  qa.mudar(dp, { pausa: null });
+  chamadas.length = 0;
+  // História de API (contexto do ticket): o prompt de criar traz o Template B do plugin.
+  fs.writeFileSync(path.join(dp, qa.CONTEXTO), 'Novo endpoint POST /pedidos com payload JSON');
+  assert.ok(qa.promptCriar(dp).includes('Guia de Testes – [NOME DO ENDPOINT]'));
+  fs.writeFileSync(path.join(dp, qa.CONTEXTO), 'Tela de login do coletor');
+  assert.ok(!qa.promptCriar(dp).includes('Guia de Testes'));
+  fs.rmSync(path.join(dp, qa.CONTEXTO));
   assert.deepStrictEqual(await qa.publicarPlano(dp, falso([], false)), { modo: 'comentario', key: 'WMS-1' }); // sem subtarefas
   assert.deepStrictEqual(
     [chamadas.length, chamadas[0][0], chamadas[0][1].includes('CT01 – Validar')],

@@ -84,6 +84,17 @@ const responder = (s) => ({
           });
     if (!r?.trim()) return;
     if (['massa-sql', 'massa-sql-erro'].includes(p.motivo)) return respostaMassaSql(s, t, dir, p, r.trim());
+    if (p.motivo === 'subtarefa-qa') {
+      // Várias subtarefas [QA]: a escolha fica no estado e o Aprovar publica nela (de novo com o modal).
+      if (!qa.escolherSubtarefa(dir, r))
+        return vscode.window.showWarningMessage('Cite a chave da subtarefa (ex.: WMS-123) ou responda "criar nova".');
+      qa.registrarDecisao(dir, 'Usuário escolheu onde publicar o planejamento', {
+        ticket: t.chave,
+        resposta: r.trim()
+      });
+      s.render();
+      return acoes(s).qaPlanoAprovar();
+    }
     qa.registrarDecisao(dir, 'Usuário respondeu à pergunta do QA', {
       ticket: t.chave,
       pergunta: p.pergunta,

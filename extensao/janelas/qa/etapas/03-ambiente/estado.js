@@ -5,7 +5,7 @@ const { lerJson, gravarJson } = require('../../estado');
 
 // ── Ambiente (preparar-ambiente.py da skill testes-funcionais: config, refs, API 5111, Metro 8081, emulador, app). Idempotente:
 // o que já está de pé é reaproveitado, então rodar a cada ▶ custa segundos. O app é recompilado no 1º preparo do dia.
-// Um ambiente por máquina (portas e emulador únicos): a trava diz de qual ticket ele está.
+// Um ambiente por máquina (portas e aparelho únicos): a trava diz de qual ticket ele está. .ambiente.json.nome: emulador, aparelho ou web.
 const AMBIENTE = '.ambiente.json';
 const TRAVA = () => path.join(os.homedir(), '.claude', 'tickets', '.qa-ambiente.json');
 const donoAmbiente = () => lerJson(TRAVA(), null);

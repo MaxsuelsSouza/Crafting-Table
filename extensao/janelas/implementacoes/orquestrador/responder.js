@@ -4,22 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const controle = require('../../../infra/controle');
 const dossie = require('../../../infra/dossie');
-const reproducao = require('../etapas/01-dossie/reproducao');
 const tickets = require('../../../infra/ticket/tickets');
 const { deps } = require('../dependencias');
 const { OPCOES_TIPO } = require('../etapas/05-implementacao/regras/nome-branch');
-const {
-  RESPOSTAS,
-  SEM_CONFIRMAR,
-  TENTAR,
-  SEGUIR,
-  CORRIGIR,
-  RESUMIR,
-  REPETIR,
-  VERIFICAR,
-  estado,
-  mudar
-} = require('../estado');
+const { RESPOSTAS, TENTAR, SEGUIR, CORRIGIR, RESUMIR, REPETIR, VERIFICAR, estado, mudar } = require('../estado');
 const { seguir } = require('./seguir');
 const { proxima } = require('./avancar');
 
@@ -31,6 +19,7 @@ const responder = async (s, t, resposta) => {
   const m = e.pausa.motivo;
   const grupos = require('./grupos'); // ciclo: grupos → seguir → responder
   if (!t.grupo && grupos.MOTIVOS_PAI.includes(m)) return grupos.responderPai(s, t, r);
+  if (m === 'teste') return require('../etapas/07-teste').responder(s, t, r); // etapa 7: correção, testar de novo, seguir abaixo ou ajustar o plano
   if (m === 'briefing') {
     fs.appendFileSync(path.join(dir, dossie.BRIEFING), `${r}\n\n`);
     mudar(dir, { pausa: null, etapa: 1 });
@@ -50,9 +39,18 @@ const responder = async (s, t, resposta) => {
     mudar(dir, { pausa: null });
     return seguir(s, t);
   }
-  if (m === 'base') {
-    if (!e.pausa.opcoes.includes(r)) return;
-    mudar(dir, { pausa: null, bases: { ...(e.bases || {}), [e.pausa.repo]: r } });
+  if (m === 'criar') {
+    // botão = criar o nome sugerido a partir daquela base; texto livre = outro nome, a partir da base sugerida
+    const p = e.pausa,
+      base = p.bases?.[r];
+    const dec = base ? { nome: p.nome, base } : { nome: r.replace(/\s+/g, '-'), base: p.sugerida };
+    mudar(dir, { pausa: null, criar: { ...(e.criar || {}), [p.repo]: dec } });
+    return seguir(s, t);
+  }
+  if (m === 'principal') {
+    if (r === SEGUIR) mudar(dir, { pausa: null, principalOk: true });
+    else if (r === TENTAR) mudar(dir, { pausa: null });
+    else return;
     return seguir(s, t);
   }
   if (['sujo', 'git', 'repos'].includes(m)) {
@@ -60,19 +58,8 @@ const responder = async (s, t, resposta) => {
     mudar(dir, { pausa: null });
     return seguir(s, t);
   }
-  if (m === 'repro-nao' || m === 'repro-evidencia') {
-    if (r === TENTAR) {
-      reproducao.reiniciar(dir);
-      mudar(dir, { pausa: null, etapa: 1, fase: 'parado', reproducao: undefined });
-      return seguir(s, t);
-    }
-    if (r === SEM_CONFIRMAR) {
-      reproducao.gravarResumo(dir, t.chave, 'seguiu sem confirmar por decisão do usuário');
-      mudar(dir, { pausa: null, reproducao: 'aceita', etapa: 2, fase: 'parado' });
-      return seguir(s, t);
-    }
-    return;
-  }
+  const repro = require('../etapas/01-dossie/regras/responder'); // pausas da Reprodução (1.2 a 1.6 e o pedido de dados)
+  if (repro.MOTIVOS.includes(m)) return repro.responderRepro(s, t, r);
   if (m === 'sync') {
     if (r === SEGUIR) mudar(dir, { pausa: null, syncOk: true });
     else if (r === TENTAR) mudar(dir, { pausa: null });

@@ -1,5 +1,5 @@
 // @ts-check
-// Serviços e ticket de um grupo de subtarefas: a esteira de hoje (1 → 7) roda sem mudar, porque tudo nela parte de s.pastaAba(t.id) e de
+// Serviços e ticket de um grupo de subtarefas: a esteira de hoje (1 → 8) roda sem mudar, porque tudo nela parte de s.pastaAba(t.id) e de
 // s.reposDe(t). Aqui a pasta vira grupos/<id>/, os repositórios ficam só os das camadas do grupo (no paralelo, o worktree no lugar da checkout)
 // e o Ao vivo do grupo é espelhado no do pai ("[G1] …"). t.grupo marca o ticket do grupo (prompts, dossiê, fim da esteira); s.pai e t.pai voltam ao pai.
 const path = require('path');

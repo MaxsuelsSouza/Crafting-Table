@@ -99,7 +99,7 @@ const PLANO =
   await acoes(s).qaPlanoAprovar();
   const subs = JSON.parse(fs.readFileSync(path.join(raiz, '.subtarefas.json'), 'utf8'));
   assert.strictEqual(subs[0].key, 'DOC-001-1');
-  assert.strictEqual(subs[0].resumo, '[QA] Planejamento dos Casos de Testes');
+  assert.strictEqual(subs[0].resumo, '[QA] Teste de Qualidade'); // documento sem tipo: não é história (plugin)
   assert.deepStrictEqual([qa.estado(dir).fase, qa.estado(dir).subtarefa], ['plano_aprovado', 'DOC-001-1']);
   // com o texto extraído presente, o prompt cita
   fs.writeFileSync(path.join(raiz, '.documento-extraido.md'), 'texto');

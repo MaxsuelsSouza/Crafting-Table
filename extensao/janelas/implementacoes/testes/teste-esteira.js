@@ -54,6 +54,8 @@ const esteira = require('../esteira');
 const dossie = require('../../../infra/dossie');
 const prompts = require('../prompts');
 const T = esteira._teste;
+const simTeste = require('./simular-teste');
+simTeste.instalar();
 
 // ── repositórios git temporários ──
 const gitX = (cwd, ...a) =>
@@ -128,7 +130,19 @@ const aprovarSpec = (t, specs) => {
 let roteiro = {}; // n -> (dir, c) => void | 'pausa'
 const prompt_ = [];
 const rodarSimulado = (dir, opts) => {
-  const num = /Reprodução/.test(opts.titulo) ? 'R' : Number(/Etapa (\d)/.exec(opts.titulo)[1]);
+  if (simTeste.simular(dir, opts))
+    return (
+      prompt_.push({
+        n: `T${/7\.(\d)/.exec(opts.titulo)[1]}`,
+        prompt: opts.prompt,
+        ferramentas: opts.ferramentas,
+        env: opts.env,
+        extras: opts.extras
+      }),
+      true
+    ); // etapa 7: testes/simular-teste.js
+  const sub = /Reprodução 1\.(\d)/.exec(opts.titulo);
+  const num = sub ? `R${sub[1]}` : /Reprodução/.test(opts.titulo) ? 'RP' : Number(/Etapa (\d)/.exec(opts.titulo)[1]);
   prompt_.push({ n: num, prompt: opts.prompt, ferramentas: opts.ferramentas, env: opts.env, extras: opts.extras });
   setImmediate(() => {
     const fn = roteiro[num];
@@ -154,6 +168,11 @@ const esperar = async (cond, ms = 8000) => {
 };
 let DIR = '';
 const fase = (f) => () => T.estado(DIR).fase === f;
+// Sem branch do ticket a esteira pergunta antes de criar: aceita a sugestão.
+const aceitarCriar = async (s, t) => {
+  await esperar(() => T.estado(DIR).pausa?.motivo === 'criar');
+  await T.responder(s, t, T.estado(DIR).pausa.opcoes[0]);
+};
 const BANCO_OFF = { get: (k) => ({ modelo: '', bancoConexao: '', bancoAmbiente: '' })[k] };
 T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
 
@@ -203,22 +222,29 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     acoes.esteiraAbrir({ id: 4 });
     assert.strictEqual(T.estado(DIR).aprovacao.lido, true);
     await acoes.esteiraAprovar();
+    // sem branch do ticket: SEMPRE pergunta antes de criar (nome no padrão do repositório, base sugerida)
+    await esperar(fase('pausado'));
+    const pc = T.estado(DIR).pausa;
+    assert.deepStrictEqual([pc.motivo, pc.nome, pc.sugerida], ['criar', 'story/' + t.chave, 'main']); // Story sem histórico → story/
+    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    await T.responder(s, t, pc.opcoes[0]);
     await esperar(fase('concluido'));
     e = T.estado(DIR);
-    assert.deepStrictEqual([e.etapa, e.tentativas, e.correcao], [7, 0, false]);
-    const nomeRamo = 'feature/' + t.chave; // Story → feature
+    assert.deepStrictEqual([e.etapa, e.tentativas, e.correcao], [8, 0, false]);
+    const nomeRamo = 'story/' + t.chave;
+    assert.ok(!e.pausa && e.branches[repo.caminho] === nomeRamo);
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), nomeRamo);
     assert.ok(fs.existsSync(path.join(repo.caminho, 'novo.txt')));
     assert.strictEqual(gitX(repo.caminho, 'log', '--oneline').split('\n').length, 1); // nenhum commit da esteira
     const ns = prompt_.map((p) => p.n);
-    assert.deepStrictEqual(ns, [2, 3, 4, 5, 5, 7]); // 5 rodou duas vezes: implementação e correção
+    assert.deepStrictEqual(ns, [2, 3, 4, 5, 5, 'T1', 'T3', 8]); // 5 rodou duas vezes: implementação e correção
     assert.ok(prompt_[3].ferramentas.includes('Edit') && prompt_[3].extras.includes(repo.caminho));
     assert.ok(
       !prompt_[3].prompt.includes('CORREÇÃO') &&
         prompt_[4].prompt.includes('ESTA É UMA CORREÇÃO') &&
         prompt_[4].prompt.includes('Cancelar_Nota')
     );
-    assert.ok(prompt_[5].prompt.includes('novo.txt')); // o resumo recebe o que mudou no repositório
+    assert.ok(prompt_.find((p) => p.n === 8).prompt.includes('novo.txt')); // o resumo recebe o que mudou no repositório
     const v = JSON.parse(fs.readFileSync(path.join(DIR, 'verificacao.json'), 'utf8'));
     assert.deepStrictEqual([v.ok, v.rodadas.length, v.tentativa], [true, 1, 1]);
     assert.ok(fs.existsSync(path.join(DIR, 'implementacao.md')));
@@ -327,8 +353,12 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     await esperar(fase('pausado'));
     assert.deepStrictEqual([T.estado(DIR).pausa.motivo, T.estado(DIR).pausa.repo], ['branchPrincipal', repo.caminho]);
     await T.responder(s, t, 'main');
+    await esperar(fase('pausado'));
+    assert.strictEqual(T.estado(DIR).pausa.motivo, 'criar');
+    await T.responder(s, t, 'feature/outro-nome'); // texto livre: outro nome, a partir da base sugerida
     await esperar(fase('concluido'));
     assert.deepStrictEqual(salvos, [[repo.caminho, 'main']]);
+    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'feature/outro-nome');
     const v = JSON.parse(fs.readFileSync(path.join(DIR, 'verificacao.json'), 'utf8'));
     assert.ok(v.ok && v.pendencias.length === 1 && /Nenhum comando de build ou teste/.test(v.pendencias[0]));
   }
@@ -344,6 +374,9 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     fs.mkdirSync(DIR, { recursive: true });
     fs.writeFileSync(path.join(DIR, 'plano-mudanca.md'), '# Plano\nRepositórios afetados: backend\n');
     await T.prepararBranches(s, t, DIR);
+    assert.deepStrictEqual([T.estado(DIR).fase, T.estado(DIR).pausa.motivo], ['pausado', 'criar']);
+    T.mudar(DIR, { pausa: null, criar: { [repo.caminho]: { nome: `story/${t.chave}`, base: 'main' } } });
+    await T.prepararBranches(s, t, DIR);
     assert.deepStrictEqual([T.estado(DIR).fase, T.estado(DIR).pausa.motivo], ['pausado', 'sujo']);
     assert.strictEqual(fs.readFileSync(path.join(repo.caminho, 'a.txt'), 'utf8'), 'meu trabalho\n');
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
@@ -356,6 +389,34 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     );
     fs.writeFileSync(path.join(DIR, 'plano-mudanca.md'), '# Plano\n');
     assert.strictEqual(T.afetados(DIR, [mob, back]).length, 2); // sem a linha: todos
+  }
+
+  // ═══ 5b. Branch do ticket já existe: usa sem perguntar; na entrada da execução, o repositório em branch de outro ticket volta para a principal ═══
+  {
+    const repo = comOrigin(criarRepo('b5b', 'backend'));
+    const t = novoTicket(),
+      s = servicos(t, [repo]);
+    DIR = s.pastaAba(t.id);
+    fs.mkdirSync(DIR, { recursive: true });
+    gitX(repo.caminho, 'branch', `task/${t.chave}`); // prefixo diferente do sugerido: vale a que existe
+    assert.strictEqual(await T.prepararBranches(s, t, DIR), true);
+    assert.deepStrictEqual(
+      [T.estado(DIR).pausa, gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD')],
+      [null, `task/${t.chave}`]
+    );
+    const { garantir } = require('../orquestrador/principal');
+    assert.strictEqual(garantir(s, t, DIR, 2), true); // checkout do ticket: fica
+    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `task/${t.chave}`);
+    gitX(repo.caminho, 'checkout', '-q', '-b', 'feature/OUTRO-9');
+    assert.strictEqual(garantir(s, t, DIR, 2), true);
+    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    gitX(repo.caminho, 'checkout', '-q', 'feature/OUTRO-9');
+    fs.writeFileSync(path.join(repo.caminho, 'a.txt'), 'trabalho do outro\n');
+    assert.strictEqual(garantir(s, t, DIR, 2), false); // sujo: pausa e não mexe
+    assert.deepStrictEqual(
+      [T.estado(DIR).pausa.motivo, gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD')],
+      ['principal', 'feature/OUTRO-9']
+    );
   }
 
   // ═══ 6. Verificação que não passa depois de 2 correções: pausa com as saídas; "seguir assim mesmo" vai ao Resumo ═══
@@ -374,15 +435,16 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     await esperar(fase('aguardando'));
     esteira.acoes(s).esteiraAbrir({ id: 4 });
     await esteira.acoes(s).esteiraAprovar();
+    await aceitarCriar(s, t);
     await esperar(fase('pausado'));
     assert.deepStrictEqual(
       [T.estado(DIR).pausa.motivo, T.estado(DIR).tentativas, prompt_.filter((p) => p.n === 5).length],
       ['verificacao', 2, 3]
     );
-    assert.ok(esteira.corpo(t, {}, DIR).includes('Seguir para o resumo assim mesmo'));
+    assert.ok(esteira.corpo(t, {}, DIR).includes('Seguir assim mesmo'));
     await T.responder(s, t, T.RESUMIR);
     await esperar(fase('concluido'));
-    assert.ok(prompt_.at(-1).n === 7);
+    assert.ok(prompt_.at(-1).n === 8);
   }
 
   // ═══ 7. Implementação que não alterou nada: pausa antes de verificar ═══
@@ -398,6 +460,7 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     fs.writeFileSync(path.join(DIR, 'plano-mudanca.md'), '# P\n');
     dossie.gravar(DIR, dossie.montar(t, {}));
     await T.seguir(s, t);
+    await aceitarCriar(s, t);
     await esperar(fase('pausado'));
     assert.strictEqual(T.estado(DIR).pausa.motivo, 'sem-mudanca');
   }
@@ -430,7 +493,8 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
       'esteiraObs',
       'esteiraPausar',
       'esteiraResponder',
-      'esteiraRetomar'
+      'esteiraRetomar',
+      'testeRefazer'
     ]);
   }
 
@@ -453,22 +517,25 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
   }
 
   // ═══ 10. Nome da branch e vagas ═══
-  // uma branch por ticket, <tipo>/<CHAVE>, sem slug (CLAUDE.md, "Branch de trabalho")
-  assert.strictEqual(
-    T.ramo({ chave: 'WMS-12', titulo: 'Cálculo de Média/Saída — Ação!', tipo: 'História' }),
-    'feature/WMS-12'
-  );
-  assert.strictEqual(T.ramo({ chave: 'WMS-13', tipo: 'Task' }), 'feature/WMS-13');
-  assert.strictEqual(T.ramo({ chave: 'WMS-14', tipo: 'Bug' }), 'bugfix/WMS-14');
-  assert.strictEqual(T.ramo({ chave: 'WMS-15', tipo: 'Bug Experimental' }), 'bugfix/WMS-15');
-  assert.strictEqual(T.ramo({ chave: 'WMS-16', tipo: 'Incidente' }), 'hotfix/WMS-16');
-  assert.strictEqual(
-    T.ramo({ chave: 'WMS-17', tipo: 'Coisa', categoria: 'bug', categoriaOrigem: 'usuario' }),
-    'bugfix/WMS-17'
-  ); // escolha do usuário
-  assert.strictEqual(T.ramo({ chave: 'DOC-001', documento: { nome: 'Requisitos_v2.md' } }), null); // tipo desconhecido: a esteira pergunta
+  // uma branch por ticket, <prefixo>/<CHAVE>, sem slug; prefixo no padrão do repositório (CLAUDE.md, "Branches")
+  {
+    const r = comOrigin(criarRepo('nome', 'backend'));
+    assert.strictEqual(
+      T.sugerido(r, { chave: 'WMS-12', titulo: 'Cálculo de Média/Saída — Ação!', tipo: 'História' }).nome,
+      'story/WMS-12'
+    );
+    for (const b of ['feature/WMS-1', 'feature/WMS-2']) gitX(r.caminho, 'push', '-q', 'origin', `main:refs/heads/${b}`);
+    gitX(r.caminho, 'fetch', '-q', 'origin');
+    assert.strictEqual(T.sugerido(r, { chave: 'WMS-12', tipo: 'História' }).nome, 'feature/WMS-12'); // o repositório usa feature/
+    assert.strictEqual(T.sugerido(r, { chave: 'WMS-14', tipo: 'Bug' }).nome, 'bugfix/WMS-14');
+    assert.strictEqual(T.sugerido(r, { chave: 'WMS-16', tipo: 'Incidente' }).nome, 'hotfix/WMS-16');
+    assert.strictEqual(
+      T.sugerido(r, { chave: 'WMS-17', tipo: 'Coisa', categoria: 'bug', categoriaOrigem: 'usuario' }).nome,
+      'bugfix/WMS-17'
+    ); // escolha do usuário
+  }
   const etapas = require('../../../infra/agentes/etapas');
-  assert.ok(etapas.VAGAS['impl.mapa'] && etapas.MODULOS.find((m) => m.id === 'impl').etapas.length === 7);
+  assert.ok(etapas.VAGAS['impl.mapa'] && etapas.MODULOS.find((m) => m.id === 'impl').etapas.length === 8);
   assert.strictEqual(etapas.usos('impl.mapa').length, 2);
 
   // ═══ 11. Pausa em texto simples (o JSON em heredoc é bloqueado pelo verificador de comandos do Claude Code) ═══
@@ -515,10 +582,11 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     );
   }
 
-  // ═══ 12. Ticket do tipo Bug: a Reprodução vem antes do Entendimento; falhou + evidência confirma, sem isso pausa ═══
+  // ═══ 12. Bug/incidente: Reprodução 1.2 → 1.6 antes do Entendimento (veredito em 3 estados, ref destacada, prova print + vídeo) ═══
   {
     const fluxo = require('../../../componentes/fluxo-passos'),
       reproducao = require('../etapas/01-dossie/reproducao');
+    const RD = T.depsReproducao;
     assert.strictEqual(dossie.ehBug('Bug'), true);
     assert.strictEqual(dossie.ehBug('Defeito'), true);
     assert.strictEqual(dossie.ehBug('Story'), false);
@@ -536,20 +604,54 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
     };
     T.deps.coletarEvidencias = (dir, anexos) =>
       reproducao.coletarEvidencias(dir, anexos, async () => Buffer.from('png'));
-    const novo = () => {
+    // ambiente simulado: sobe na hora com o sha do HEAD do repositório; grava "vídeo" na pasta da sessão
+    let gravaVideo = true,
+      shaFalso = '';
+    const subidos = [];
+    RD.ambiente = () => 'emulador';
+    RD.esperarVideo = async () => {};
+    RD.obter = () => ({
+      rotulo: 'emulador',
+      texto: () => 'API 5111 · emulador ligado',
+      guia: () => 'adb e maestro',
+      comoPrint: (f) => `adb exec-out screencap -p > ${f}`,
+      ferramentas: ['Bash(adb:*)'],
+      mcp: undefined,
+      evidencia: {
+        gravar: (destino) => gravaVideo && fs.writeFileSync(path.join(destino, 'tela-01.mp4'), 'mp4'),
+        parar: () => {}
+      }
+    });
+    let REPO = null;
+    RD.subir = async (dir, nome) => {
+      subidos.push(nome);
+      return { nome, parou_em: null, sha: { backend: shaFalso || gitX(REPO.caminho, 'rev-parse', '--short', 'HEAD') } };
+    };
+    const comentados = [];
+    let respostasJira = [];
+    RD.comentar = async (s, t, md) => {
+      comentados.push(md);
+      return { id: '100', created: '2026-10-17T10:00:00.000-0300' };
+    };
+    RD.comentarios = async () => respostasJira;
+    const novo = (extras = {}, j = jira) => {
       const repo = criarRepo('backend', 'backend'),
-        t = novoTicket({ titulo: 'Erro ao cancelar nota' }),
+        t = novoTicket({ titulo: 'Erro ao cancelar nota', ...extras }),
         s = servicos(t, [repo]);
-      s.cacheJira[t.id] = { ...jira, key: t.chave };
+      gitX(repo.caminho, 'checkout', '-q', '-b', 'trabalho-do-dev'); // o dev estava noutra branch: a reprodução roda na principal e volta
+      fs.writeFileSync(path.join(repo.caminho, 'dev.txt'), 'dev\n');
+      gitX(repo.caminho, 'add', '.');
+      gitX(repo.caminho, 'commit', '-q', '-m', 'trabalho do dev');
+      s.cacheJira[t.id] = { ...j, key: t.chave };
       DIR = s.pastaAba(t.id);
-      return { t, s };
+      REPO = repo;
+      return { t, s, repo };
     };
-    const plano = (dir) => {
+    const plano = (dir) =>
       fluxo.plano(dir, [
-        { titulo: 'Abrir a nota', texto: 'abre' },
-        { titulo: 'Cancelar a nota', texto: 'erro 500' }
+        { titulo: 'Abrir a nota', texto: 'abre', fonte: 'descrição' },
+        { titulo: 'Cancelar a nota', texto: 'erro 500', fonte: 'comentário do PO' }
       ]);
-    };
     const rodar = (dir, id, status, comPrint) => {
       fluxo.iniciar(dir, id);
       if (comPrint) {
@@ -559,110 +661,219 @@ T.deps.cfg = () => /** @type {any} */ (BANCO_OFF);
       }
       fluxo.concluir(dir, id, status, 'visto');
     };
+    const evid = (dir) => fs.writeFileSync(path.join(dir, 'evidencias-ticket.md'), '# Evidências\nMassa: nota 123\n');
+    const nums = () => prompt_.map((p) => p.n);
 
-    // a) confirmado com evidência: segue sozinha até o portão do Entendimento
+    // a) REPRODUZIDO: evidências → roteiro → checkout destacado na principal → reproduz (print + vídeo) → etapa 2; o HEAD volta
     {
       prompt_.length = 0;
-      const { t, s } = novo();
+      const { t, s, repo } = novo();
+      const principal = gitX(repo.caminho, 'rev-parse', 'main');
+      let headDurante = '';
       roteiro = {
-        R: (dir) => {
-          plano(dir);
-          rodar(dir, 'P01', 'passou');
+        R2: evid,
+        R3: plano,
+        R5: (dir) => {
+          headDurante =
+            gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD') + ' ' + gitX(repo.caminho, 'rev-parse', 'HEAD');
+          rodar(dir, 'P01', 'passou', true);
           rodar(dir, 'P02', 'falhou', true);
         }
       };
       await T.seguir(s, t);
       await esperar(fase('aguardando'));
+      assert.deepStrictEqual(nums(), ['R2', 'R3', 'R5', 2]);
+      assert.strictEqual(headDurante, `HEAD ${principal}`); // reproduziu no commit da principal, destacado
+      assert.notStrictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'HEAD'); // voltou (e a etapa 2 levou para a principal)
+      const e = T.estado(DIR);
       assert.deepStrictEqual(
-        prompt_.map((p) => p.n),
-        ['R', 2]
-      ); // sem spec a prontidão não é alta: o Entendimento para no portão
-      assert.strictEqual(T.estado(DIR).etapa, 2);
-      assert.strictEqual(T.estado(DIR).reproducao, 'ok');
+        [e.etapa, e.reproducao, e.repro.veredito, e.repro.head],
+        [2, 'ok', 'REPRODUZIDO', undefined]
+      );
+      assert.strictEqual(e.repro.refs[repo.caminho].commit, principal);
       const md = fs.readFileSync(path.join(DIR, 'reproducao.md'), 'utf8');
       assert.ok(
-        md.includes('Erro confirmado') &&
-          md.includes('P02') &&
-          md.includes('evidência: evidencias/P02/') &&
-          md.includes('PAI-1-erro.png'),
+        md.includes('Veredito: Reproduzido') &&
+          md.includes(principal.slice(0, 10)) &&
+          md.includes('Ambiente: emulador'),
         md
       );
       assert.ok(
-        fs.existsSync(path.join(DIR, 'evidencias-ticket', 'PAI-1-erro.png')) &&
-          !fs.existsSync(path.join(DIR, 'evidencias-ticket', 'planilha.xlsx'))
+        md.includes('Erro confirmado') &&
+          /evidência: evidencias\/P02\/.+\.mp4/.test(md) &&
+          md.includes('PAI-1-erro.png'),
+        md
+      );
+      assert.ok(md.includes('fonte: comentário do PO'));
+      assert.ok(prompt_[0].prompt.includes('1.2 · EVIDÊNCIAS') && prompt_[0].prompt.includes('Massa de dados'));
+      assert.ok(prompt_[1].prompt.includes('1.3 · ROTEIRO') && prompt_[1].prompt.includes('"fonte"'));
+      assert.ok(
+        prompt_[2].prompt.includes('1.5 · REPRODUZIR') &&
+          prompt_[2].prompt.includes('screencap') &&
+          prompt_[2].prompt.includes('main')
       );
       assert.ok(
-        prompt_[0].prompt.includes('REPRODUÇÃO DO BUG') &&
-          prompt_[0].prompt.includes('PAI-1-erro.png') &&
-          prompt_[0].ferramentas.includes(`Bash(${reproducao.BIN}:*)`)
+        prompt_[2].ferramentas.includes(`Bash(${reproducao.BIN}:*)`) && prompt_[2].ferramentas.includes('Bash(adb:*)')
       );
-      assert.ok(!prompt_[0].ferramentas.includes('Edit') && !prompt_[0].ferramentas.includes('Write')); // não altera código
-      assert.ok(
-        dossie.lerGravado(DIR).exigeReproducao &&
-          fs.readFileSync(path.join(DIR, 'dossie.md'), 'utf8').includes('exige a etapa de Reprodução')
-      );
+      assert.ok(prompt_.slice(0, 3).every((p) => !p.ferramentas.includes('Edit') && !p.ferramentas.includes('Write'))); // não altera código
       const html = reproducao.corpo(t, { jira: s.cacheJira[t.id], uri: (f) => 'vsc://' + f }, DIR);
-      assert.ok(html.includes('Erro confirmado') && html.includes('data-cen="P02"') && html.includes('PAI-1-erro.png'));
+      assert.ok(
+        html.includes('Reproduzido') &&
+          html.includes('data-cen="P02"') &&
+          html.includes('vídeo ✓') &&
+          html.includes('PAI-1-erro.png')
+      );
     }
-    // b) nada falhou: pausa; "Tentar de novo" replaneja; "Seguir sem confirmar" libera o Entendimento
+    // b) NÃO REPRODUZIDO → Tentar de novo → INCONCLUSIVO (bloqueado) → Pedir dados (rascunho, só publica aprovado) → ⟳ com resposta volta à 1.2
     {
       prompt_.length = 0;
+      comentados.length = 0;
       const { t, s } = novo();
       let vez = 0;
       roteiro = {
-        R: (dir) => {
-          plano(dir);
-          rodar(dir, 'P01', 'passou');
-          rodar(dir, 'P02', ++vez === 1 ? 'passou' : 'bloqueado');
-        }
+        R2: evid,
+        R3: plano,
+        R5: (dir) => {
+          rodar(dir, 'P01', 'passou', true);
+          rodar(dir, 'P02', ++vez === 1 ? 'passou' : 'bloqueado', true);
+        },
+        RP: (dir) => fs.writeFileSync(path.join(dir, 'comentario-jira.md'), 'Pode mandar o número da nota?')
       };
       await T.seguir(s, t);
       await esperar(fase('pausado'));
-      assert.strictEqual(T.estado(DIR).pausa.motivo, 'repro-nao');
-      assert.deepStrictEqual(T.estado(DIR).pausa.opcoes, [T.TENTAR, T.SEM_CONFIRMAR]);
+      let p = T.estado(DIR).pausa;
+      assert.strictEqual(p.motivo, 'repro-nao');
+      assert.deepStrictEqual(p.opcoes, [
+        T.TENTAR,
+        'Pedir mais dados no Jira',
+        T.SEM_CONFIRMAR,
+        'Encerrar a esteira (não corrigir)'
+      ]);
       await T.responder(s, t, T.TENTAR);
-      await esperar(fase('pausado'));
-      assert.strictEqual(vez, 2);
+      await esperar(() => T.estado(DIR).pausa?.motivo === 'repro-inconclusivo');
+      assert.deepStrictEqual(nums(), ['R2', 'R3', 'R5', 'R3', 'R5']); // as evidências não se repetem; o roteiro, sim
+      assert.ok(T.estado(DIR).pausa.pergunta.includes('bloqueado: P02'));
       assert.ok(fs.readdirSync(DIR).some((n) => /^fluxo\..+\.json$/.test(n))); // o fluxo anterior fica guardado
+      await T.responder(s, t, 'Pedir mais dados no Jira');
+      await esperar(() => T.estado(DIR).pausa?.motivo === 'aguardando-dados');
+      p = T.estado(DIR).pausa;
+      assert.ok(
+        p.pergunta.includes('Pode mandar o número da nota?') && p.opcoes[0] === 'Publicar o comentário no ticket'
+      );
+      assert.strictEqual(comentados.length, 0); // nada publicado sem aprovação
+      await T.responder(s, t, 'Qual o número da nota e o horário?'); // o dev reescreve: troca o rascunho, ainda sem publicar
+      assert.ok(T.estado(DIR).pausa.pergunta.includes('horário') && comentados.length === 0);
+      await T.responder(s, t, 'Publicar o comentário no ticket');
+      assert.deepStrictEqual(comentados, ['Qual o número da nota e o horário?']);
+      assert.ok(T.estado(DIR).pausa.publicado && T.estado(DIR).repro.pedido.id === '100');
+      const impl = require('../implementacoes');
+      s.atualizarJira = async (id) => {
+        s.cacheJira[id] = { ...jira, key: t.chave }; // o ⟳ relê o ticket (com a resposta)
+      };
+      respostasJira = [{ id: '100', data: '2026-10-17T10:00:00.000-0300', autor: 'eu', texto: 'x' }];
+      assert.strictEqual(await impl.aoAtualizar(s, t), false); // só o nosso: continua esperando
+      prompt_.length = 0;
+      vez = 0;
+      respostasJira.push({ id: '101', data: '2026-10-17T11:00:00.000-0300', autor: 'PO', texto: 'nota 123' });
+      assert.strictEqual(await impl.aoAtualizar(s, t), true);
+      await esperar(() => T.estado(DIR).pausa?.motivo === 'repro-nao');
+      assert.deepStrictEqual(nums(), ['R2', 'R3', 'R5']); // recomeçou da 1.2
       await T.responder(s, t, T.SEM_CONFIRMAR);
       await esperar(fase('aguardando'));
       assert.strictEqual(T.estado(DIR).reproducao, 'aceita');
-      assert.deepStrictEqual(
-        prompt_.map((p) => p.n),
-        ['R', 'R', 2]
-      );
       assert.ok(fs.readFileSync(path.join(DIR, 'reproducao.md'), 'utf8').includes('Erro não confirmado'));
+      assert.strictEqual(comentados.length, 1);
     }
-    // c) falhou sem evidência anexada: a evidência é obrigatória
+    // c) falhou com print mas sem vídeo: sem evidência
+    {
+      gravaVideo = false;
+      const { t, s } = novo();
+      roteiro = { R2: evid, R3: plano, R5: (dir) => rodar(dir, 'P01', 'falhou', true) };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      const p = T.estado(DIR).pausa;
+      assert.ok(p.motivo === 'repro-evidencia' && p.pergunta.includes('P01'), JSON.stringify(p));
+      gravaVideo = true;
+    }
+    // d) sem passo a passo: a IA pausa na 1.3 → INCONCLUSIVO com a pergunta dela; nada de checkout nem ambiente
     {
       prompt_.length = 0;
+      subidos.length = 0;
       const { t, s } = novo();
       roteiro = {
-        R: (dir) => {
-          plano(dir);
-          rodar(dir, 'P01', 'passou');
-          rodar(dir, 'P02', 'falhou', false);
-        }
+        R2: evid,
+        R3: (dir) =>
+          fs.writeFileSync(
+            path.join(dir, '.pausa.md'),
+            'motivo: sem-passo-a-passo\npergunta: Em que tela o erro aparece?\n'
+          )
       };
       await T.seguir(s, t);
       await esperar(fase('pausado'));
       const p = T.estado(DIR).pausa;
-      assert.strictEqual(p.motivo, 'repro-evidencia');
-      assert.ok(p.pergunta.includes('P02'));
+      assert.ok(p.motivo === 'repro-inconclusivo' && p.pergunta.includes('Em que tela'), JSON.stringify(p));
+      assert.ok(
+        p.opcoes.includes('Pedir mais dados no Jira') && !p.opcoes.includes('Encerrar a esteira (não corrigir)')
+      );
+      assert.deepStrictEqual([nums(), subidos], [['R2', 'R3'], []]);
     }
-    // d) o Claude terminou sem registrar cenário: erro, não avança
+    // e) o ambiente roda outro commit: INCONCLUSIVO, e o HEAD volta mesmo assim
+    {
+      shaFalso = 'deadbee';
+      const { t, s, repo } = novo();
+      roteiro = { R2: evid, R3: plano };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      assert.ok(T.estado(DIR).pausa.pergunta.includes('deadbee'));
+      assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'trabalho-do-dev');
+      shaFalso = '';
+    }
+    // f) repositório sujo: pausa 'sujo' antes do checkout
+    {
+      const { t, s, repo } = novo();
+      fs.appendFileSync(path.join(repo.caminho, 'a.txt'), 'mexido\n');
+      roteiro = { R2: evid, R3: plano };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      assert.strictEqual(T.estado(DIR).pausa.motivo, 'sujo');
+      assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'trabalho-do-dev');
+    }
+    // g) tipo não reconhecido: pausa 'tipo' antes de decidir; a resposta "bug" leva à reprodução
+    {
+      prompt_.length = 0;
+      const { t, s } = novo({ tipo: 'Coisa' }, { ...jira, tipo: 'Coisa' });
+      roteiro = { R2: evid, R3: plano, R5: (dir) => rodar(dir, 'P01', 'falhou', true) };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      assert.strictEqual(T.estado(DIR).pausa.motivo, 'tipo');
+      assert.deepStrictEqual(nums(), []);
+      await T.responder(s, t, 'bugfix (bug)');
+      await esperar(() => T.estado(DIR).reproducao === 'ok');
+      assert.deepStrictEqual(nums().slice(0, 3), ['R2', 'R3', 'R5']);
+    }
+    // h) o Mergulho (Incidentes) já reproduziu: não reproduz de novo
     {
       prompt_.length = 0;
       const { t, s } = novo();
-      roteiro = { R: () => {} };
+      const inc = tickets.pasta(t.chave, 'incidentes');
+      fs.mkdirSync(inc, { recursive: true });
+      fs.writeFileSync(path.join(inc, 'reproducao.json'), JSON.stringify({ ok: true, acao: 'cancelou a nota 123' }));
       await T.seguir(s, t);
-      await esperar(fase('erro'));
-      assert.deepStrictEqual(
-        prompt_.map((p) => p.n),
-        ['R']
-      );
+      await esperar(fase('aguardando'));
+      assert.deepStrictEqual([nums(), T.estado(DIR).reproducao], [[2], 'mergulho']);
     }
-    // e) ticket que não é bug: sem Reprodução e a aba explica
+    // i) a reprodução caiu no meio (HEAD destacado guardado): ao retomar, o repositório volta ao HEAD de antes
+    {
+      const { t, s, repo } = novo();
+      gitX(repo.caminho, 'checkout', '-q', '--detach', 'main');
+      T.mudar(DIR, { repro: { head: { [repo.caminho]: 'trabalho-do-dev' } } });
+      roteiro = { R2: evid, R3: (dir) => fs.writeFileSync(path.join(dir, '.pausa.md'), 'pergunta: Qual tela?\n') };
+      await T.seguir(s, t);
+      await esperar(fase('pausado'));
+      assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'trabalho-do-dev');
+      assert.strictEqual(T.estado(DIR).repro.head, undefined);
+    }
+    // j) ticket que não é bug: sem Reprodução e a aba explica
     {
       const t = novoTicket(),
         html = reproducao.corpo(t, { jira: { tipo: 'Story' } }, servicos(t, []).pastaAba(t.id));

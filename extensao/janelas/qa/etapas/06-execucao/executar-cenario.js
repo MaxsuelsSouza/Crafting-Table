@@ -21,14 +21,14 @@ const fimDe = (f) => (f === 'concluido' ? 'fim' : f);
 async function executarCenario(dir, d, amb, c, ex, itens) {
   const vivo = (tipo, texto) => aoVivo.anotar(dir, { tipo, texto });
   const pasta = path.join(dir, ex.evidencias),
-    deps = d.jornada || jornada(d);
+    deps = d.jornada || jornada(d, amb);
   let extra = '',
     refez = false;
   for (;;) {
     const o = await obterRoteiro(dir, d, amb, c, itens, extra);
     if (o.fim) return fimDe(o.fim);
     vivo('acao', `${c.id}: rodando o roteiro (${o.roteiro.etapas?.length || 0} etapa(s))`);
-    d.gravarTela?.(pasta);
+    d.gravarTela?.(pasta, amb);
     let r;
     try {
       r = await rodarJornada({
@@ -38,7 +38,7 @@ async function executarCenario(dir, d, amb, c, ex, itens) {
         vars: varsDaMassa(itens),
         envBase: deps.envBase,
         deps,
-        inicio: prepararInicio()
+        inicio: prepararInicio(amb?.nome || d.ambiente)
       });
     } finally {
       d.pararTela?.();

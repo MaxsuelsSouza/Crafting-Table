@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // implementacao-gravar: o Claude da esteira de Implementação (claude -p) grava os artefatos da etapa por aqui (~/.claude é bloqueada para Write/Edit).
 // A pasta da aba vem em IMPLEMENTACAO_DIR (a extensão passa). Uso:
-//   implementacao-gravar entendimento.md <<'FIM' … FIM      (texto pela entrada padrão)
+//   implementacao-gravar entendimento.md <<'FIM' … FIM      (texto pela entrada padrão; o plano do teste na aplicação: teste/plano-cts.md)
 // Só aceita os nomes do contrato da esteira (prompts.js e etapas/index.js); qualquer outro caminho é recusado. O código dos repositórios o Claude edita direto (Edit/Write).
 const fs = require('fs');
 const path = require('path');
@@ -12,11 +12,11 @@ const sair = (msg, code = 1) => {
   process.exit(code);
 };
 const PERMITIDO =
-  /^(plano-subtarefas\.md|entendimento\.md|varredura\.md|plano-mudanca\.md|implementacao\.log\.md|implementacao\.md|\.pausa\.(json|md))$/;
+  /^(evidencias-ticket\.md|comentario-jira\.md|plano-subtarefas\.md|entendimento\.md|varredura\.md|plano-mudanca\.md|implementacao\.log\.md|implementacao\.md|teste\/plano-cts\.md|\.pausa\.(json|md))$/;
 if (!dir) sair('implementacao-gravar: IMPLEMENTACAO_DIR não definida (rode pela esteira da Crafting Table)');
 if (!nome || !PERMITIDO.test(nome)) sair(`implementacao-gravar: nome não permitido: ${nome || '(vazio)'}`);
 try {
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(path.dirname(path.join(dir, nome)), { recursive: true });
   fs.writeFileSync(path.join(dir, nome), fs.readFileSync(0));
   sair(`gravado: ${nome}`, 0);
 } catch (e) {

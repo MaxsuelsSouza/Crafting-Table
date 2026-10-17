@@ -5,12 +5,13 @@
 // Estrutura desta pasta:
 //   index.js                 exporta
 //   prompt.js                tarefa do prompt (e a correção, com as falhas da verificação)
-//   regras/branch.js         branch de trabalho <tipo>/<CHAVE> (afetados, prepararBranches)
-//   regras/nome-branch.js    o nome: feature/, bugfix/ ou hotfix/ pelo tipo do ticket (ramo)
-//   regras/base-branch.js    de onde a branch parte (a que já existe, a do trabalho já feito ou a principal)
+//   regras/branch.js         branch do ticket <prefixo>/<CHAVE>: usa a que existe, senão pausa 'criar' (afetados, prepararBranches)
+//   regras/nome-branch.js    o nome: prefixo no padrão do repositório para o tipo do ticket (sugerido, rotulo)
+//   regras/base-branch.js    as bases para criar (trabalho já feito, pai, avô, principal)
 //   regras/houve-mudanca.js  a implementação alterou algum repositório?
+//   regras/falhas.js         achados do teste na aplicação (teste.json) para a correção pelo teste (correcao: 'teste')
 const { tarefa } = require('./prompt');
-const { ramo, afetados, prepararBranches } = require('./regras/branch');
+const { afetados, prepararBranches } = require('./regras/branch');
 const { houveMudanca } = require('./regras/houve-mudanca');
 
-module.exports = { n: 5, tarefa, ramo, afetados, prepararBranches, houveMudanca };
+module.exports = { n: 5, tarefa, afetados, prepararBranches, houveMudanca };

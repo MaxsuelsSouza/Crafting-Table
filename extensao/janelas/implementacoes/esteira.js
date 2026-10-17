@@ -30,9 +30,11 @@ const {
   FERRAMENTAS
 } = require('./orquestrador');
 const { prepararDossie } = require('./etapas/01-dossie/subetapas/1.1-dossie');
-const { rodarReproducao, aposReproducao } = require('./etapas/01-dossie/subetapas/1.2-reproducao');
+const { rodarReproducao } = require('./etapas/01-dossie');
+const { deps: depsReproducao } = require('./etapas/01-dossie/dependencias');
 const { FERRAMENTAS_REPRO } = require('./etapas/01-dossie/regras/ferramentas');
-const { prepararBranches, afetados, ramo } = require('./etapas/05-implementacao');
+const { prepararBranches, afetados } = require('./etapas/05-implementacao');
+const { sugerido } = require('./etapas/05-implementacao/regras/nome-branch');
 const { verificar, verificacaoComandos, MAX_CORRECOES } = require('./etapas/06-verificacao');
 const { corpo, botaoPlay } = require('./abas/esteira');
 const { corpoDossie } = require('./abas/dossie');
@@ -58,13 +60,13 @@ module.exports = {
     prepararDossie,
     verificar,
     afetados,
-    ramo,
+    sugerido,
     verificacaoComandos,
     FERRAMENTAS,
     FERRAMENTAS_REPRO,
     SEM_CONFIRMAR,
     rodarReproducao,
-    aposReproducao,
+    depsReproducao,
     rodarEtapa,
     avancar,
     proxima,

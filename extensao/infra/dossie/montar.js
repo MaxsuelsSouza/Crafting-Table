@@ -106,7 +106,7 @@ function montar(t, o = {}) {
     versao: 1, ticket: t.chave, titulo: t.titulo || t.documento?.nome || '', gerado: new Date().toISOString(),
     eixos, niveis, fontes, prontidao, modo, lacunas, trabalho, capacidades: { banco, repos, semBranch },
     ...(() => { const cat = tipoTicket.categoriaDe({ ...t, tipo: o.j?.tipo || t.tipo });
-      return { tipoTicket: String(o.j?.tipo || t.tipo || ''), categoria: cat, exigeReproducao: tipoTicket.exigeReproducao(cat) }; })(),
+      return { tipoTicket: String(o.j?.tipo || t.tipo || ''), prioridade: String(o.j?.prioridade || t.prioridade || ''), categoria: cat, exigeReproducao: tipoTicket.exigeReproducao(cat) }; })(),
     exigeAprovacaoEntendimento: modo !== 'executar' && prontidao !== 'alta'
   };
 }

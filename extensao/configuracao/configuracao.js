@@ -112,7 +112,12 @@ const geral = (v) => {
     cardTeste('repos', 'Repositórios de código', e.repos, dica('O Claude lê os repositórios desta lista no refinamento e nos incidentes; a esteira de Implementação também os altera, numa branch de trabalho criada a partir da branch principal de cada um. A camada diz onde ele olha cada requisito.')
       + (repos.length ? repos.map(repo).join('') : '<div class="cfg-dim">Nenhum repositório.</div>')
       + (!val.repositorios.length && repos.length ? dica('Detectados automaticamente ao lado da pasta de specs. Adicionar outro salva a lista.') : '')
-      + botao('＋ Adicionar repositório', { variante: 'contorno', acao: 'cfgRepoAdicionar', classe: 'cfg-add' })),
+      + botao('＋ Adicionar repositório', { variante: 'contorno', acao: 'cfgRepoAdicionar', classe: 'cfg-add' })
+      + linha('Branches candidatas', esc((val.branchesCandidatas || []).join(', ')), 'branchesCandidatas')
+      + dica('Onde procurar o código do ticket antes da principal (pre-release, release…): padrões relativos a origin/, mais recentes primeiro.')),
+    card({ titulo: 'Ambiente de teste', corpo: linha('Ambiente padrão', esc(val.ambientePadrao || 'emulador'), 'ambientePadrao')
+      + linha('Serial do aparelho', esc(val.aparelhoSerial || ''), 'aparelhoSerial') + linha('URL do front (web)', esc(val.webUrl || ''), 'webUrl')
+      + dica('Onde o QA e a reprodução de Incidentes testam quando o ticket não decide: emulador (AVD), aparelho (coletor Android físico, pelo serial do adb) ou web (front no navegador).') }),
     cardTeste('banco', 'Banco de dados (opcional)', e.banco, linha('Conexão', esc(val.bancoConexao), 'bancoConexao')
       + linha('Ambiente', esc(AMB_BANCO[val.bancoAmbiente] || ''), val.bancoConexao ? 'bancoAmbiente' : '')
       + linha('SQLcl', esc(e.banco?.sqlcl || val.bancoSqlcl || '(procura sozinho)'), 'bancoSqlcl')
@@ -306,6 +311,8 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
   const valoresCfg = () => ({ modelo: cfg().get('modelo') || '', esforco: cfg().get('esforco') || '', jiraSite: siteJira(), jiraProjeto: projetoJira().join(', '), jiraBoard: boardsJira().join(', '),
     etapasExtras: [].concat(variaveis.ler('etapasExtras')), specsDir: cfg().get('specsDir') || SPECS_PADRAO, specsRemoto: cfg().get('specsRemoto') || '',
     repositorios: cfg().get('repositorios') || [],
+    branchesCandidatas: [].concat(cfg().get('branchesCandidatas') || []),
+    ambientePadrao: cfg().get('ambientePadrao') || '', aparelhoSerial: cfg().get('aparelhoSerial') || '', webUrl: cfg().get('webUrl') || '',
     bancoConexao: cfg().get('bancoConexao') || '', bancoAmbiente: cfg().get('bancoAmbiente') || '', bancoSqlcl: cfg().get('bancoSqlcl') || '',
     bancoSensiveis: cfg().get('bancoColunasSensiveis')?.length ? cfg().get('bancoColunasSensiveis') : banco.SENSIVEIS_PADRAO });
   // O instalar.sh precisa rodar de novo? (commits novos no remoto, plugin sdd desatualizado, hooks faltando)
@@ -622,6 +629,19 @@ const criar = (ctx, { render, aoAbrir, voltar }) => {
         const v = await vscode.window.showInputBox({ title: 'Colunas com dados pessoais', value: atual, ignoreFocusOut: true,
           prompt: 'Separadas por vírgula. Reconhece pelo nome da coluna (ex.: cpf casa com NR_CPF). O valor vira *** antes da IA ver.' });
         if (v !== undefined) { await salvarCfg('bancoColunasSensiveis', v.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)); checar(['banco']); }
+      } else if (id === 'branchesCandidatas') {
+        const v = await vscode.window.showInputBox({ title: 'Branches candidatas', value: [].concat(cfg().get('branchesCandidatas') || []).join(', '),
+          prompt: 'Padrões relativos a origin/, separados por vírgula (ex.: pre-releases/*, releases/*)', ignoreFocusOut: true });
+        if (v !== undefined) { await salvarCfg('branchesCandidatas', v.split(',').map((x) => x.trim()).filter(Boolean)); checar(['repos']); }
+      } else if (id === 'ambientePadrao') {
+        const p = await vscode.window.showQuickPick(['emulador', 'aparelho', 'web'], { title: 'Ambiente de teste padrão', placeHolder: cfg().get('ambientePadrao') || 'emulador' });
+        if (p) { await salvarCfg('ambientePadrao', p); render(); }
+      } else if (id === 'aparelhoSerial') {
+        const v = await vscode.window.showInputBox({ title: 'Serial do aparelho', value: cfg().get('aparelhoSerial') || '', prompt: 'adb devices (no Wi-Fi, <ip>:5555)', ignoreFocusOut: true });
+        if (v !== undefined) { await salvarCfg('aparelhoSerial', v.trim()); render(); }
+      } else if (id === 'webUrl') {
+        const v = await vscode.window.showInputBox({ title: 'URL do front (web)', value: cfg().get('webUrl') || '', prompt: 'Ex.: http://localhost:9009', ignoreFocusOut: true });
+        if (v !== undefined) { await salvarCfg('webUrl', v.trim()); render(); }
       } else if (id === 'specsRemoto') {
         const v = await vscode.window.showInputBox({ title: 'Repositório de specs no GitLab', value: cfg().get('specsRemoto') || '', prompt: 'URL do git (ssh ou https)', ignoreFocusOut: true });
         if (v !== undefined) { await salvarCfg('specsRemoto', v.trim()); checar(['specs']); }

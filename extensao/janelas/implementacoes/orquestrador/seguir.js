@@ -1,5 +1,5 @@
 // @ts-check
-// Iniciar, continuar e retomar a esteira da etapa em que parou (0 subtarefas, 1 dossiê, 6 verificação, as outras com IA).
+// Iniciar, continuar e retomar a esteira da etapa em que parou (0 subtarefas, 1 dossiê, 6 verificação, 7 teste na aplicação, as outras com IA).
 // Ticket com subtarefas (estado.subtarefas 'sim'): o pai segue por orquestrador/grupos/seguir-pai.js; cada grupo passa por aqui com t.grupo.
 const maestro = require('../../../infra/agentes/maestro');
 const controle = require('../../../infra/controle');
@@ -10,7 +10,7 @@ const { passoDossie } = require('../etapas/01-dossie');
 const { passoSubtarefas } = require('../etapas/00-subtarefas');
 const { verificar } = require('../etapas/06-verificacao');
 const { rodarEtapa } = require('./rodar-etapa');
-const { avancar } = require('./avancar');
+const { avancar, proxima } = require('./avancar');
 
 const seguir = async (s, t) => {
   const dir = s.pastaAba(t.id),
@@ -24,6 +24,7 @@ const seguir = async (s, t) => {
     e.etapa >= 2 &&
     e.etapa !== 5 &&
     e.etapa !== 6 &&
+    e.etapa !== 7 &&
     existe(dir, e.etapa)
   )
     return avancar(s, t, e.etapa, controle.nova(dir)); // interrompida depois de gravar
@@ -31,6 +32,7 @@ const seguir = async (s, t) => {
   try {
     if (e.etapa <= 1) return await (t.grupo ? passoDossie(s, t, rodada) : passoSubtarefas(s, t, rodada)); // etapa 0 decide se há subtarefas
     if (e.etapa === 6) return await verificar(s, t, rodada);
+    if (e.etapa === 7) return await proxima(s, t, 6, rodada); // a 7 recomeça pelo testar (o fluxo dos CTs continua de onde parou)
     return await rodarEtapa(s, t, e.etapa, rodada);
   } catch (x) {
     if (!controle.valida(dir, rodada)) return s.render();

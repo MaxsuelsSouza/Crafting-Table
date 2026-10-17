@@ -14,7 +14,7 @@ const SO_BOTOES = [
   'verificacao',
   'repro-nao',
   'repro-evidencia',
-  'base',
+  'principal',
   'integrar',
   'verificacao-final'
 ];
@@ -37,7 +37,7 @@ const cartaoPausa = (e, fase, key = '', titulo = 'Pausa da esteira') => {
 };
 
 const AVISO = {
-  0: ' Aprovar cria a branch do ticket (feature/, bugfix/ ou hotfix/&lt;CHAVE&gt;) e começa os grupos (no máximo 2 agentes ao mesmo tempo).',
+  0: ' Aprovar prepara a branch do ticket (&lt;prefixo&gt;/&lt;CHAVE&gt; no padrão do repositório; sem branch, pergunta antes de criar) e começa os grupos (no máximo 2 agentes ao mesmo tempo).',
   4: ' Aprovar libera a esteira a alterar o código dos repositórios (na branch do ticket, sem commit).'
 };
 const cartaoAprovacao = (e, fase, dir, key = '', prefixo = '') => {

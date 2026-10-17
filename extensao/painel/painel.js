@@ -222,7 +222,7 @@ exports.provider = (ctx) => {
       if (aberto === id) { aberto = null; sessao.focar(null); pedirSecao(PRINCIPAL); }
       render();
     },
-    atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); refinamento.aoAtualizar(); } },
+    atualizar() { if (ticketAberto() && jira.ehDocumento(ticketAberto())) return render(); if (ticketAberto()) { delete cacheJira[aberto]; render(); atualizarJira(aberto); refinamento.aoAtualizar(); const tk = ticketAberto(); if (tk) require('../janelas/implementacoes/implementacoes').aoAtualizar(servicos, tk).catch(() => {}); } },
     // 🗑 do cabeçalho: tira o ticket deste módulo (a pasta do ticket só vai para _arquivados se não estiver em outro) ou, na 2ª opção,
     // também leva os registros dele neste módulo (documentos, notas, decisões, evidências, estado). Nada é apagado de verdade.
     async excluirTicket() {

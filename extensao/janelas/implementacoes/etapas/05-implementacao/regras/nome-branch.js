@@ -1,12 +1,11 @@
 // @ts-check
-// Nome da branch do ticket: <tipo>/<CHAVE>, uma por ticket, sem slug (CLAUDE.md, "Branch de trabalho"). O tipo sai da categoria do ticket
-// (infra/ticket/tipo-ticket.js: o nome do tipo na ferramenta ou a escolha do usuário), porque a Implementação faz feature, bug e incidente:
-//   outro (história, tarefa, melhoria…) → feature/<CHAVE> · bug e bug experimental → bugfix/<CHAVE> · incidente → hotfix/<CHAVE>
-// Tipo não reconhecido: ramo() devolve null e a esteira pausa perguntando (motivo 'tipo'); a resposta vira a categoria do ticket.
-// Ticket com subtarefas: a chave e o tipo são os do pai. Só dados (sem vscode nem git): a tela e os prompts usam rotulo().
+// Nome da branch do ticket: <prefixo>/<CHAVE>, uma por ticket, sem slug (CLAUDE.md, "Branches"). O prefixo segue o padrão do repositório para o tipo
+// do ticket (infra/git/padrao-branch.js: história → story/ ou feature/, bug → bugfix/ ou fix/, incidente → hotfix/…), e a esteira sempre confirma
+// antes de criar (pausa 'criar'). Tipo não reconhecido: conhecido() é false e a esteira pausa perguntando (motivo 'tipo'); a resposta vira a
+// categoria do ticket. Ticket com subtarefas: a chave e o tipo são os do pai.
 const tipoTicket = require('../../../../../infra/ticket/tipo-ticket');
+const git = require('../../../../../infra/git');
 
-const PREFIXOS = { outro: 'feature', bug: 'bugfix', 'bug-experimental': 'bugfix', incidente: 'hotfix' };
 // Opções da pausa 'tipo' (texto do botão → categoria).
 const OPCOES_TIPO = {
   'feature (história, tarefa, melhoria)': 'outro',
@@ -14,13 +13,12 @@ const OPCOES_TIPO = {
   'hotfix (incidente)': 'incidente'
 };
 
-const prefixo = (t) => PREFIXOS[tipoTicket.categoriaDe(t)] || null;
-/** @returns {string | null} */
-const ramo = (t) => {
-  const p = prefixo(t);
-  return p ? `${p}/${t.chave}` : null;
-};
-// Para mostrar antes de saber o tipo: "<tipo>/CHAVE".
-const rotulo = (t) => ramo(t) || `<tipo>/${t.chave}`;
+const conhecido = (t) => !!tipoTicket.categoriaDe(t);
+// O nome do tipo na ferramenta (História, Task…); escolhido pelo usuário, a categoria (outro, bug, incidente).
+const tipoDe = (t) => (t.categoriaOrigem === 'usuario' ? t.categoria : t.tipo || t.categoria);
+/** @returns {{ nome: string, prefixo: string, porque: string }} */
+const sugerido = (r, t) => git.nomeSugerido(r, { chave: t.chave, tipo: tipoDe(t) });
+// Para mostrar: a branch já escolhida (estado.branches), senão "<prefixo>/CHAVE".
+const rotulo = (t, branches) => Object.values(branches || {})[0] || `<prefixo>/${t.chave}`;
 
-module.exports = { PREFIXOS, OPCOES_TIPO, prefixo, ramo, rotulo };
+module.exports = { OPCOES_TIPO, conhecido, tipoDe, sugerido, rotulo };

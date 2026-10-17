@@ -1,5 +1,5 @@
 // @ts-check
-// Aba "Esteira": caixa de etapas, resumo do dossiê, explicação do dev (opcional), card de aprovação, card de pausa, o Ao vivo e as Alterações (alteracoes.js).
+// Aba "Esteira": caixa de etapas (a 7 com as subetapas e o rótulo do teste, abas/teste.js), resumo do dossiê, explicação do dev (opcional), card de aprovação, card de pausa, o Ao vivo e as Alterações (alteracoes.js).
 // Também o ▶/⏸ do cabeçalho do ticket (botaoPlay) e o script da webview (moldura.js): a explicação do dev grava ao sair do campo.
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +16,8 @@ const { rotulo } = require('../etapas/05-implementacao/regras/nome-branch');
 const { separar } = require('../etapas/00-subtarefas/regras/filtro');
 const { reposDe } = require('../../../infra/ticket/repos');
 const alteracoes = require('./alteracoes');
+const teste = require('./teste');
+const { SUBETAPAS: SUBETAPAS_TESTE } = require('../etapas/07-teste');
 
 const resumoDossie = (d) =>
   d
@@ -57,7 +59,25 @@ const corpo = (t, d0, dir) => {
       ...(x.n === 1 && atual && dos?.exigeReproducao && !['ok', 'aceita'].includes(e.reproducao) && fase !== 'parado'
         ? { rotulo: 'reproduzindo o bug' }
         : {}),
-      ...(x.n === 5 && e.correcao && atual ? { rotulo: `correção ${e.tentativas} de ${MAX_CORRECOES}` } : {})
+      ...(x.n === 5 && e.correcao && atual
+        ? {
+            rotulo:
+              e.correcao === 'teste'
+                ? 'correção pelo teste na aplicação'
+                : `correção ${e.tentativas} de ${MAX_CORRECOES}`
+          }
+        : {}),
+      ...(x.n === 7 && (atual || feita) && teste.rotuloEtapa(dir, e, fase === 'rodando')
+        ? { rotulo: teste.rotuloEtapa(dir, e, fase === 'rodando') }
+        : {}),
+      ...(x.n === 7 && atual
+        ? {
+            subetapas: SUBETAPAS_TESTE.map((nome, i) => ({
+              nome,
+              estado: i + 1 < (e.testeSub || 1) ? 'concluida' : i + 1 === (e.testeSub || 1) ? estadoAtual : 'pendente'
+            }))
+          }
+        : {})
     };
   });
   const nova = e.etapa === 1 && fase === 'parado';

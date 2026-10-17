@@ -30,7 +30,7 @@ const aposEtapa = async (s, t, n, rodada, mtimeAntes = 0) => {
       tipo: 'erro',
       texto: `A etapa ${n} terminou sem ${mtimeAntes ? 'atualizar' : 'gravar'} ${ETAPAS[n - 1].arq}`
     });
-  } else if (et.depois && (pd = et.depois({ dir }))) {
+  } else if (et.depois && (pd = et.depois({ s, t, dir }))) {
     mudar(dir, {
       etapa: n,
       fase: 'pausado',

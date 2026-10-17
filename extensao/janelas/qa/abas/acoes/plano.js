@@ -33,7 +33,7 @@ const plano = (s) => ({
       e = qa.estado(dir);
     if (e.publicarPendente) {
       const ok = await vscode.window.showWarningMessage(
-        `Aprovar o planejamento v${e.versao} e ${docLocal(t) ? 'salvar no documento' : `publicar no ${jira.nome}`}? Cria ou atualiza a subtarefa de QA.`,
+        `Aprovar o planejamento v${e.versao} e ${docLocal(t) ? 'salvar no documento' : `publicar no ${jira.nome}`}? Cria a subtarefa de QA, preenche a descrição vazia dela ou comenta nela (descrição com texto não é sobrescrita).`,
         { modal: true },
         'Aprovar e publicar'
       );
@@ -41,7 +41,12 @@ const plano = (s) => ({
       qa.mudar(dir, { processando: 'Publicando o planejamento…' });
       s.render();
       try {
-        await qa.aprovarPublicando(dir, depsPublicar(s, t));
+        // tipo: nome da subtarefa [QA] pelo tipo do pai; comentarEm: subtarefa que já tem descrição recebe o plano como comentário.
+        await qa.aprovarPublicando(dir, {
+          ...depsPublicar(s, t),
+          tipo: t.tipo,
+          comentarEm: docLocal(t) ? undefined : (key, md) => jira.comentar(s.secrets, { key, site: t.site }, md)
+        });
       } catch (x) {
         aoVivo.anotar(dir, { tipo: 'erro', texto: `Não consegui publicar o plano: ${x.message}` });
         qa.mudar(dir, { erro: x.message });

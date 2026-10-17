@@ -1,6 +1,7 @@
 // @ts-check
-// Etapas com IA (2 Entendimento, 3 Varredura, 4 Plano de mudança, 5 Implementação, 7 Resumo): cada uma é um `claude -p` (maestro.rodar) que
-// grava o seu arquivo; ao terminar, apos-etapa.js decide. Ferramentas: só leitura, mais Edit/Write na 5. A 5 prepara a branch antes.
+// Etapas com IA (2 Entendimento, 3 Varredura, 4 Plano de mudança, 5 Implementação, 8 Resumo): cada uma é um `claude -p` (maestro.rodar) que
+// grava o seu arquivo; ao terminar, apos-etapa.js decide. Ferramentas: só leitura, mais Edit/Write na 5. Antes de cada uma, os repositórios voltam
+// para a principal (principal.js, salvo checkout do ticket); a 5 prepara a branch do ticket.
 const fs = require('fs');
 const path = require('path');
 const maestro = require('../../../infra/agentes/maestro');
@@ -8,15 +9,17 @@ const controle = require('../../../infra/controle');
 const vagas = require('../../../infra/agentes/etapas');
 const dossie = require('../../../infra/dossie');
 const prompts = require('../prompts');
-const { etapa, ARQ } = require('../etapas');
+const { etapa, ARQ, ETAPAS } = require('../etapas');
 const { estado, mudar, lerJson } = require('../estado');
 const { limparPausa } = require('./pausa');
 const { ambiente, textoBanco } = require('./ambiente');
 const { prepararDossie } = require('../etapas/01-dossie/subetapas/1.1-dossie');
 const { prepararBranches } = require('../etapas/05-implementacao');
-const { resumoGit } = require('../etapas/07-resumo');
+const { garantir } = require('./principal');
+const { resumoGit } = require('../etapas/08-resumo');
 
 const { GRAVAR } = prompts;
+const ULTIMA = ETAPAS.at(-1).n; // o Resumo
 const LEITURA = (mapa) => [
   'Read',
   'Glob',
@@ -41,6 +44,7 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   const { aposEtapa } = require('./apos-etapa'); // ciclo: apos-etapa → avancar → rodar-etapa
   if (!controle.valida(dir, rodada)) return;
   if (!dossie.lerGravado(dir)) await prepararDossie(s, t);
+  if (!garantir(s, t, dir, n)) return s.render(); // entrada da execução: volta para a principal (salvo checkout do ticket)
   if (n === 5 && !(await prepararBranches(s, t, dir))) return s.render();
   const env = ambiente(s, t),
     mapa = vagas.raiz('impl.mapa') || '',
@@ -53,7 +57,8 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
   limparPausa(dir);
   mudar(dir, { etapa: n, fase: 'rodando', pausa: null, aprovacao: null });
   let falhas = '';
-  if (n === 5 && e0.correcao) {
+  if (n === 5 && e0.correcao === 'teste') falhas = require('../etapas/05-implementacao/regras/falhas').falhasTeste(dir);
+  else if (n === 5 && e0.correcao) {
     const v = lerJson(path.join(dir, ARQ[6]), {});
     falhas = (v.rodadas || [])
       .filter((r) => r.codigo !== 0)
@@ -73,9 +78,9 @@ const rodarEtapa = async (s, t, n, rodada, ajuste = false) => {
         correcao: e0.correcao,
         falhas,
         ajuste,
-        gitResumo: n === 7 ? resumoGit(env.repos, e0.branches) : ''
+        gitResumo: n === ULTIMA ? resumoGit(env.repos, e0.branches) : ''
       }) + vagas.aviso('impl.mapa'),
-    titulo: `Esteira · Etapa ${n}: ${etapa(n).nome}${ajuste ? ' (ajuste)' : e0.correcao && n === 5 ? ` (correção ${e0.tentativas})` : ''}`,
+    titulo: `Esteira · Etapa ${n}: ${etapa(n).nome}${ajuste ? ' (ajuste)' : e0.correcao && n === 5 ? (e0.correcao === 'teste' ? ' (correção pelo teste na aplicação)' : ` (correção ${e0.tentativas})`) : ''}`,
     ferramentas: FERRAMENTAS(n, mapa),
     env: {
       MAPA_DB_CONEXAO: env.banco.conexao,

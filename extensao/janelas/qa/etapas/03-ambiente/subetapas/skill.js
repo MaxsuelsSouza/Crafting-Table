@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const aoVivo = require('../../../../../componentes/ao-vivo');
-const { gravarJson, mudar } = require('../../../estado');
+const { estado, gravarJson, mudar } = require('../../../estado');
 const { SKILL_AMB } = require('../../../orquestrador/prompt-comum');
 const { AMBIENTE, ambiente, hoje, preparos, LOG_AMB } = require('../estado');
 const { scriptPreparo, shaDe } = require('../dependencias');
@@ -41,7 +41,15 @@ function prepararPelaSkill(dir, chave, backend) {
     `Preparando API, Metro, emulador e app${build ? ' (com build do app: 1º preparo do dia)' : ''}. O que já está de pé é reaproveitado`
   );
   return new Promise((ok) => {
-    const args = [script, '--chave', chave, '--json', ...(build ? ['--build-app'] : [])];
+    // Ref do código (subetapas/codigo.js), sem o origin/ (a skill põe). --ref-mobile só se o script conhecer (a cópia do repositório pode ser antiga).
+    const ref = (c) => String(estado(dir).codigo?.[c]?.ref || '').replace(/^origin\//, ''),
+      refs = [
+        ...(ref('backend') ? ['--ref', ref('backend')] : []),
+        ...(ref('mobile') && fs.readFileSync(script, 'utf8').includes('--ref-mobile')
+          ? ['--ref-mobile', ref('mobile')]
+          : [])
+      ];
+    const args = [script, '--chave', chave, '--json', ...refs, ...(build ? ['--build-app'] : [])];
     const log = fs.createWriteStream(path.join(dir, LOG_AMB), { flags: 'a' }); // depois do que a tentativa pelos Comandos escreveu
     log.write(`$ cd ${backend} && python3 ${args.join(' ')}\n${new Date().toISOString()}\n\n`);
     const p = spawn('python3', args, { cwd: backend, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -91,6 +99,7 @@ function prepararPelaSkill(dir, chave, backend) {
         em: new Date().toISOString(),
         build,
         fonte: 'skill',
+        nome: 'emulador', // o script da skill só sobe o emulador
         preparando: false,
         sha: { backend: shaDe(json?.backend), mobile: shaDe(json?.mobile) }
       };

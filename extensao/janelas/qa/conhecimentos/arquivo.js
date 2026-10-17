@@ -1,6 +1,7 @@
 // @ts-check
 // Onde mora o que a IA do QA já descobriu: ~/.claude/tickets/.conhecimentos/qa.json (vale para todos os tickets) e os flows
 // prontos em .conhecimentos/flows/ (o Maestro roda o arquivo). QA_CONHECIMENTOS troca a pasta (testes).
+// Flows de início: chave <ambiente>:inicio e <ambiente>:voltar-inicio (ambiente de infra/ambientes; a antiga sem prefixo migra para emulador:).
 // Formato: { telaInicio: 'Menu principal', itens: [{ id: 'K001', tipo, chave, titulo, conteudo, fonte, sha, arquivo, em, atualizado, usos, ultimoUso }] }
 const fs = require('fs');
 const os = require('os');
@@ -21,10 +22,17 @@ const pasta = () => process.env.QA_CONHECIMENTOS || path.join(os.homedir(), '.cl
 const ARQ = () => path.join(pasta(), 'qa.json');
 const FLOWS = () => path.join(pasta(), 'flows');
 
+// Flows de início por ambiente (infra/ambientes): <ambiente>:inicio. A chave antiga, sem prefixo, era do emulador: migra na leitura
+// (e o próximo gravar grava já com o prefixo).
+const LEGADO = ['inicio', 'voltar-inicio'];
+const chaveAtual = (tipo, chave) =>
+  tipo === 'flow' && LEGADO.includes(String(chave).trim()) ? `emulador:${String(chave).trim()}` : chave;
+
 function ler() {
   try {
     const j = JSON.parse(fs.readFileSync(ARQ(), 'utf8'));
-    return { telaInicio: j.telaInicio || '', itens: Array.isArray(j.itens) ? j.itens : [] };
+    const itens = Array.isArray(j.itens) ? j.itens.map((i) => ({ ...i, chave: chaveAtual(i.tipo, i.chave) })) : [];
+    return { telaInicio: j.telaInicio || '', itens };
   } catch {
     return { telaInicio: '', itens: [] };
   }
@@ -36,4 +44,4 @@ function gravar(dados) {
   fs.renameSync(tmp, ARQ());
 }
 
-module.exports = { TIPOS, pasta, ARQ, FLOWS, ler, gravar };
+module.exports = { TIPOS, pasta, ARQ, FLOWS, ler, gravar, chaveAtual };

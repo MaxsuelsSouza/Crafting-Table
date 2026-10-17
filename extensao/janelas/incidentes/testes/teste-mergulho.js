@@ -126,7 +126,7 @@ assert.deepStrictEqual(anexosFaltando(s, t), []);
   // escrita: ~/.claude é bloqueada para Write; o prompt manda gravar pelo mergulho-gravar e a ferramenta liberada é só ele
   assert.ok(prompt(t, dir, 1, [], 'x').includes('mergulho-gravar') && !FERRAMENTAS('/m').includes('Write'));
   assert.ok(FERRAMENTAS('/m').some((x) => x.startsWith('Bash(') && x.includes('mergulho-gravar')));
-  // etapa 3: repositório fora da branch (backend master-md, mobile main) pausa antes do Claude; texto livre não resolve; trocar resolve
+  // etapa 3: repositório fora da branch principal (backend master-md, mobile main) pausa antes do Claude; texto livre não resolve; trocar resolve
   const { execFileSync } = require('child_process'),
     g = (c, ...a) => execFileSync('git', ['-C', c, ...a], { stdio: 'ignore' });
   const mkrepo = (branch, outra) => {
@@ -139,8 +139,8 @@ assert.deepStrictEqual(anexosFaltando(s, t), []);
   const back = mkrepo('master-md', 'feature/x'),
     mob = mkrepo('main');
   const repos = [
-    { camada: 'backend', caminho: back },
-    { camada: 'mobile', caminho: mob },
+    { camada: 'backend', caminho: back, branchPrincipal: 'master-md' },
+    { camada: 'mobile', caminho: mob, branchPrincipal: 'main' },
     { camada: 'outro', caminho: raiz }
   ];
   assert.deepStrictEqual(
@@ -154,6 +154,17 @@ assert.deepStrictEqual(anexosFaltando(s, t), []);
   assert.ok(estado(dir).pausa.pergunta.includes('feature/x') && estado(dir).pausa.opcoes.length === 2);
   await responder(s3, t, 'qualquer texto');
   assert.strictEqual(estado(dir).pausa.motivo, 'branch');
+  // trocar com o repositório sujo: não mexe (infra/git garantirPrincipal) e segue pausado
+  fs.writeFileSync(path.join(back, 'meu.txt'), 'trabalho');
+  g(back, 'add', 'meu.txt');
+  await responder(s3, t, require('../estado').OPCOES.TROCAR);
+  assert.strictEqual(estado(dir).pausa.motivo, 'branch');
+  assert.strictEqual(
+    execFileSync('git', ['-C', back, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim(),
+    'feature/x'
+  );
+  g(back, 'reset', '-q');
+  fs.rmSync(path.join(back, 'meu.txt'));
   g(back, 'checkout', '-q', 'master-md');
   assert.deepStrictEqual(branchesErradas(repos), []);
   // situação única: "rodando" no arquivo sem Claude vivo e sem janela dona viva = interrompido (parado), e o ▶ aparece no cabeçalho e no Ao vivo

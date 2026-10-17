@@ -1,18 +1,11 @@
 // @ts-check
-// Dependências externas da Etapa 6 (a jornada 6.2): Maestro, adb (serial, bipe), banco só leitura, API (api.js), prints do Maestro e ~/.wms-testes.env.
-// d = dependências do painel (abas/acoes/dependencias.js): d.adb, d.banco.
+// Dependências externas da Etapa 6 (a jornada 6.2): o ambiente (infra/ambientes: flow, bipe, prints), banco só leitura, API (api.js) e ~/.wms-testes.env.
+// d = dependências do painel (abas/acoes/dependencias.js): d.ambiente, d.adb, d.serial, d.banco.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
 const { consultar } = require('../05-massa/dependencias');
-
-const rodar = (bin, args, { cwd, timeout = 10 * 60000 } = {}) =>
-  new Promise((ok) =>
-    execFile(bin, args, { cwd, timeout, maxBuffer: 20 * 1024 * 1024 }, (err, out, errOut) =>
-      ok({ rc: err ? (typeof err.code === 'number' ? err.code : 1) : 0, saida: `${out || ''}${errOut || ''}` })
-    )
-  );
+const ambientes = require('../../../../infra/ambientes');
 
 // ~/.wms-testes.env (WMS_ENV_FILE troca o caminho): a sessão vence o arquivo; vazio ou placeholder <…> é ignorado.
 function lerEnvWms() {
@@ -54,46 +47,20 @@ function envWms() {
   );
 }
 
-const maestroBin = () =>
-  [path.join(os.homedir(), '.maestro', 'bin', 'maestro'), 'C:/maestro/bin/maestro.bat'].find((f) => fs.existsSync(f)) ||
-  'maestro';
-
-function jornada(d) {
-  const adb = d.adb || 'adb';
-  let serial = process.env.WMS_ADB_SERIAL || process.env.ANDROID_SERIAL || '';
-  // Aparelho físico só se nomeado (WMS_ADB_SERIAL/ANDROID_SERIAL); senão o primeiro emulador.
-  const aparelho = async () =>
-    serial || (serial = (await rodar(adb, ['devices'])).saida.match(/^(emulator-\d+)\s+device$/m)?.[1] || '');
-  const shell = async (...a) => rodar(adb, ['-s', await aparelho(), 'shell', ...a], { timeout: 30000 });
+// Deps da jornada (6.2) pelo ambiente do ticket (infra/ambientes): flow (Maestro no Android, Playwright no web), bipe (só Android) e os
+// arquivos de prova. Os nomes antigos ficam (maestro = etapa flow) para os testes e a 6.2. amb: o ambiente pronto (serial do aparelho, url).
+// Sem serial: o primeiro emulador ligado (como antes); o aparelho físico vem de craftingTable.aparelhoSerial (d.serial).
+function jornada(d, amb = {}) {
+  const a = ambientes.obter(amb?.nome || d.ambiente),
+    ctx = { adb: d.adb, serial: amb?.serial || d.serial || '', url: amb?.url || d.webUrl, web: amb?.web };
   return {
     envBase: envWms(),
-    // saidaTeste: prints e debug do Maestro direto na pasta do cenário (sem varrer ~/.maestro/tests).
-    maestro: async (arquivo, env, { junit, cwd, saidaTeste }) =>
-      rodar(
-        maestroBin(),
-        [
-          '--device',
-          await aparelho(),
-          'test',
-          '--format',
-          'junit',
-          '--output',
-          junit,
-          ...(saidaTeste
-            ? ['--test-output-dir', saidaTeste, '--debug-output', saidaTeste, '--flatten-debug-output']
-            : []),
-          ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
-          arquivo
-        ],
-        { cwd }
-      ),
-    // Código entre aspas simples para o shell do aparelho (espaço e metacaractere quebravam o adb shell da skill); confere a entrega.
-    bipe: async (codigo, acao = 'br.com.ferreiracosta.SCANNER') => {
-      const x = await shell(
-        `am broadcast -a ${acao} --es com.symbol.datawedge.data_string '${codigo.replace(/'/g, `'\\''`)}'`
-      );
-      return { ok: x.rc === 0 && /Broadcast completed/i.test(x.saida), saida: x.saida };
-    },
+    validarFlow: a.validarFlow, // a 6.2 valida o roteiro com o flow do ambiente
+    temBipe: !!a.etapas.bipe,
+    maestro: (arquivo, env, o) => a.etapas.flow(arquivo, env, o, ctx),
+    bipe: a.etapas.bipe
+      ? (codigo, acao) => a.etapas.bipe(codigo, ctx, acao)
+      : async () => ({ ok: false, saida: `o ambiente ${a.nome} não tem bipe` }),
     esperar: (s) => new Promise((ok) => setTimeout(ok, s * 1000)),
     http: (e) => require('./api').chamarApi(e), // etapa http: a API com o login da skill (api.js)
     consultar: async (sql) => {
@@ -102,25 +69,8 @@ function jornada(d) {
       const x = res.resultados[0];
       return x.ok ? { ok: true, colunas: x.colunas, itens: x.itens, base: res.base } : { ok: false, erro: x.erro };
     },
-    // PNGs que o Maestro gravou na pasta da execução (--test-output-dir): só a pasta deste cenário, não o histórico inteiro.
-    prints: (pasta) => {
-      const out = [];
-      const andar = (p) => {
-        let itens = [];
-        try {
-          itens = fs.readdirSync(p, { withFileTypes: true });
-        } catch {
-          return;
-        }
-        for (const i of itens) {
-          const f = path.join(p, i.name);
-          if (i.isDirectory()) andar(f);
-          else if (/\.png$/i.test(i.name)) out.push(f);
-        }
-      };
-      andar(pasta);
-      return out;
-    }
+    // Prova que o ambiente gravou na pasta da execução (Maestro: PNGs do --test-output-dir; web: .png e .webm): só deste cenário.
+    prints: (pasta) => a.evidencia.arquivos(pasta)
   };
 }
 

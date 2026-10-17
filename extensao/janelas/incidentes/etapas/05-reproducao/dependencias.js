@@ -1,34 +1,29 @@
 // @ts-check
-// Dependências reais da etapa 5 (VS Code): comandos, emulador, portas, Metro, app, banco (SQLcl), o Claude e a gravação de tela.
+// Dependências reais da etapa 5 (VS Code): comandos, o ambiente do ticket (infra/ambientes) e o emulador, banco (SQLcl), o Claude e a gravação de tela.
 // Os testes injetam as suas; qualquer chave passada por `d` em executar vence.
 const path = require('path');
 const maestro = require('../../../../infra/agentes/maestro');
 const banco = require('../../../../infra/plugins/mapa/lib/banco');
 const vagas = require('../../../../infra/agentes/etapas');
 const { FERRAMENTAS } = require('./regras/ferramentas');
+const ambientes = require('../../../../infra/ambientes');
 
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-async function esperarPadrao(teste, segundos) {
-  for (const fim = Date.now() + segundos * 1000; Date.now() < fim; await dormir(3000)) if (await teste()) return true;
-  return teste();
-}
+const { esperar } = require('../../../../infra/ambientes/aplicacao/portas');
+const esperarPadrao = (teste, segundos) => esperar(teste, segundos);
 
 // Dependências reais (VS Code). Os testes injetam as suas; qualquer chave passada por `d` vence.
 function depsPadrao(s, t, dir) {
-  const vscode = require('vscode'),
-    { cfg } = require('../../../../configuracao/configuracao'),
-    emu = require('../../../../modulos/emulador');
-  const { execFileSync } = require('child_process'),
-    adb = path.join(emu.SDK, 'platform-tools', 'adb');
-  const adbOut = (a) => {
-    try {
-      return execFileSync(adb, a, { timeout: 15000 }).toString();
-    } catch {
-      return '';
-    }
-  };
+  const { cfg } = require('../../../../configuracao/configuracao'),
+    { ADB: adb } = require('../../../../infra/ambientes/android/adb');
   const cmds = () => require('../../../../modulos/comandos').api;
+  // Ambiente do ticket (infra/ambientes/escolher.js): camada dos repositórios → craftingTable.ambientePadrao.
+  const ambiente = ambientes.escolher({ repos: s.reposDe?.(t) || [], padrao: cfg().get('ambientePadrao') }),
+    amb = ambientes.obter(ambiente);
   return {
+    ambiente,
+    avd: cfg().get('avdPadrao'),
+    serial: cfg().get('aparelhoSerial') || '',
+    webUrl: cfg().get('webUrl') || '',
     comandos: {
       lista: () => cmds()?.lista() || [],
       rodar: (nome) => {
@@ -38,32 +33,7 @@ function depsPadrao(s, t, dir) {
         if (b && !b.rodando) cmds().alternar({ id: b.id });
       }
     },
-    emulador: {
-      aparelhos: () => emu.dispositivos(),
-      ligar: () => emu.ligar(cfg().get('avdPadrao')),
-      pronto: () => adbOut(['shell', 'getprop', 'sys.boot_completed']).trim() === '1'
-    },
-    portaAberta: (n) =>
-      new Promise((ok) => {
-        const sk = require('net').connect(n, '127.0.0.1');
-        const fim = (v) => {
-          sk.destroy();
-          ok(v);
-        };
-        sk.setTimeout(1500);
-        sk.on('connect', () => fim(true));
-        sk.on('error', () => fim(false));
-        sk.on('timeout', () => fim(false));
-      }),
-    // Metro de pé = /status responde packager-status:running (porta aberta sozinha não prova).
-    metroStatus: async () => {
-      try {
-        return (await (await fetch('http://127.0.0.1:8081/status')).text()).includes('packager-status:running');
-      } catch {
-        return false;
-      }
-    },
-    appInstalado: () => /package:br\.com\.ferreiracosta\.wms/.test(adbOut(['shell', 'pm', 'list', 'packages'])),
+    // emulador (AVD, boot), portas, Metro (/status) e app instalado: os padrões de infra/ambientes (os testes injetam os seus)
     esperar: esperarPadrao,
     banco: {
       conexao: cfg().get('bancoConexao') || '',
@@ -102,7 +72,8 @@ function depsPadrao(s, t, dir) {
           ...(cfg().get('modelo') ? ['--model', cfg().get('modelo')] : [])
         ];
         const foi = maestro.rodar(dir, {
-          ferramentas: FERRAMENTAS(mapa, adb),
+          ferramentas: FERRAMENTAS(mapa, adb, amb),
+          mcp: amb.mcp?.(path.join(dir, 'evidencias')) || null, // web: Playwright MCP gravando vídeo e prints nas evidências
           extras: [...extras, ...vagas.pluginDirs('incidentes.mapa')],
           ...opts,
           env: {
@@ -121,11 +92,9 @@ function depsPadrao(s, t, dir) {
         });
         if (!foi) ok(false);
       }),
-    gravarTela: (destino) => {
-      if (emu.emuladorRodando())
-        require('../../../../modulos/evidencias').gravar?.({ destino, chave: t.chave, continuo: true });
-    },
-    pararTela: () => require('../../../../modulos/evidencias').pararGravacao?.(),
+    // vídeo da tela pelo ambiente (emulador/aparelho: screenrecord no serial que subiu; web: o Playwright MCP grava)
+    gravarTela: (destino, a) => amb.evidencia.gravar(destino, { chave: t.chave, serial: a?.serial }),
+    pararTela: () => amb.evidencia.parar(),
     adb
   };
 }

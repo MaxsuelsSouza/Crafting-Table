@@ -1,6 +1,7 @@
 // @ts-check
 const path = require('path');
 const aoVivo = require('../../../componentes/ao-vivo');
+const ambientes = require('../../../infra/ambientes');
 const { gravarJson, estado, mudar } = require('../estado');
 const { ativos, pausado, rodando } = require('./rodando');
 const { reconciliar } = require('./reconciliar');
@@ -16,13 +17,14 @@ const { semMassa, massaValida } = require('../etapas/05-massa/regras/validade');
 const { validarMassa } = require('../etapas/05-massa/validar');
 const { retomada } = require('./retomada');
 const { prepararBanco } = require('./banco');
+const { garantirPrincipal } = require('./principal');
 const { levantarMassa } = require('../etapas/05-massa');
 const { fila } = require('../etapas/06-execucao/cenario');
 const execucao = require('../etapas/06-execucao');
 const { garantirInicio } = require('../etapas/06-execucao/inicio');
 const { gerar } = require('../etapas/06-execucao/subetapas/6.0-gerar');
 
-// ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, backend, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
+// ▶ do QA: tudo em ordem (ambiente → pré-condição → massa → cenários, zero skip). d = { chave, ambiente (infra/ambientes: emulador, aparelho, web), backend, repos, candidatas, api, horaRefresh, extras, aoMudar, confirmar(texto) → bool, alertar(texto) (diálogo de bloqueio/falha), healthCheck(amb) → { ok, motivo }, gravarTela(dir), pararTela(), avisar(texto) }.
 // soMassa (↻ da Etapa 5): valida no banco a massa dos cenários PENDENTES, move para "Massas mortas" só a que não serve mais
 // (inválida, consumida ou vencida) e levanta massa só para quem ficou sem; não executa cenário. Passou e não executável não entram.
 async function executar(dir, d, { soMassa = false } = {}) {
@@ -49,6 +51,7 @@ async function executar(dir, d, { soMassa = false } = {}) {
           ? 'Nenhum cenário pendente. Use ↻ Refazer para executar um de novo'
           : 'Sem cenários para executar'
       );
+    if (!garantirPrincipal(dir, d)) return; // repositórios na principal (sujo: pausa)
     if (!(await prepararBanco(dir, d))) return; // MCP do SQLcl; fora do ar, o mapa-db só com o seu ok
     if (soMassa) {
       const ids = pend.map((c) => c.id),
@@ -77,7 +80,9 @@ async function executar(dir, d, { soMassa = false } = {}) {
     if (
       dono &&
       dono.chave !== d.chave &&
-      !(await d.confirmar(`O ambiente de testes (API, Metro, emulador) está com o ${dono.chave}. Usar no ${d.chave}?`))
+      !(await d.confirmar(
+        `O ambiente de testes (${ambientes.obter(d.ambiente).rotulo} e a aplicação) está com o ${dono.chave}. Usar no ${d.chave}?`
+      ))
     ) {
       return vivo('aviso', `Ambiente em uso pelo ${dono.chave}: QA não iniciado`);
     }

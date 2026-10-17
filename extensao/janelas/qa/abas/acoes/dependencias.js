@@ -1,9 +1,11 @@
 // @ts-check
-// Dependências das ações: VS Code, configurações, provedor (Jira ou documento), emulador, Comandos e gravação de tela.
+// Dependências das ações: VS Code, configurações, provedor (Jira ou documento), ambiente do ticket (infra/ambientes), Comandos e gravação de tela.
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const banco = require('../../../../infra/agentes/banco');
+const ambientes = require('../../../../infra/ambientes');
+const { estado } = require('../../estado');
 const { cfg } = require('../../../../configuracao/configuracao');
 const { NOTIF } = require('../../../../painel/notificacoes');
 const jira = require('../../../../infra/provedores/fachada').jira;
@@ -37,9 +39,21 @@ const pastasSkill = () => {
 const depsQa = (s, t) => {
   const dir = s.pastaAba(t.id),
     emu = require('../../../../modulos/emulador');
+  // Ambiente do ticket (infra/ambientes/escolher.js): estado do QA → camada dos repositórios → craftingTable.ambientePadrao.
+  const ambiente = ambientes.escolher({
+      ambiente: estado(dir).ambiente,
+      repos: s.reposDe(t),
+      padrao: cfg().get('ambientePadrao')
+    }),
+    amb = ambientes.obter(ambiente);
   return {
     chave: t.chave,
+    ambiente,
+    serial: cfg().get('aparelhoSerial') || '', // aparelho físico (ambiente aparelho)
+    webUrl: cfg().get('webUrl') || '', // front do ambiente web
     backend: s.reposDe(t).find((r) => r.camada === 'backend')?.caminho,
+    repos: s.reposDe(t), // garantirPrincipal e onde está o código do ticket (infra/git)
+    candidatas: cfg().get('branchesCandidatas') || [],
     filhos: filhosDe(s, t),
     horaRefresh: cfg().get('qaHoraRefresh') || '06:00',
     aoMudar: s.render,
@@ -54,7 +68,7 @@ const depsQa = (s, t) => {
     extras: [...new Set([dir, ...s.reposDe(t).map((r) => r.caminho), ...pastasSkill()].filter(Boolean))].flatMap(
       (p) => ['--add-dir', p]
     ),
-    // Ambiente: primeiro os Comandos das Configurações (API, Metro) e o emulador padrão; o script da skill completa o que faltar.
+    // Ambiente: primeiro os Comandos das Configurações (API, Metro, front) e o emulador padrão; no emulador, o script da skill completa o que faltar.
     comandos: {
       lista: () => require('../../../../modulos/comandos').api?.lista() || [],
       rodar: (nome) => {
@@ -73,11 +87,9 @@ const depsQa = (s, t) => {
     alertar: (texto) => {
       vscode.window.showErrorMessage(texto, { modal: true });
     },
-    gravarTela: (destino) => {
-      if (emu.emuladorRodando())
-        require('../../../../modulos/evidencias').gravar?.({ destino, chave: t.chave, continuo: true });
-    },
-    pararTela: () => require('../../../../modulos/evidencias').pararGravacao?.(),
+    // vídeo da tela pelo ambiente (emulador/aparelho: screenrecord no serial que subiu; web: o próprio Playwright grava)
+    gravarTela: (destino, a) => amb.evidencia.gravar(destino, { chave: t.chave, serial: a?.serial }),
+    pararTela: () => amb.evidencia.parar(),
     avisar: (texto) => {
       try {
         fs.appendFileSync(

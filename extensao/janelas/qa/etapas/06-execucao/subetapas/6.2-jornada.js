@@ -1,5 +1,5 @@
 // @ts-check
-// 6.2 · Jornada: roda o roteiro do cenário sem Claude (flow no Maestro, bipe, espera, http na API, consulta antes × depois).
+// 6.2 · Jornada: roda o roteiro do cenário sem Claude (flow do ambiente: Maestro ou Playwright; bipe, espera, http na API, consulta antes × depois).
 // Tudo que sai vai para a pasta da execução (saida): junit e saída de cada flow, .txt das consultas, prints e jornada.txt.
 // status: passou | falhou (o app, a consulta ou a comparação) | invalido (o roteiro não passou na validação: é do roteiro, não do código).
 const fs = require('fs');
@@ -18,7 +18,7 @@ const slug = (s) =>
 
 /**
  * @param {{ roteiro: any, base: string, saida: string, vars?: Record<string,string>, envBase?: Record<string,string>,
- *   deps: { maestro: Function, bipe: Function, esperar: Function, consultar: Function, prints: Function, http?: Function },
+ *   deps: { maestro: Function, bipe: Function, esperar: Function, consultar: Function, prints: Function, http?: Function, validarFlow?: Function, temBipe?: boolean },
  *   inicio?: { inicio: string, voltar: string } | null }} o inicio: flows da tela de início (etapas/06-execucao/inicio), rodados antes das etapas
  */
 async function rodarJornada({ roteiro, base, saida, vars = {}, envBase = {}, deps, inicio: flowsInicio = null }) {
@@ -28,7 +28,7 @@ async function rodarJornada({ roteiro, base, saida, vars = {}, envBase = {}, dep
   fs.mkdirSync(saida, { recursive: true });
   const r = substituir(roteiro, resolverVars(roteiro, vars));
   fs.writeFileSync(path.join(saida, 'roteiro.json'), JSON.stringify({ ...r, base }, null, 2)); // o que rodou, já com a massa
-  const erros = validarRoteiro(r, { base, envBase });
+  const erros = validarRoteiro(r, { base, envBase, validarFlow: deps.validarFlow, bipe: deps.temBipe !== false });
   if (erros.length) return fim('invalido', erros);
   // Tela de início (aba Conhecimentos): voltar-inicio já logado; se não der, o inicio do zero (login e filial). Fora das etapas do roteiro.
   if (flowsInicio && r.etapas.some((e) => e.tipo === 'flow' || e.tipo === 'bipe')) {

@@ -20,7 +20,7 @@
 //   tarefa(dir, obsPO)              texto da etapa no prompt (prompt.js)
 //   leTicket / analisaAnexos        a etapa lê o ticket: relê, exige anexos baixados e o ticket legível (portao-ticket.js)
 //   antes({ s, t, dir, j, ajuste }) antes de rodar; devolve { motivo, pergunta, opcoes, aviso } para pausar ou null
-//   depois({ dir })                 com o arquivo da etapa gravado; idem (pausa) ou null
+//   depois({ s, t, dir })           com o arquivo da etapa gravado; idem (pausa) ou null
 //   sempreAprovar                   pede aprovação mesmo com a entrada completa
 //   responder({ s, t, dir, e, resposta })  resposta a uma pausa: 'seguir' | 'avancar' | 'render' | null (ignora) | undefined (não é desta etapa)
 const { rodarEtapa } = require('./rodar-etapa');

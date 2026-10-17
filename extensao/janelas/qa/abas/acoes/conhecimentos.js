@@ -56,19 +56,19 @@ const conhecimentos = (s) => ({
     if (nome === undefined || nome.trim() === k.ler().telaInicio) return;
     k.definirTelaInicio(nome);
     // tela nova: os flows de início antigos param noutra tela; a IA escreve de novo no próximo ▶
-    for (const f of ['inicio', 'voltar-inicio']) {
-      const i = k.flow(f);
-      if (i) k.apagar(i.id);
-    }
+    apagarInicios();
     s.render();
   },
   async qaConhecimentoRefazerInicio() {
-    for (const f of ['inicio', 'voltar-inicio']) {
-      const i = k.flow(f);
-      if (i) k.apagar(i.id);
-    }
+    apagarInicios();
     s.render();
   }
 });
+
+// Flows de início de todos os ambientes (<ambiente>:inicio e <ambiente>:voltar-inicio).
+function apagarInicios() {
+  for (const i of k.ler().itens.filter((x) => x.tipo === 'flow' && /(^|:)(voltar-)?inicio$/.test(x.chave)))
+    k.apagar(i.id);
+}
 
 module.exports = { conhecimentos };

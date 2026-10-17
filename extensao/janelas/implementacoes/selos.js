@@ -1,7 +1,7 @@
 // @ts-check
 // Selo do card na lista de Implementações (gancho selos(t) do registro, painel/lista.js → componentes/card-ticket.js): "5 subtarefas" e, com
 // os grupos rodando, "2/5 subtarefas" (concluídas antes + as dos grupos concluídos). Fora (QA, cancelada) não conta. O número vem do
-// .ticket.json (gravado ao atualizar o ticket do Jira), então ticket nunca aberto não tem selo.
+// .ticket.json (gravado ao atualizar o ticket do Jira), então ticket nunca aberto não tem selo. E o "Score N/5" do teste na aplicação (teste.json).
 const fs = require('fs');
 const path = require('path');
 const pill = require('../../componentes/pill');
@@ -18,11 +18,30 @@ const fase = (dir) => {
   }
 };
 
-function selos(t) {
+// "Score N/5" do teste na aplicação (etapa 7, teste.json): verde no mínimo ou acima, amarelo abaixo.
+function seloScore(dir) {
+  let r = null;
+  try {
+    r = JSON.parse(fs.readFileSync(path.join(dir, 'teste.json'), 'utf8'));
+  } catch {
+    return '';
+  }
+  if (typeof r?.score !== 'number') return '';
+  return pill.pill(`Score ${r.score}/5`, {
+    cor: r.score >= r.minimo ? 'ok' : 'pausada',
+    dica: `Teste na aplicação: mínimo ${r.minimo}/5${r.entregavel === false ? ' · entregue abaixo do mínimo' : ''}`
+  });
+}
+
+const selos = (t) => {
+  const dir = tickets.pasta(t.chave, 'impl');
+  return seloSubtarefas(t, dir) + seloScore(dir);
+};
+
+function seloSubtarefas(t, dir) {
   const lista = (t.subtarefas || []).filter((x) => situacaoSub(x) !== 'fora');
   if (!lista.length) return '';
-  const dir = tickets.pasta(t.chave, 'impl'),
-    salvas = lerSubs(dir);
+  const salvas = lerSubs(dir);
   const n = lista.length,
     rotulo = `${n} subtarefa${n === 1 ? '' : 's'}`;
   const dica = lista.map((x) => `${x.key} · ${x.status || ''} · ${x.resumo || ''}`).join('\n');

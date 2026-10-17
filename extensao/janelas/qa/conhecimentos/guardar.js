@@ -2,7 +2,7 @@
 // Gravar, corrigir e apagar conhecimentos. Mesma chave e tipo = atualiza (não duplica). Flow guarda também o .yaml em flows/.
 const fs = require('fs');
 const path = require('path');
-const { TIPOS, FLOWS, ler, gravar } = require('./arquivo');
+const { TIPOS, FLOWS, ler, gravar, chaveAtual } = require('./arquivo');
 
 const normal = (s) =>
   String(s || '')
@@ -16,6 +16,7 @@ function adicionar(o) {
   if (!TIPOS[o.tipo]) throw new Error(`tipo inválido: use ${Object.keys(TIPOS).join(', ')}`);
   if (!String(o.chave || '').trim())
     throw new Error('--chave é obrigatória (ex.: SFC.WMSPEDIDO, login.botaoEntrar, inicio)');
+  o = { ...o, chave: chaveAtual(o.tipo, o.chave) };
   let conteudo = String(o.conteudo || '');
   if (o.arquivo) conteudo = fs.readFileSync(o.arquivo, 'utf8');
   if (!conteudo.trim()) throw new Error('--conteudo (ou --arquivo) é obrigatório');

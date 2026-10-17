@@ -1,7 +1,7 @@
 // @ts-check
 // Prompts das etapas com IA da esteira de Implementação (orquestrador/rodar-etapa.js): 0 Subtarefas (plano dos grupos), 2 Entendimento, 3 Varredura, 4 Plano de mudança, 5 Implementação,
-// 7 Resumo. As etapas 1 (Dossiê) e 6 (Verificação) são da extensão, sem IA. Cada prompt cita o arquivo que o Claude deve gravar.
-// A tarefa de cada etapa mora no arquivo dela (etapas/02-entendimento.js … 07-resumo.js); aqui ficam o cabeçalho, as regras comuns e o ajuste.
+// 8 Resumo. As etapas 1 (Dossiê), 6 (Verificação) e 7 (Teste na aplicação, com prompts próprios em etapas/07-teste/) são da extensão. Cada prompt cita o arquivo que o Claude deve gravar.
+// A tarefa de cada etapa mora no arquivo dela (etapas/02-entendimento.js … 08-resumo.js); aqui ficam o cabeçalho, as regras comuns e o ajuste.
 const path = require('path');
 const { ARQ } = require('./etapas');
 const { PAUSA, PAUSA_MD, RESPOSTAS, CONTEXTO } = require('./estado');
@@ -33,7 +33,7 @@ const TAREFA = {
   3: require('./etapas/03-varredura').tarefa,
   4: require('./etapas/04-plano-mudanca').tarefa,
   5: require('./etapas/05-implementacao').tarefa,
-  7: require('./etapas/07-resumo').tarefa
+  8: require('./etapas/08-resumo').tarefa
 };
 
 // Ticket com subtarefas: cada grupo roda a esteira com o ticket pai como contexto e só as subtarefas dele como escopo.

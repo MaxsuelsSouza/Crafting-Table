@@ -11,6 +11,7 @@
 //   zero-skip.js    bloqueio e erro da API pausam no cenário, sem pular
 //   rodando.js · pausar.js · reconciliar.js  execução viva, ⏸ e rodada interrompida
 //   decisoes.js     decisões do usuário na aba Decisões
+//   principal.js    entrada: repositórios de volta para a principal (sujo: pausa)
 const { executar } = require('./executar');
 const { claude } = require('./claude');
 const { FERRAMENTAS_EXEC, PROIBIDAS } = require('./ferramentas');

@@ -9,6 +9,8 @@ const { massa } = require('../05-massa/estado');
 const { substituir, resolverVars, varsDaMassa, validarRoteiro } = require('./regras/roteiro');
 const { envWms } = require('./dependencias');
 const { camadaDe, errosDaCamada } = require('./regras/camadas');
+const { ambiente } = require('../03-ambiente/estado');
+const ambientes = require('../../../../infra/ambientes');
 
 const ROTEIROS = 'roteiros';
 const arquivo = (dir, id) => path.join(dir, ROTEIROS, `${id}.json`);
@@ -39,9 +41,15 @@ function registrarRoteiro(dir, id, arq) {
       ...(estado(dir).receitaAmostra?.[id] || {}),
       ...varsDaMassa(massa(dir).itens.filter((i) => i.estado === 'valida' && (i.cenarios || []).includes(id)))
     };
-  const cam = camadaDe(dir, id);
+  const cam = camadaDe(dir, id),
+    amb = ambientes.obter(ambiente(dir)?.nome); // o flow é validado pelo ambiente que subiu (Maestro ou Playwright)
   const erros = [
-    ...validarRoteiro(substituir(r, resolverVars(r, vars)), { base, envBase: envWms() }),
+    ...validarRoteiro(substituir(r, resolverVars(r, vars)), {
+      base,
+      envBase: envWms(),
+      validarFlow: amb.validarFlow,
+      bipe: !!amb.etapas.bipe
+    }),
     ...(cam ? errosDaCamada(cam.camada, r) : [])
   ];
   if (erros.length) throw new Error(`roteiro recusado, corrija e registre de novo:\n- ${erros.join('\n- ')}`);

@@ -24,8 +24,10 @@ async function buscar(secrets, { key, site }) {
   ]);
   // Anexos do pai e das histórias irmãs (os arquivos da feature costumam estar em outra história dela); falha aqui não derruba o ticket.
   const pai = j.fields.parent?.key;
+  // Avô (pai do pai: a Feature/Épico da história da subtarefa) sai da mesma chamada: a busca de branch procura também pela chave dele.
+  let avo = null;
   const [apai, irmas] = pai ? await Promise.all([
-    jira(`issue/${pai}?fields=attachment`).then((p) => p.fields.attachment || []),
+    jira(`issue/${pai}?fields=attachment,parent`).then((p) => { avo = p.fields.parent?.key || null; return p.fields.attachment || []; }),
     jira(`search/jql?jql=${encodeURIComponent(`parent = ${pai} AND key != ${key} ORDER BY created ASC`)}&fields=attachment&maxResults=100`).then((r) => r.issues || [])
   ]).catch(() => [[], []]) : [[], []];
   const doPai = [...apai.map((a) => [a, pai]), ...irmas.flatMap((i) => (i.fields.attachment || []).map((a) => [a, i.key]))];
@@ -38,6 +40,7 @@ async function buscar(secrets, { key, site }) {
     status: j.fields.status?.name,
     tipo: j.fields.issuetype?.name,
     pai: j.fields.parent?.key || null,
+    avo,
     prioridade: j.fields.priority?.name,
     responsavel: j.fields.assignee?.displayName || 'Sem responsável',
     horas: { original: tt.originalEstimate, restante: tt.remainingEstimate, registrado: tt.timeSpent },

@@ -1,41 +1,39 @@
 // @ts-check
-// De onde a branch do ticket (<tipo>/<CHAVE>) parte num repositório. Uma branch por ticket (CLAUDE.md, "Branch de trabalho"):
-//   1. <tipo>/<CHAVE> já existe: local → 'local'; só no origin → 'remota' (cria a local rastreando a remota)
-//   2. senão, trabalho já feito com a chave do ticket ou das subtarefas (dossiê, trabalho-existente.md): uma branch com commits à frente da
-//      principal → 'trabalho' (<tipo>/<CHAVE> parte dela; a original fica intacta); mais de uma → 'escolher' (a esteira pausa e pergunta)
-//   3. nada encontrado → 'principal' (origin/<principal>, como antes)
-// A escolha do usuário (pausa 'base') fica em estado.bases[<caminho do repositório>]: nome da branch ou PRINCIPAL.
-const { deps } = require('../../../dependencias');
+// De onde a branch do ticket parte quando ela ainda não existe (CLAUDE.md, "Branches"). A esteira nunca cria sem perguntar (pausa 'criar'):
+// esta regra só monta a base sugerida e as outras opções, nesta ordem:
+//   1. trabalho já feito com a chave do ticket ou das subtarefas (dossiê, trabalho-existente.md): branch com commits à frente da principal
+//   2. a branch do pai (<prefixo>/<PAI>) e 3. a do avô (<prefixo>/<AVÔ>), local ou no origin
+//   4. a principal (origin/<principal>)
+// A sugerida é a primeira que existir; as outras viram opções da pausa.
+const git = require('../../../../../infra/git');
 
-const PRINCIPAL = 'Partir da branch principal';
-const existe = (cwd, ref) => {
-  try {
-    deps.git(cwd, ['rev-parse', '--verify', '--quiet', ref]);
-    return true;
-  } catch {
-    return false;
-  }
-};
+/** Chaves do ticket para procurar branch: as dele e das subtarefas (dossiê), o pai e o avô (ticket da ferramenta, s.cacheJira). */
+const chavesDo = (t, d, j) => ({
+  proprias: [...new Set([t.chave, ...(d?.fontes?.trabalho?.chaves || [])].filter(Boolean))],
+  pai: j?.pai || null,
+  avo: j?.avo || null
+});
 const refDe = (b) => (b.local ? b.nome : `origin/${b.nome}`);
 
 /**
- * @param {{ caminho: string }} r repositório
- * @param {string} nome <tipo>/<CHAVE>
+ * @param {{ caminho: string, branchPrincipal?: string }} r repositório
+ * @param {string} nome a branch que vai ser criada (fica fora das bases)
  * @param {any} d dossiê gravado (d.trabalho: branches com a chave, por repositório)
- * @param {Record<string, string>} [bases] escolhas do usuário (estado.bases)
- * @returns {{ tipo: 'local'|'remota'|'trabalho'|'principal'|'escolher', ref?: string, candidatas?: string[] }}
+ * @param {{ pai?: string | null, avo?: string | null }} c chaves do pai e do avô
+ * @returns {{ sugerida: string, principal: string, outras: string[] }}
  */
-function baseDaBranch(r, nome, d, bases = {}) {
-  if (existe(r.caminho, `refs/heads/${nome}`)) return { tipo: 'local' };
-  if (existe(r.caminho, `refs/remotes/origin/${nome}`)) return { tipo: 'remota', ref: `origin/${nome}` };
-  const escolha = bases[r.caminho];
-  if (escolha === PRINCIPAL) return { tipo: 'principal' };
-  const branches = (d?.trabalho || []).find((x) => x.caminho === r.caminho)?.branches || [];
-  const com = branches.filter((b) => b.nome !== nome && (b.adiante || b.commits?.length));
-  const achada = escolha ? com.find((b) => b.nome === escolha) : com.length === 1 ? com[0] : null;
-  if (achada) return { tipo: 'trabalho', ref: refDe(achada) };
-  if (com.length > 1) return { tipo: 'escolher', candidatas: com.map((b) => b.nome) };
-  return { tipo: 'principal' };
+function basesDe(r, nome, d, c = {}) {
+  const principal = git.refPrincipal(r.caminho, r.branchPrincipal) || String(r.branchPrincipal || '');
+  const trabalho = ((d?.trabalho || []).find((x) => x.caminho === r.caminho)?.branches || [])
+    .filter((b) => b.nome !== nome && (b.adiante || b.commits?.length))
+    .map(refDe);
+  const familia = [c.pai, c.avo]
+    .filter(Boolean)
+    .map((k) => git.propria(r, String(k)))
+    .filter(Boolean)
+    .map(refDe);
+  const todas = [...new Set([...trabalho, ...familia])];
+  return { sugerida: todas[0] || principal, principal, outras: todas.slice(1) };
 }
 
-module.exports = { PRINCIPAL, baseDaBranch };
+module.exports = { chavesDo, basesDe };

@@ -3,6 +3,8 @@
 // Só sem credencial configurada o login vai para um claude -p, e o "ok" dele vale até o refresh do banco enquanto o código (sha) não muda.
 // Só com tudo ok a suíte começa.
 const aoVivo = require('../../../../componentes/ao-vivo');
+const ambientes = require('../../../../infra/ambientes');
+const { PAPEIS } = require('../../../../infra/ambientes/aplicacao/papeis');
 const { estado, mudar } = require('../../estado');
 const { pausado } = require('../../orquestrador/rodando');
 const { claude } = require('../../orquestrador/claude');
@@ -26,7 +28,13 @@ async function preCondicao(dir, d, amb) {
     return false;
   };
   try {
-    vivo('acao', 'Health check: API, Metro e resposta de rede');
+    vivo(
+      'acao',
+      `Health check: ${ambientes
+        .obter(amb?.nome)
+        .papeis.map((k) => PAPEIS[k].nome)
+        .join(', ')} e resposta de rede`
+    );
     const h = await (d.healthCheck || healthCheck)(amb);
     if (!h.ok) return falhar(h.motivo || 'health check sem resposta');
     const ok = (motivo, extra = {}) => {

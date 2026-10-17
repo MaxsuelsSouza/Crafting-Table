@@ -9,11 +9,12 @@
 // Um arquivo por regra:
 //   evidencias-ticket.js  anexos do ticket, do pai e dos irmãos que parecem evidência
 //   resultado.js          cenários, o que falhou e o reproducao.md
-//   prompt.js             prompt do claude -p e o bin (bin/reproducao-fluxo)
-//   a tela é abas/reproducao.js; a execução, subetapas/1.2-reproducao.js
+//   prompt.js             prompt da 1.5 Reproduzir, REGRAS comuns e o bin (bin/reproducao-fluxo)
+//   prompt-evidencias.js · prompt-roteiro.js · prompt-pedido.js  prompts da 1.2, da 1.3 e do rascunho do pedido de dados
+//   a tela é abas/reproducao.js; a execução, subetapas/1.2 a 1.6 (encadeadas no index.js da etapa)
 const { ehBug } = require('../../../../../infra/dossie');
 const { coletarEvidencias, evidenciasDoTicket, PASTA, INDICE } = require('./evidencias-ticket');
-const { comEvidencia, resultado, gravarResumo, reiniciar } = require('./resultado');
+const { comEvidencia, provas, resultado, gravarResumo, reiniciar } = require('./resultado');
 const { prompt, BIN } = require('./prompt');
 const { corpo } = require('../../../abas/reproducao');
 
@@ -29,5 +30,6 @@ module.exports = {
   PASTA,
   INDICE,
   ehBug,
+  provas,
   _teste: { comEvidencia }
 };

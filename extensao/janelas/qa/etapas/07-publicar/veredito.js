@@ -6,6 +6,9 @@
 //   reprovado               algum cenário falhou
 //   aprovado-com-ressalvas  nenhum falhou, mas há aviso, não verificável ou divergência do plano
 //   aprovado                todos passaram, sem aviso
+// Nível de um cenário: mora em infra/testes/nivel.js (o QA e a Implementação usam).
+const { nivelCenario } = require('../../../../infra/testes');
+
 const NIVEIS = {
   aprovado: '✅ Aprovado',
   'aprovado-com-ressalvas': '⚠️ Aprovado com ressalvas',
@@ -20,15 +23,6 @@ const ROTULO_CENARIO = {
   bloqueado: '⛔ Bloqueado',
   pendente: '⏳ Pendente'
 };
-
-function nivelCenario(c) {
-  const ex = c.execucoes?.at(-1);
-  if (c.status === 'passou') return ex?.avisos?.length ? 'passou-com-aviso' : 'passou';
-  if (c.status === 'falhou') return 'falhou';
-  if (['nao-executavel', 'dispensado'].includes(c.status)) return 'nao-verificavel';
-  if (c.status === 'bloqueado') return 'bloqueado';
-  return 'pendente';
-}
 
 /** @param {any[]} lista cenários (.cenarios.json) @param {{ divergencias?: number }} [o] */
 function veredito(lista, { divergencias = 0 } = {}) {

@@ -51,7 +51,7 @@ const T = esteira._teste;
 const { separar, situacao: situacaoSub } = require('../etapas/00-subtarefas/regras/filtro');
 const { lerPlanoMd } = require('../etapas/00-subtarefas/regras/ler-plano');
 const { validarPlano } = require('../etapas/00-subtarefas/regras/validar-plano');
-const { baseDaBranch, PRINCIPAL } = require('../etapas/05-implementacao/regras/base-branch');
+const { basesDe } = require('../etapas/05-implementacao/regras/base-branch');
 const worktree = require('../etapas/00-subtarefas/regras/worktree');
 const { dirGrupo, lerPlano, lerSubs } = require('../etapas/00-subtarefas/arquivos');
 
@@ -118,8 +118,11 @@ let segurar = null; // n da etapa que fica "rodando" (o Claude não termina): pa
 let aoImplementar = (r, dir) => fs.writeFileSync(path.join(r, `feito-${path.basename(dir)}.txt`), 'x\n');
 const prompt_ = [];
 const reposDosExtras = (extras) => extras.filter((x) => fs.existsSync(path.join(x, '.git')));
+const simTeste = require('./simular-teste');
+simTeste.instalar();
 maestro.rodar = /** @type {any} */ (
   (dir, opts) => {
+    if (simTeste.simular(dir, opts)) return true; // etapa 7 (no pai): testes/simular-teste.js
     const num = Number(/Etapa (\d)/.exec(opts.titulo)[1]);
     prompt_.push({ n: num, dir, titulo: opts.titulo, prompt: opts.prompt, extras: opts.extras });
     if (num === segurar) return true; // segue "rodando" até o ⏸
@@ -152,6 +155,13 @@ const aprovar = async (s, key) => {
     dir = key ? dirGrupo(s.pastaAba(s.ticketAberto().id), key) : s.pastaAba(s.ticketAberto().id);
   a.esteiraAbrir({ id: T.estado(dir).etapa, key });
   await a.esteiraAprovar({ key });
+};
+
+// Sem branch do ticket, o disparo pergunta antes de criar (uma pausa por repositório): aceita a sugestão.
+const aceitarCriar = async (s) => {
+  const t = s.ticketAberto(),
+    dir = s.pastaAba(t.id);
+  while (T.estado(dir).pausa?.motivo === 'criar') await T.responder(s, t, T.estado(dir).pausa.opcoes[0]);
 };
 
 // Grupo até o portão da etapa 4 (a 2 também pede aprovação quando a prontidão não é alta, como no ticket simples).
@@ -228,33 +238,31 @@ const subs = (k) => [
     assert.ok(/arquivo nos dois grupos/.test(erro(par.replace('src/Tela.cs', 'src/Reserva.cs'))));
   }
 
-  // ═══ 2. De onde a branch <tipo>/<CHAVE> parte (base-branch.js) ═══
+  // ═══ 2. Bases para criar a branch do ticket (base-branch.js): trabalho já feito, pai, avô, principal ═══
   {
     const r = criarRepo('base', 'backend');
     const d = (branches) => ({ trabalho: [{ caminho: r.caminho, branches }] });
     const b1 = { nome: 'B-1-antiga', local: true, adiante: 2, commits: [{}] };
     const b2 = { nome: 'feature/B-1-tela', local: false, remoto: true, adiante: 1, commits: [{}] };
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([])), { tipo: 'principal' });
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1])), { tipo: 'trabalho', ref: 'B-1-antiga' });
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1, b2])), {
-      tipo: 'escolher',
-      candidatas: ['B-1-antiga', 'feature/B-1-tela']
+    assert.deepStrictEqual(basesDe(r, 'story/B-1', d([])), {
+      sugerida: 'origin/main',
+      principal: 'origin/main',
+      outras: []
     });
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1, b2]), { [r.caminho]: 'feature/B-1-tela' }), {
-      tipo: 'trabalho',
-      ref: 'origin/feature/B-1-tela'
+    assert.deepStrictEqual(basesDe(r, 'story/B-1', d([b1, b2])), {
+      sugerida: 'B-1-antiga',
+      principal: 'origin/main',
+      outras: ['origin/feature/B-1-tela']
     });
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1, b2]), { [r.caminho]: PRINCIPAL }), {
-      tipo: 'principal'
+    assert.strictEqual(basesDe(r, 'story/B-1', d([{ ...b1, adiante: 0, commits: [] }])).sugerida, 'origin/main'); // já integrada
+    gitX(r.caminho, 'branch', 'story/PAI-1');
+    gitX(r.caminho, 'push', '-q', 'origin', 'main:refs/heads/feature/AVO-1');
+    gitX(r.caminho, 'fetch', '-q', 'origin');
+    assert.deepStrictEqual(basesDe(r, 'story/B-1', d([]), { pai: 'PAI-1', avo: 'AVO-1' }), {
+      sugerida: 'story/PAI-1',
+      principal: 'origin/main',
+      outras: ['origin/feature/AVO-1']
     });
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([{ ...b1, adiante: 0, commits: [] }])), {
-      tipo: 'principal'
-    }); // já integrada
-    gitX(r.caminho, 'branch', 'feature/B-1');
-    gitX(r.caminho, 'push', '-q', 'origin', 'feature/B-1');
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1])), { tipo: 'local' });
-    gitX(r.caminho, 'branch', '-D', 'feature/B-1');
-    assert.deepStrictEqual(baseDaBranch(r, 'feature/B-1', d([b1])), { tipo: 'remota', ref: 'origin/feature/B-1' });
   }
 
   // ═══ 3. Sequência: etapa 0 → portão → G1 (1 → 7) → G2 (1 → 7) → resumo do pai; branch parte da concluída ═══
@@ -262,7 +270,7 @@ const subs = (k) => [
     const repo = criarRepo('seq', 'backend');
     const t0 = novoTicket([]),
       k = t0.chave;
-    // a subtarefa concluída tem código numa branch dela: feature/<CHAVE> deve partir dela
+    // a subtarefa concluída tem código numa branch dela: a branch do ticket deve partir dela
     gitX(repo.caminho, 'checkout', '-q', '-b', `feature/${k}-4`);
     fs.writeFileSync(path.join(repo.caminho, 'tabela.sql'), 'create table reserva;\n');
     gitX(repo.caminho, 'add', '.');
@@ -310,10 +318,16 @@ const subs = (k) => [
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main'); // nada de branch antes do portão
 
     await aprovar(s);
+    // sem branch do ticket: pergunta antes de criar, com a branch da concluída como base sugerida
+    assert.deepStrictEqual(
+      [T.estado(DIR).pausa.motivo, T.estado(DIR).pausa.nome, T.estado(DIR).pausa.sugerida],
+      ['criar', `story/${k}`, `feature/${k}-4`]
+    );
+    await aceitarCriar(s);
     const G1 = dirGrupo(DIR, 'G1'),
       G2 = dirGrupo(DIR, 'G2');
     // branch única, a partir da concluída
-    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `feature/${k}`);
+    assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `story/${k}`);
     assert.ok(fs.existsSync(path.join(repo.caminho, 'tabela.sql')));
     await ateQuatro(s, 'G1', G1);
     assert.strictEqual(T.estado(G2).iniciado, undefined); // G2 espera o G1
@@ -324,7 +338,8 @@ const subs = (k) => [
     );
     assert.ok(!prompt_.some((p) => p.dir === G2)); // G2 não começou
     assert.ok(
-      pG1[0].prompt.includes(`GRUPO G1 DAS SUBTAREFAS (${k}-1, ${k}-2)`) && pG1[0].prompt.includes(`feature/${k}`)
+      pG1[0].prompt.includes(`GRUPO G1 DAS SUBTAREFAS (${k}-1, ${k}-2)`) &&
+        pG1[0].prompt.includes('Branch única do ticket')
     );
     assert.ok(fs.readFileSync(path.join(G1, '.contexto-grupo.md'), 'utf8').includes(`Descrição de ${k}-2`));
     assert.ok(esteira.corpo(t, {}, DIR).includes('G1 · Revise a etapa 4'));
@@ -341,7 +356,7 @@ const subs = (k) => [
     assert.ok(
       fs.existsSync(path.join(repo.caminho, 'feito-G1.txt')) && fs.existsSync(path.join(repo.caminho, 'feito-G2.txt'))
     );
-    assert.strictEqual(gitX(repo.caminho, 'log', '--oneline', `main..feature/${k}`).split('\n').length, 1); // só o commit da concluída; a esteira não commita
+    assert.strictEqual(gitX(repo.caminho, 'log', '--oneline', `main..story/${k}`).split('\n').length, 1); // só o commit da concluída; a esteira não commita
     assert.ok(implementacoes.selos(t).includes('4/4 subtarefas'));
     assert.strictEqual(require('../../../infra/ticket/situacao').situacaoDe(t, 'impl').texto, 'Concluído');
   }
@@ -373,12 +388,13 @@ const subs = (k) => [
     await T.seguir(s, t);
     await esperar(() => fase(DIR) === 'aguardando', 'portão da etapa 0 (paralelo)');
     await aprovar(s);
+    await aceitarCriar(s);
     const G1 = dirGrupo(DIR, 'G1'),
       G2 = dirGrupo(DIR, 'G2');
     const wt = worktree.caminho(k, 'G2', mob);
     assert.ok(fs.existsSync(path.join(wt, '.git'))); // worktree destacado do G2
     assert.ok(!wt.includes(`${path.sep}.claude${path.sep}`)); // fora de ~/.claude
-    assert.strictEqual(gitX(mob.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `feature/${k}`);
+    assert.strictEqual(gitX(mob.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `story/${k}`); // o mesmo nome nos dois repositórios
     assert.strictEqual(gitX(wt, 'rev-parse', '--abbrev-ref', 'HEAD'), 'HEAD'); // destacado: nenhuma branch nova
     // os dois ao mesmo tempo
     await esperar(() => fase(G1) === 'aguardando' && fase(G2) === 'aguardando', 'os dois grupos no primeiro portão');
@@ -466,6 +482,7 @@ const subs = (k) => [
     await esperar(() => fase(DIR) === 'aguardando', 'portão da etapa 0 (conflito)');
     segurar = 3;
     await aprovar(s);
+    await aceitarCriar(s);
     const G1 = dirGrupo(DIR, 'G1'),
       G2 = dirGrupo(DIR, 'G2'),
       wt = worktree.caminho(k, 'G2', repo);
@@ -522,13 +539,15 @@ const subs = (k) => [
     plano = `# Plano\nExecução: unico\n\n## G1 · Tudo\n- Subtarefas: ${k}-1\n- Camadas: backend\n`;
     await T.seguir(s, t);
     await esperar(() => fase(DIR) === 'aguardando', 'portão da etapa 0 (tipo)');
-    assert.ok(esteira.corpo(t, {}, DIR).includes(`&#60;tipo&#62;/${k}`));
+    assert.ok(esteira.corpo(t, {}, DIR).includes(`&#60;prefixo&#62;/${k}`));
     await aprovar(s);
     const p = T.estado(DIR).pausa;
     assert.strictEqual(p.motivo, 'tipo');
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main'); // sem nome, nenhuma branch
     await esteira.acoes(s).esteiraResponder({ op: String(p.opcoes.indexOf('hotfix (incidente)')) });
     assert.strictEqual(tickets.ler(k).categoria, 'incidente');
+    assert.strictEqual(T.estado(DIR).pausa.nome, `hotfix/${k}`);
+    await aceitarCriar(s);
     assert.strictEqual(gitX(repo.caminho, 'rev-parse', '--abbrev-ref', 'HEAD'), `hotfix/${k}`);
   }
 

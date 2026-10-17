@@ -11,6 +11,7 @@
 //   prompt.js                 método e prompts do plano (criar, interpretar, mudar)
 //   regras/subtarefa.js       qual subtarefa é a de QA e se ela tem plano
 //   regras/conferir.js        contrato do plano (avisos)
+//   regras/escolher-subtarefa.js  várias subtarefas [QA]: pausa e pergunta onde publicar
 //   subetapas/1.1-procurar.js procurar no provedor e verificar (▶)
 //   subetapas/1.2-plano-local.js  qa-plano.md escrito pela IA (fica local até aprovar)
 //   subetapas/1.3-aprovar.js  aprovar, publicar no provedor
@@ -19,6 +20,7 @@ const { INDICE, versionar, versaoAtual, mdDaVersao } = require('./versoes');
 const { promptCriar, promptInterpretar, promptMudanca, FERRAMENTAS_PLANO } = require('./prompt');
 const { ehQA, candidatas, temPlano } = require('./regras/subtarefa');
 const { conferirPlano } = require('./regras/conferir');
+const { escolherSubtarefa } = require('./regras/escolher-subtarefa');
 const { procurar, verificarPlano } = require('./subetapas/1.1-procurar');
 const { PLANO_LOCAL, CONTEXTO, planoLocal, proporPlano } = require('./subetapas/1.2-plano-local');
 const { aprovar, aprovarPublicando, publicarPlano } = require('./subetapas/1.3-aprovar');
@@ -41,6 +43,7 @@ module.exports = {
   candidatas,
   temPlano,
   conferirPlano,
+  escolherSubtarefa,
   procurar,
   verificarPlano,
   PLANO_LOCAL,

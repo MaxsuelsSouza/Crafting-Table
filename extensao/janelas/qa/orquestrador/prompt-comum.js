@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const vagas = require('../../../infra/agentes/etapas');
+const { estado } = require('../estado');
 
 // Skill de cada etapa (Configurações > Plugins, infra/agentes/etapas.js; padrão: ~/.claude/skills/testes-funcionais): ambiente (preparo e diagnóstico) e execução (massa e cenários).
 const SKILL = () => vagas.pastaSkill('qa.execucao') || '';
@@ -30,6 +31,16 @@ const citarDossie = (dir) =>
     ? `\nDossiê do ticket (fontes, confiança e lacunas): ${path.join(dir, 'dossie.md')}`
     : '';
 
+// Onde está o código do ticket (etapas/03-ambiente/subetapas/codigo.js): ler pela ref, nunca por checkout.
+const MAPA_GIT = path.join(__dirname, '..', '..', '..', 'infra', 'plugins', 'mapa', 'bin', 'mapa-git');
+const citarCodigo = (dir) =>
+  Object.entries(estado(dir).codigo || {})
+    .map(
+      ([repo, c]) =>
+        `\nCódigo do ticket (${repo}) em \`${c.ref}\`: leia com ${MAPA_GIT} ${c.caminho || '<repositório>'} show ${c.ref}:<arquivo> ou log -p ${c.ref}, sem checkout.`
+    )
+    .join('');
+
 // Aba Conhecimentos: a regra (procurar antes, gravar o que descobrir) e o índice do que já existe.
 const citarConhecimentos = () => {
   const k = require('../conhecimentos'); // ciclo: conhecimentos/indice.js lê o QA_STATE daqui
@@ -45,5 +56,6 @@ module.exports = {
   PAUSA,
   citarRespostas,
   citarDossie,
+  citarCodigo,
   citarConhecimentos
 };

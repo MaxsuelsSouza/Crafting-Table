@@ -1,12 +1,14 @@
 // @ts-check
 // Componente "Fluxo de passos": os passos para reproduzir um problema no emulador, com o estado de cada um, em <aba>/fluxo.json.
-// Usado por: Incidentes (etapa 5 do Mergulho, bin janelas/incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução, bin janelas/implementacoes/bin/reproducao-fluxo).
+// Usado por: Incidentes (etapa 5 do Mergulho, bin janelas/incidentes/bin/mergulho-fluxo) e Implementações (aba Reprodução e etapa 7 Teste na aplicação,
+// bin janelas/implementacoes/bin/reproducao-fluxo; no teste a pasta é <aba>/teste, em FLUXO_DIR).
 // Quando o usuário pausa, os passos já feitos ficam salvos (com a ação que o Claude usou); ao retomar, o Claude refaz esses passos
 // rápido, sem reanalisar, e segue do primeiro pendente. Sem vscode nos dados: o Claude grava pelo bin do módulo.
 // Cada passo tem o formato do cenário do QA ({ id, titulo, texto, status, execucoes }), então o card é o do QA (componentes/card-cenario.js).
 // Como usar: html(dir, uri) na tela, script() no <script> da moldura e acoes(s) no painel (fluxoAbrir, fluxoPasta, fluxoCopiar, fluxoRefazer).
-//   plano(dir, [{ titulo, texto }])  cria P01…  ·  iniciar(dir, id)  ·  concluir(dir, id, status, nota)  ·  evidencia(dir, id, arquivos)
+//   plano(dir, [{ titulo, texto, fonte? }])  cria P01… (fonte: de onde veio o passo)  ·  iniciar(dir, id)  ·  concluir(dir, id, status, nota)  ·  evidencia(dir, id, arquivos)
 //   acao(dir, id, texto)  ação exata (comando maestro/adb) que repete o passo  ·  descartarEmAndamento(dir)  ·  html(dir, uri)
+//   plano aceita { id } por passo (o teste da Implementação usa CT01…)  ·  sinais(dir, id, { console, rede, resumo })  ·  reabrir(dir) todos de volta à fila
 const fs = require('fs');
 const path = require('path');
 const cardCenario = require('./card-cenario');
@@ -22,7 +24,7 @@ const achar = (f, id) => { const p = f.passos.find((x) => x.id === id); if (!p) 
 function plano(dir, passos) {
   if (ler(dir).passos.length) throw new Error('o fluxo já existe (retomada): não replaneje, siga os passos pendentes');
   if (!Array.isArray(passos) || !passos.length) throw new Error('plano vazio: informe a lista de passos [{ "titulo", "texto" }]');
-  gravar(dir, { criado: new Date().toISOString(), passos: passos.map((p, i) => ({ id: `P${String(i + 1).padStart(2, '0')}`, titulo: String(p.titulo || '').slice(0, 140), texto: String(p.texto || ''), acao: '', status: 'pendente', execucoes: [] })) });
+  gravar(dir, { criado: new Date().toISOString(), passos: passos.map((p, i) => ({ id: p.id ? String(p.id) : `P${String(i + 1).padStart(2, '0')}`, titulo: String(p.titulo || '').slice(0, 140), texto: String(p.texto || ''), ...(p.fonte ? { fonte: String(p.fonte) } : {}), acao: '', status: 'pendente', execucoes: [] })) });
 }
 function iniciar(dir, id) {
   const f = ler(dir), p = achar(f, id);
@@ -55,6 +57,20 @@ function descartarEmAndamento(dir) {
   for (const p of f.passos) if (p.status === 'executando') { Object.assign(p.execucoes.at(-1) || {}, { status: 'descartado', fim: new Date().toISOString() }); p.status = p.statusAntes || 'pendente'; delete p.statusAntes; }
   if (f.passos.length) gravar(dir, f);
 }
+// Sinais da execução em andamento: erros novos de console e de rede que apareceram durante o passo (o teste da Implementação pontua).
+function sinais(dir, id, { console: c = 0, rede = 0, resumo = '' } = {}) {
+  const f = ler(dir), ex = achar(f, id).execucoes.at(-1);
+  if (!ex || ex.status !== 'executando') throw new Error(`${id} não está em execução (use iniciar antes)`);
+  ex.sinais = { console: Number(c) || 0, rede: Number(rede) || 0, resumo: String(resumo) };
+  gravar(dir, f);
+}
+// Reabre o fluxo inteiro (o código mudou): todo passo volta para a fila; as execuções ficam no histórico.
+function reabrir(dir) {
+  const f = ler(dir);
+  if (!f.passos.length) return;
+  for (const p of f.passos) { p.status = 'pendente'; delete p.statusAntes; }
+  gravar(dir, f);
+}
 const refazer = (dir, id) => { const f = ler(dir), p = f.passos.find((x) => x.id === id); if (!p || p.status === 'executando') return false; p.status = 'pendente'; gravar(dir, f); return true; };
 const arquivosDe = (dir, ex) => { try { const d = path.join(dir, ex.evidencias); return fs.readdirSync(d).sort().map((n) => path.join(d, n)); } catch { return []; } };
 
@@ -84,4 +100,4 @@ const acoes = (s) => ({
   fluxoRefazer({ id }) { const t = s.ticketAberto(); if (t && typeof id === 'string' && refazer(s.pastaAba(t.id), id)) s.render(); }
 });
 
-module.exports = { ARQ, ler, plano, iniciar, concluir, evidencia, acao, descartarEmAndamento, refazer, arquivosDe, estadoParaPrompt, html, script, acoes };
+module.exports = { ARQ, ler, plano, iniciar, concluir, evidencia, acao, sinais, reabrir, descartarEmAndamento, refazer, arquivosDe, estadoParaPrompt, html, script, acoes };

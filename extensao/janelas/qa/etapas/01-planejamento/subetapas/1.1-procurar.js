@@ -1,11 +1,12 @@
 // @ts-check
 const aoVivo = require('../../../../../componentes/ao-vivo');
-const { estado, mudar } = require('../../../estado');
+const path = require('path');
+const { estado, mudar, lerJson } = require('../../../estado');
 const { reconciliar } = require('../../../orquestrador/reconciliar');
 const { cenariosDo } = require('../../02-cenarios/regras/parser');
 const { sincronizar } = require('../../02-cenarios/mapa');
 const { candidatas, temPlano } = require('../regras/subtarefa');
-const { versionar, versaoAtual } = require('../versoes');
+const { INDICE, versionar, versaoAtual, mdDaVersao } = require('../versoes');
 const { onde } = require('../dependencias');
 const { PLANO_LOCAL, planoLocal } = require('./1.2-plano-local');
 
@@ -73,6 +74,20 @@ async function verificarPlano(dir, chave, filhos) {
         `Texto de QA em ${r.fontes.map((x) => x.key).join(', ')} fora do formato esperado: o Claude vai ler e interpretar`
       );
     return mudar(dir, { fase: 'sem_plano', subtarefas: r.qa.map((x) => x.key), fontes: r.fontes.map((x) => x.key) });
+  }
+  // Plano aprovado e publicado como comentário (a subtarefa já tinha descrição): a descrição não é o plano, vale a versão aprovada.
+  const ap = estado(dir).aprovado,
+    vAp =
+      ap?.comentario &&
+      [ap.subtarefa, chave].includes(r.plano.key) &&
+      lerJson(path.join(dir, INDICE), { versoes: [] }).versoes.find((x) => x.v === ap.versao);
+  if (vAp) {
+    const m = sincronizar(dir, mdDaVersao(dir, vAp), vAp.v);
+    vivo(
+      'fim',
+      `Planejamento v${vAp.v} já aprovado (comentário em ${ap.subtarefa}): ${m.total} cenário(s) listados abaixo`
+    );
+    return mudar(dir, { fase: 'plano_aprovado', subtarefa: ap.subtarefa, versao: vAp.v });
   }
   const n = cenariosDo(r.plano.md).length,
     v = versionar(dir, r.plano);

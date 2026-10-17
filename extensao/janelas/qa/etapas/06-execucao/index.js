@@ -5,12 +5,12 @@
 //   garantir-massa.js    "Validar massa" antes do cenário; inválida → renova só a dele; 2 seguidas → Etapa 5 para os pendentes; sem jeito → não executável
 //   executar-cenario.js  encadeia 6.1 → 6.2 → 6.3 de um cenário (roteiro ruim volta ao 6.1 uma vez)
 //   subetapas/           6.0-gerar.js · 6.1-roteiro.js · 6.2-jornada.js · 6.3-diagnostico.js
-//   inicio/              flows da tela de início (escritos uma vez, validados no emulador, guardados nos Conhecimentos)
+//   inicio/              flows da tela de início (escritos uma vez por ambiente Android, validados no aparelho, guardados nos Conhecimentos)
 //   api.js               a API para a etapa http (login da skill)
 //   prompt-gerar.js      prompts do 6.0 e das correções na mesma conversa
 //   depois-do-claude.js  pausa, erro da API, tempo, bloqueio e sem-massa depois de cada claude -p
 //   roteiros.js          roteiros/CTnn.json (registrar pelo qa-state, reaproveitar por hash, pedir outro)
-//   dependencias.js      Maestro, adb, banco só leitura, prints, ~/.wms-testes.env
+//   dependencias.js      o ambiente do ticket (infra/ambientes: flow, bipe, prints), banco só leitura, ~/.wms-testes.env
 //   cenario.js           execuções de um cenário (abrir, concluir), a fila e o não executável
 //   evidencias.js        anexos da execução em andamento
 //   regras/              evidencia.js (evidência obrigatória) · roteiro.js (validação) · consulta.js (antes × depois) · http.js · camadas.js · diagnostico.js

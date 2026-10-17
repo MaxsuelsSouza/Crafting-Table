@@ -113,7 +113,7 @@ function buscarSync({ key }) {
   return {
     key: chave, site: SITE,
     resumo: t.titulo || t.documento?.nome || chave,
-    status: t.status || 'Documento', tipo: 'Documento', prioridade: '', responsavel: '', horas: {},
+    status: t.status || 'Documento', tipo: 'Documento', pai: null, avo: null, prioridade: '', responsavel: '', horas: {},
     descricao: md.trim() ? markdown(md) : '<em>Sem descrição</em>',
     subtarefas: lerSubs(chave).map((s) => ({ key: s.key, resumo: s.resumo, status: s.status, tipo: 'Subtarefa', responsavel: '' })),
     anexos: listarAnexos(chave),

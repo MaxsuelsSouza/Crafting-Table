@@ -233,23 +233,24 @@ exports.provider = (ctx) => {
       } catch (e) { falhar('Não consegui tirar o print: ' + (e.details || e.message)); }
     },
     // opcoes vindas de fora (testes.js): sid/chave da conversa e continuo = emenda os trechos de 3 min.
+    // opcoes.serial: o aparelho a gravar (ambiente emulador ou aparelho, infra/ambientes/android/evidencia.js); sem ele, o emulador ligado.
     gravar(opcoes = {}) {
-      const emu = precisaEmulador();
-      if (!emu || gravacao) return;
+      const serial = opcoes.serial || precisaEmulador()?.serial;
+      if (!serial || gravacao) return;
       const destino = opcoes.destino || (opcoes.sid ? path.join(sessao.pasta(opcoes.sid), 'evidencias') : dir);
       if (!destino) return;
       fs.mkdirSync(destino, { recursive: true });
       const nome = `${opcoes.chave || ticket || 'sem-ticket'}-video-${carimbo()}.mp4`;
       const remoto = `/sdcard/${nome}`;
-      const proc = spawn(ADB, ['-s', emu.serial, 'shell', 'screenrecord', remoto], { stdio: 'ignore' });
-      const atual = gravacao = { proc, serial: emu.serial, desde: Date.now(), opcoes, parado: false };
+      const proc = spawn(ADB, ['-s', serial, 'shell', 'screenrecord', remoto], { stdio: 'ignore' });
+      const atual = gravacao = { proc, serial: serial, desde: Date.now(), opcoes, parado: false };
       // Sai sozinho no parar (SIGINT) ou no limite de 3 min do Android: em ambos, baixa o vídeo.
       proc.on('exit', async () => {
         gravacao = null;
         render();
         await new Promise((r) => setTimeout(r, 1000)); // screenrecord fecha o mp4 depois do sinal
-        const r = await adb(['-s', emu.serial, 'pull', remoto, path.join(destino, nome)]);
-        await adb(['-s', emu.serial, 'shell', 'rm', '-f', remoto]);
+        const r = await adb(['-s', serial, 'pull', remoto, path.join(destino, nome)]);
+        await adb(['-s', serial, 'shell', 'rm', '-f', remoto]);
         if (!r.ok) falhar('Não consegui baixar o vídeo: ' + r.msg);
         if (opcoes.continuo && !atual.parado) acoes.gravar(opcoes);
       });

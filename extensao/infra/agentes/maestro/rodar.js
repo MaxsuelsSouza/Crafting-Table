@@ -9,6 +9,7 @@ const { SID, PID, rodando, erros, ultimas, reiniciando, vivo, pidDe, rodandoEm, 
 const { curto, linhaFerramenta } = require('./textos');
 const { PEDIDO_DECISAO } = require('./decisoes');
 const { linhas } = require('./linhas');
+const { juntarMcp } = require('./mcp');
 
 // Git só de leitura liberado em toda execução com lista de ferramentas (todos os módulos); as formas `git -C <repo> ...` também, que é como o Claude chama.
 // fetch entra porque conferir origin/<branch> exige atualizar as referências remotas (não toca em branch nem arquivo).
@@ -16,10 +17,11 @@ const GIT_LEITURA = ['status', 'log', 'diff', 'show', 'branch', 'fetch', 'rev-pa
   .flatMap((c) => [`Bash(git ${c}:*)`, `Bash(git -C * ${c}:*)`]);
 
 // Roda uma etapa. ferramentas: lista do --allowedTools (mais o que o usuário liberou em Configurações → Permissões). continuar: retoma a última sessão do ticket; sessao: retoma esta sessão (id) em vez da última.
-// extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir).
+// extras: argumentos a mais do claude (ex.: --plugin-dir, --add-dir). mcp: { mcpServers } desta execução (vai no --mcp-config, junto com o de extras).
 function rodar(dir, opcoes) {
-  const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras = [], env = /** @type {Record<string, string>} */ ({}), continuar = false, sessao = null, aoMudar = () => {} } = opcoes;
+  const { prompt, titulo = 'Claude trabalhando', cwd = dir, ferramentas = [], proibidas = [], extras: extrasBase = [], mcp = null, env = /** @type {Record<string, string>} */ ({}), continuar = false, sessao = null, aoMudar = () => {} } = opcoes;
   if (rodandoEm(dir)) return false;
+  const extras = juntarMcp(extrasBase, mcp);
   ultimas.set(dir, opcoes); erros.delete(dir);
   const gravar = (l) => anotar(dir, l);
   let sid = null, anterior = null;

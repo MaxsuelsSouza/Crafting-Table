@@ -7,7 +7,7 @@ const aoVivo = require('../../../componentes/ao-vivo');
 const controle = require('../../../infra/controle');
 const dossie = require('../../../infra/dossie');
 const { etapa } = require('../etapas');
-const { RESPOSTAS, estado, mudar } = require('../estado');
+const { RESPOSTAS, estado, mudar, situacao } = require('../estado');
 const { rodarEtapa, proxima, seguir, retomar, pausarManual, responder } = require('../orquestrador');
 
 const dentro = (s, nome) => {
@@ -56,7 +56,7 @@ const acoes = (s) => ({
           et.n === 4
             ? 'Depois de aprovado, a esteira cria a branch de trabalho e altera o código dos repositórios (sem commit nem push).'
             : et.n === 0
-              ? 'Depois de aprovado, a esteira cria a branch do ticket (feature/, bugfix/ ou hotfix/<CHAVE>) e começa os grupos de subtarefas (no máximo 2 agentes ao mesmo tempo).'
+              ? 'Depois de aprovado, a esteira prepara a branch do ticket (<prefixo>/<CHAVE> no padrão do repositório; sem branch, pergunta antes de criar) e começa os grupos de subtarefas (no máximo 2 agentes ao mesmo tempo).'
               : 'Depois de aprovada, a esteira segue sozinha para a próxima etapa.'
       },
       'Aprovar'
@@ -127,6 +127,20 @@ const acoes = (s) => ({
   esteiraAbrirArquivo({ key }) {
     const a = alvo(s, key);
     if (a) require('./alteracoes').abrir(a.dir);
+  },
+  // Aba Teste: ↻ Refazer um CT (volta para a fila) e, com a esteira parada no ticket simples, roda a etapa 7 de novo (só os pendentes).
+  async testeRefazer({ id }) {
+    const t = s.ticketAberto();
+    if (!t || typeof id !== 'string') return;
+    const dir = s.pastaAba(t.id),
+      fluxo = require('../../../componentes/fluxo-passos');
+    if (!fluxo.refazer(path.join(dir, 'teste'), id)) return;
+    const sit = situacao(dir);
+    if (!sit.rodando && sit.e.subtarefas !== 'sim' && sit.e.etapa >= 7) {
+      mudar(dir, { etapa: 7, fase: 'parado', pausa: null });
+      await seguir(s, t);
+    }
+    s.render();
   },
   // Aba Dossiê do ticket com subtarefas: de quem é o dossiê mostrado (Pai, G1, G2).
   esteiraDossieDe({ key }) {

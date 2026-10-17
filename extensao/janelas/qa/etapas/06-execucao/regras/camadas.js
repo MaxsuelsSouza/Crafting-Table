@@ -1,12 +1,14 @@
 // @ts-check
 // card.json (qa/card.json), escrito pela IA no 6.0 Gerar: em que camada cada cenário é verificado.
-//   app              roteiro com flows no emulador (sai da tela de início)
+//   app              roteiro com flows no ambiente (Maestro no emulador/aparelho, Playwright no web; sai da tela de início)
 //   api              roteiro só com etapas http (+ consultas): sem app, em segundos
 //   banco            roteiro só com consultas antes × depois
 //   nao-verificavel  não dá para verificar aqui (porque obrigatório): vai para o relatório como não verificável
-// { "cenarios": { "CT01": { "camada": "app", "porque": "a regra está na tela de conferência" } } }
+// ambiente (opcional): onde o cenário roda (infra/ambientes: emulador, aparelho, web); sem ele, o do ticket (v1: um por ticket).
+// { "cenarios": { "CT01": { "camada": "app", "porque": "a regra está na tela de conferência", "ambiente": "emulador" } } }
 const path = require('path');
 const { lerJson, gravarJson } = require('../../../estado');
+const { NOMES: AMBIENTES } = require('../../../../../infra/ambientes');
 
 const CAMADAS = ['app', 'api', 'banco', 'nao-verificavel'];
 const CARD = 'card.json';
@@ -21,6 +23,8 @@ function validarCard(card, ids = [], exigir = ids) {
     if (ids.length && !ids.includes(id)) erros.push(`${id}: não está no plano`);
     if (!CAMADAS.includes(v?.camada)) erros.push(`${id}: camada precisa ser ${CAMADAS.join(', ')}`);
     if (!String(v?.porque || '').trim()) erros.push(`${id}: sem "porque"`);
+    if (v?.ambiente !== undefined && !AMBIENTES.includes(v.ambiente))
+      erros.push(`${id}: ambiente precisa ser ${AMBIENTES.join(', ')}`);
   }
   const faltam = exigir.filter((id) => !cs[id]);
   if (faltam.length) erros.push(`sem camada: ${faltam.join(', ')}`);

@@ -1,11 +1,12 @@
 // @ts-check
 // Evidências que o ticket (ou o pai e os irmãos) já traz: anexos do Jira que parecem evidência (print, vídeo, log), baixados para
-// <aba>/evidencias-ticket/ e indexados em .evidencias-ticket.json. Sem vscode: roda em teste.
+// <aba>/evidencias-ticket/ e indexados em .evidencias-ticket.json (os quadros dos vídeos: evidencias-ticket/quadros/). Sem vscode: roda em teste.
 const fs = require('fs');
 const path = require('path');
 
 const PASTA = 'evidencias-ticket',
   INDICE = '.evidencias-ticket.json',
+  EVIDENCIAS_MD = 'evidencias-ticket.md', // o que a IA extraiu na 1.2 (massa, fluxo, esperado × obtido…)
   MAX_ANEXOS = 20,
   MAX_BYTES = 40 * 1024 * 1024;
 const EVIDENCIA = /\.(png|jpe?g|gif|webp|mp4|webm|mov|log|txt|har|pdf)$/i;
@@ -48,4 +49,4 @@ async function coletarEvidencias(dir, anexos, baixar) {
 }
 const evidenciasDoTicket = (dir) => lerJson(path.join(dir, INDICE), []);
 
-module.exports = { coletarEvidencias, evidenciasDoTicket, PASTA, INDICE };
+module.exports = { coletarEvidencias, evidenciasDoTicket, PASTA, INDICE, EVIDENCIAS_MD };

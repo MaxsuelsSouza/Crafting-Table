@@ -1,12 +1,12 @@
 // @ts-check
-// 0.6 · Disparo (extensão, depois do portão): pasta e contexto de cada grupo, a branch <tipo>/<CHAVE> nos repositórios dos grupos (antes dos
+// 0.6 · Disparo (extensão, depois do portão): pasta e contexto de cada grupo, a branch do ticket (<prefixo>/<CHAVE>) nos repositórios dos grupos (antes dos
 // agentes: o worktree parte dela) e, no paralelo, o worktree destacado do segundo grupo. Depois entrega para a fila (orquestrador/grupos).
 // Idempotente: o ▶ do pai passa por aqui de novo (branch já selecionada, worktree já criado).
 const fs = require('fs');
 const path = require('path');
 const aoVivo = require('../../../../../componentes/ao-vivo');
-const { TENTAR, ESTADO, mudar, pausar } = require('../../../estado');
-const { prepararBranches, ramo } = require('../../05-implementacao');
+const { TENTAR, ESTADO, estado, mudar, pausar } = require('../../../estado');
+const { prepararBranches } = require('../../05-implementacao');
 const { dirGrupo, lerPlano } = require('../arquivos');
 const { escreverContextoGrupo } = require('../regras/contexto-grupo');
 const worktree = require('../regras/worktree');
@@ -34,12 +34,13 @@ async function disparar(s, t, rodada) {
   if (paralelo) {
     for (const g of plano.grupos.slice(1))
       for (const r of grupos.reposDoGrupo(todos, g)) {
-        const wt = worktree.caminho(t.chave, g.id, r);
+        const wt = worktree.caminho(t.chave, g.id, r),
+          ramo = estado(dir).branches[r.caminho];
         try {
-          if (worktree.criar(r, wt, ramo(t)))
+          if (worktree.criar(r, wt, ramo))
             aoVivo.anotar(dir, {
               tipo: 'acao',
-              texto: `${path.basename(r.caminho)}: worktree do ${g.id} em ${wt} (destacado de ${ramo(t)})`
+              texto: `${path.basename(r.caminho)}: worktree do ${g.id} em ${wt} (destacado de ${ramo})`
             });
         } catch (x) {
           pausar(dir, 0, {

@@ -275,6 +275,42 @@ const sobras = (dir) => fs.readdirSync(dir).filter((n) => n.endsWith('.tmp'));
     const d3 = novoDir();
     fs.writeFileSync(path.join(d3, 'qa-plano.md'), 'só texto');
     assert.throws(() => qa.proporPlano(d3, 'K-1'), /não gravou/);
+    // subtarefa [QA] que já tem descrição (outro plano): comenta nela, aprova a versão local e o ▶ seguinte não volta ao texto antigo
+    const d4 = novoDir(),
+      antiga = [
+        {
+          key: 'K-5',
+          resumo: '[QA] Planejamento dos Casos de Testes',
+          updated: 'x',
+          md: '#### CT01 – Antigo\n**Dado que** velho'
+        }
+      ],
+      comentados = [];
+    fs.writeFileSync(path.join(d4, 'qa-plano.md'), PLANO);
+    qa.proporPlano(d4, 'K-1');
+    assert.ok(
+      await qa.aprovarPublicando(d4, {
+        ...deps,
+        filhos: async () => antiga,
+        atualizarDescricao: async () => assert.fail('não pode sobrescrever a descrição'),
+        comentarEm: async (k, md) => comentados.push([k, md])
+      })
+    );
+    assert.deepStrictEqual(
+      [
+        comentados.length,
+        comentados[0][0],
+        qa.estado(d4).fase,
+        qa.estado(d4).aprovado.comentario,
+        qa.estado(d4).subtarefa
+      ],
+      [1, 'K-5', 'plano_aprovado', true, 'K-5']
+    );
+    await qa.verificarPlano(d4, 'K-1', async () => antiga);
+    assert.deepStrictEqual(
+      [qa.estado(d4).fase, qa.versaoAtual(d4).v, qa.cenarios(d4).cenarios.some((c) => c.titulo === 'Antigo')],
+      ['plano_aprovado', 1, false]
+    );
   }
 
   // ── Dossiê: o QA lê o que a Implementação entregou; só título vira pergunta; plano sem rastreio vira aviso.

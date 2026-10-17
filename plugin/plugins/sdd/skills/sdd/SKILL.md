@@ -167,10 +167,11 @@ Arquitetura e organização de pastas · Testes (obrigatoriedade e **cobertura m
 (autenticação; autorização por claims/policies em vez de roles) · Dados (datas e horas **sempre em UTC**) ·
 Nomenclatura (arquivos, variáveis, classes) · Versionamento e commits (fluxo Git, Conventional Commits).
 Em **Versionamento e commits** inclua sempre esta regra (não é pergunta ao humano): todo ticket tem uma branch só,
-`<tipo>/<CHAVE>` (sem slug), com o tipo pelo tipo do ticket: história, tarefa ou melhoria → `feature/<CHAVE>`; bug →
-`bugfix/<CHAVE>`; incidente → `hotfix/<CHAVE>`. No ticket com subtarefas a chave e o tipo são os do pai; subtarefa não ganha
-branch própria e todas são implementadas nela. Se já existe branch do ticket ou de uma subtarefa concluída, a
-`<tipo>/<CHAVE>` parte dela; senão, da branch principal. Trabalho em paralelo usa `git worktree` destacado da mesma
+`<prefixo>/<CHAVE>` (sem slug), com o prefixo mais usado no repositório para o tipo do ticket: história → `story/` ou
+`feature/`; tarefa → `task/` ou `feature/`; melhoria → `reform/` ou `feature/`; bug → `bugfix/` ou `fix/`; incidente → `hotfix/`.
+No ticket com subtarefas a chave e o tipo são os do pai; subtarefa não ganha branch própria e todas são implementadas nela.
+A branch do ticket que já existe é usada; criar uma nova é sempre confirmado antes, partindo da branch do ticket ou de uma
+subtarefa concluída, do pai, do avô ou, sem nenhuma, da branch principal. Trabalho em paralelo usa `git worktree` destacado da mesma
 branch, nunca uma branch nova.
 Feche com a cláusula: "Em divergência com spec.md ou plan.md, esta Constituição prevalece."
 
